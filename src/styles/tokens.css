@@ -1,0 +1,236 @@
+/*
+ * AFORO design tokens — three-layer architecture:
+ *   1. Primitives   (brand seed + neutrals, never theme-dependent)
+ *   2. System roles (Material 3 semantic tokens, switch between light/dark)
+ *   3. Shape/type   (non-color structural tokens)
+ *
+ * Theme resolution: no `data-theme` attribute on <html> = follow OS
+ * `prefers-color-scheme` ("system"). `data-theme="light"` / `data-theme="dark"`
+ * on <html> forces a mode — set by useTheme()/the theme store.
+ *
+ * Brand primitives below are sampled directly from the real AFORO assets in
+ * src/assets/brand/ (see docs/design-system.md §4) — not chosen by eye.
+ */
+
+:root {
+  /* ---------- 1. Brand primitives (sampled from real assets) ---------- */
+  --brand-orange-100: #ffb000; /* lightest stop sampled from the logo gradient */
+  --brand-orange-300: #ff9500;
+  --brand-orange-500: #ff7300; /* core AFORO orange — seeds the primary role */
+  --brand-orange-700: #e8420a;
+  --brand-red-orange: #b82400; /* deepest stop — a dark rust-red, not a bright
+    red; the real logo's deepest gradient point measured far darker/more
+    saturated than early conceptual guesses, so this value overrides those */
+  --brand-gradient: linear-gradient(
+    135deg,
+    var(--brand-orange-100) 0%,
+    var(--brand-orange-300) 30%,
+    var(--brand-orange-500) 55%,
+    var(--brand-orange-700) 78%,
+    var(--brand-red-orange) 100%
+  );
+  /* Ambient glow, not a fill — large radius, low opacity, meant to be blurred
+     further by the consumer (see LoginView's brand panel). */
+  --brand-glow: radial-gradient(
+    circle,
+    rgba(255, 115, 0, 0.35) 0%,
+    rgba(184, 36, 0, 0.14) 45%,
+    rgba(184, 36, 0, 0) 72%
+  );
+
+  /* Theme-invariant "brand hero" surface — used ONLY for the login brand
+     panel, which is deliberately near-black in both Light and Dark mode
+     (a constant brand moment), never redefined in the media/data-theme
+     blocks below. Not a general-purpose token. Matches the Dark neutral
+     scale's own darkest step (see below) so the panel reads as part of the
+     same surface family, not a separate near-black. */
+  --brand-panel-surface: #17181c;
+  --brand-panel-on-surface: #f2eae3;
+
+  /* ---------- 2. Material 3 system roles — LIGHT (default) ---------- */
+  /* Primary is intentionally theme-invariant (brand accent stays constant;
+     only neutrals shift between themes) — not redefined below. Dark
+     on-primary text, not white: --brand-orange-500 doesn't clear 4.5:1
+     with white at any reasonable size, but clears >6.5:1 with dark text. */
+  --md-sys-color-primary: var(--brand-orange-500);
+  --md-sys-color-on-primary: #1a0f00;
+  --md-sys-color-primary-container: #ffe0c2;
+  --md-sys-color-on-primary-container: #431e00;
+
+  --md-sys-color-secondary: #7a5b3e;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #f3e2d0;
+  --md-sys-color-on-secondary-container: #2e1f10;
+
+  --md-sys-color-tertiary: #7a5c00;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #ffe9a8;
+  --md-sys-color-on-tertiary-container: #241a00;
+
+  --md-sys-color-background: #fbf3ea;
+  --md-sys-color-on-background: #241c14;
+  --md-sys-color-surface: #fdf8f2;
+  --md-sys-color-surface-dim: #e9dcc9;
+  --md-sys-color-surface-bright: #fbf3ea;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #f7ede0;
+  --md-sys-color-surface-container: #f2e6d5;
+  --md-sys-color-surface-container-high: #ecdcc7;
+  --md-sys-color-surface-container-highest: #e5d2b8;
+  --md-sys-color-on-surface: #241c14;
+  --md-sys-color-on-surface-variant: #6b5d4f;
+
+  --md-sys-color-outline: #a6957f;
+  --md-sys-color-outline-variant: #e4d4be;
+
+  --md-sys-color-error: #ba1a1a;
+  --md-sys-color-on-error: #ffffff;
+  --md-sys-color-error-container: #ffdad6;
+  --md-sys-color-on-error-container: #410002;
+
+  /* Elevation: depth is expressed primarily through the surface-container
+     tonal ladder (see docs/design-system.md §19 Depth System) — this shadow
+     is the secondary, occasional signal for things that actually float
+     above content (menus, dialogs, the mobile drawer), not a per-card
+     default. Warm-tinted in Light (never a cool/blue-gray shadow); a plain
+     low-opacity black in Dark reads correctly against any surface step. */
+  --elevation-shadow: 0 10px 30px rgba(30, 20, 15, 0.1);
+
+  /* Card shadow: a second, softer shadow tier — distinct from
+     --elevation-shadow (menus/dialogs/drawer). Cards get a little real
+     depth (ref 1 + ref 3 direction, see docs/design-system.md §21) without
+     turning into "card soup" — one soft, close shadow, never stacked with
+     a heavy one. Warm-tinted in Light; plain low-opacity black in Dark. */
+  --card-shadow:
+    0 1px 2px rgba(30, 20, 15, 0.04),
+    0 6px 16px rgba(30, 20, 15, 0.06);
+
+  /* Chart colors: deliberately NOT a multicolor categorical set — the
+     brand stays warm-only end to end. Real distributions (payment
+     methods, order origin) use the "emphasis" pattern instead: one
+     series in the accent orange, the rest in two warm-neutral steps
+     already established elsewhere in this file (never a new hue).
+     Identity for the de-emphasized steps rides the legend + direct value
+     labels, never hue alone — see docs/design-system.md §21. */
+  --chart-accent: var(--md-sys-color-primary);
+  --chart-neutral-mid: var(--md-sys-color-on-surface-variant);
+  --chart-neutral-low: var(--md-sys-color-outline);
+
+  /* ---------- 3. Shape scale (Material 3 corner sizes) ---------- */
+  --shape-corner-none: 0px;
+  --shape-corner-extra-small: 4px;
+  --shape-corner-small: 8px;
+  --shape-corner-medium: 12px;
+  --shape-corner-large: 16px;
+  --shape-corner-extra-large: 28px;
+  --shape-corner-full: 9999px;
+
+  /* ---------- Typography (provisional font stack, see docs §7) ---------- */
+  --font-sans-family:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+}
+
+/*
+ * Dark neutral scale: NEUTRAL graphite/steel, not warm brown — re-derived
+ * directly from the real Tesla-app reference image (src/assets/images/ref/
+ * imagem 2.webp, see docs/design-system.md §21) after the previous pass
+ * (a warm brown-graphite ramp) read as "chocolate/muddy," not premium
+ * technological steel. This ramp intentionally carries NO warm undertone —
+ * background is still the darkest step (the app canvas) and each
+ * surface-container step is a small, perceptible tonal lift above it, but
+ * the hue itself is neutral-to-slightly-cool now, matching the reference.
+ * The AFORO orange stays the one warm note against it, by contrast — that
+ * contrast is the point (see §3/§11 accent-vs-neutral direction). Every
+ * pair below was checked with the WCAG contrast formula, not eyeballed.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --md-sys-color-primary: var(--brand-orange-500);
+    --md-sys-color-on-primary: #1a0f00;
+    --md-sys-color-primary-container: #3d1a00;
+    --md-sys-color-on-primary-container: #ffd9b8;
+
+    --md-sys-color-secondary: #d9b79a;
+    --md-sys-color-on-secondary: #3d2a18;
+    --md-sys-color-secondary-container: #4a3420;
+    --md-sys-color-on-secondary-container: #f0dac0;
+
+    --md-sys-color-tertiary: #e8b23a;
+    --md-sys-color-on-tertiary: #3d2e00;
+    --md-sys-color-tertiary-container: #4a3800;
+    --md-sys-color-on-tertiary-container: #ffe9a8;
+
+    --md-sys-color-background: #17181c;
+    --md-sys-color-on-background: #f4f4f2;
+    --md-sys-color-surface: #1e2024;
+    --md-sys-color-surface-dim: #17181c;
+    --md-sys-color-surface-bright: #30343a;
+    --md-sys-color-surface-container-lowest: #1c1e22;
+    --md-sys-color-surface-container-low: #212327;
+    --md-sys-color-surface-container: #24272c;
+    --md-sys-color-surface-container-high: #2a2e34;
+    --md-sys-color-surface-container-highest: #30343a;
+    --md-sys-color-on-surface: #f4f4f2;
+    --md-sys-color-on-surface-variant: #a8abb2;
+
+    --md-sys-color-outline: #777b83;
+    /* Near-imperceptible border: translucent white reads correctly across
+       every surface-container step above, unlike a single flat hex. */
+    --md-sys-color-outline-variant: rgba(255, 255, 255, 0.06);
+
+    --md-sys-color-error: #ffb4ab;
+    --md-sys-color-on-error: #690005;
+    --md-sys-color-error-container: #93000a;
+    --md-sys-color-on-error-container: #ffdad6;
+
+    --elevation-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+    --card-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.2),
+      0 6px 18px rgba(0, 0, 0, 0.22);
+  }
+}
+
+/* ---------- Dark mode: explicit override (data-theme="dark") ---------- */
+:root[data-theme='dark'] {
+  --md-sys-color-primary: var(--brand-orange-500);
+  --md-sys-color-on-primary: #1a0f00;
+  --md-sys-color-primary-container: #3d1a00;
+  --md-sys-color-on-primary-container: #ffd9b8;
+
+  --md-sys-color-secondary: #d9b79a;
+  --md-sys-color-on-secondary: #3d2a18;
+  --md-sys-color-secondary-container: #4a3420;
+  --md-sys-color-on-secondary-container: #f0dac0;
+
+  --md-sys-color-tertiary: #e8b23a;
+  --md-sys-color-on-tertiary: #3d2e00;
+  --md-sys-color-tertiary-container: #4a3800;
+  --md-sys-color-on-tertiary-container: #ffe9a8;
+
+  --md-sys-color-background: #17181c;
+  --md-sys-color-on-background: #f4f4f2;
+  --md-sys-color-surface: #1e2024;
+  --md-sys-color-surface-dim: #17181c;
+  --md-sys-color-surface-bright: #30343a;
+  --md-sys-color-surface-container-lowest: #1c1e22;
+  --md-sys-color-surface-container-low: #212327;
+  --md-sys-color-surface-container: #24272c;
+  --md-sys-color-surface-container-high: #2a2e34;
+  --md-sys-color-surface-container-highest: #30343a;
+  --md-sys-color-on-surface: #f4f4f2;
+  --md-sys-color-on-surface-variant: #a8abb2;
+
+  --md-sys-color-outline: #777b83;
+  --md-sys-color-outline-variant: rgba(255, 255, 255, 0.06);
+
+  --md-sys-color-error: #ffb4ab;
+  --md-sys-color-on-error: #690005;
+  --md-sys-color-error-container: #93000a;
+  --md-sys-color-on-error-container: #ffdad6;
+
+  --elevation-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  --card-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.2),
+    0 6px 18px rgba(0, 0, 0, 0.22);
+}

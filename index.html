@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <script>
+      // Runs before any CSS is parsed to avoid a flash of the wrong theme
+      // for an explicit (non-"system") persisted preference. "system" needs
+      // no JS at all — the prefers-color-scheme media query in
+      // src/styles/tokens.css already handles it with zero flash.
+      (function () {
+        try {
+          var stored = localStorage.getItem('aforo-theme')
+          if (stored === 'light' || stored === 'dark') {
+            document.documentElement.setAttribute('data-theme', stored)
+          }
+        } catch (error) {
+          // localStorage unavailable — falls back to the system preference.
+        }
+      })()
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/png" href="/icon-logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AFORO</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
