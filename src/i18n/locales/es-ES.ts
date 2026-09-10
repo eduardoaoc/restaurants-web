@@ -21,6 +21,11 @@ export default {
       network: 'No se ha podido conectar con el servidor.',
       server: 'Ha ocurrido un error en el servidor.',
       generic: 'Ha ocurrido un error. Inténtalo de nuevo.',
+      codes: {
+        tableSessionHasNoBillableOrders: 'Esta mesa todavía no tiene ningún pedido, así que no se puede cerrar.',
+        zoneHasTables: 'Esta zona todavía tiene mesas asignadas — muévelas antes de eliminarla.',
+        floorHasZones: 'Esta planta todavía tiene zonas — elimínalas antes de eliminar la planta.',
+      },
     },
   },
   auth: {
@@ -128,6 +133,7 @@ export default {
     pageSubtitle: 'Visión operativa en tiempo real.',
     connection: {
       restOnly: 'Actualización automática pendiente',
+      refreshing: 'Actualizando…',
       connected: 'Tiempo real conectado',
       connecting: 'Conectando…',
       reconnecting: 'Reconectando…',
@@ -164,6 +170,11 @@ export default {
     },
     noData: 'Todavía no hay datos operativos.',
     salesToday: 'Recibido hoy',
+    quickActions: {
+      title: 'Acciones rápidas',
+      editFloorPlan: 'Editar salón',
+      refresh: 'Actualizar',
+    },
     tableStatus: {
       free: 'Libre',
       occupied: 'Ocupada',
@@ -247,9 +258,10 @@ export default {
       addZone: 'Añadir zona',
       noZones: 'Esta planta todavía no tiene zonas. Crea una para añadir mesas.',
       addTableSeats: 'Mesa · {count}',
-      hint: 'Arrastra una mesa para reposicionarla. Selecciónala para cambiar su forma.',
+      hint: 'Arrastra una mesa para reposicionarla, o selecciónala y usa las flechas del teclado. Selecciónala para cambiar su forma.',
       cycleShape: 'Cambiar forma',
       tableName: 'Mesa {number}',
+      tableAriaLabel: '{name}. Arrastra o usa las flechas del teclado para mover.',
     },
   },
   tableDrawer: {
@@ -260,6 +272,8 @@ export default {
     waiter: 'Camarero',
     total: 'Total actual',
     unassigned: 'Sin asignar',
+    noStaffToAssign: 'No hay personal en turno para asignar.',
+    outstandingBalance: 'Saldo pendiente: {amount}',
     actions: {
       open: 'Abrir mesa',
       reassignWaiter: 'Asignar / reasignar camarero',
@@ -352,6 +366,21 @@ export default {
       noData: 'Sin datos suficientes',
       ordersReady: 'Pedidos completados',
       ordersCancelled: 'Pedidos cancelados',
+    },
+  },
+  onboarding: {
+    title: 'Configura tu restaurante',
+    subtitle: 'Completa estos pasos para empezar a operar con AFORO.',
+    progress: '{done} de {total} pasos completados',
+    comingSoon: 'disponible próximamente',
+    configure: 'Configurar',
+    steps: {
+      basicInfo: 'Datos básicos del restaurante',
+      floorPlan: 'Salón y mesas',
+      menu: 'Carta y productos',
+      staff: 'Equipo',
+      qr: 'Código QR para las mesas',
+      settings: 'Ajustes del restaurante',
     },
   },
 }

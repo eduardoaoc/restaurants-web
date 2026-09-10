@@ -11,46 +11,74 @@ import type { OperationsLiveSnapshot } from '@/types/operations'
  * cleanly on every restaurant switch — the in-flight request for the
  * previous restaurant is aborted so a slow response can never overwrite the
  * new restaurant's state (never show stale data mid-switch).
+ *
+ * `refetch()` (called after a table/session mutation succeeds) is
+ * deliberately NOT the same code path as a restaurant switch: it must never
+ * null out `snapshot` first. Doing so used to blank the whole Operation view
+ * (and silently close the open Table Drawer, since it renders off the same
+ * snapshot) for the split second between every successful action and its
+ * background refresh — a real bug found auditing the open/close/assign/
+ * transfer/call flows end to end. `refreshing` lets the UI show a quiet
+ * indicator instead, keeping the last-known-good snapshot on screen.
  */
 export function useRestaurantOperations() {
   const restaurantStore = useRestaurantStore()
 
   const snapshot = ref<OperationsLiveSnapshot | null>(null)
   const loading = ref(false)
+  const refreshing = ref(false)
   const error = ref<ApiError | null>(null)
 
   let controller: AbortController | null = null
 
-  async function fetch(restaurantId: number | null): Promise<void> {
+  async function fetch(restaurantId: number | null, isSwitch: boolean): Promise<void> {
     controller?.abort()
-    snapshot.value = null
-    error.value = null
 
-    if (restaurantId === null) return
+    if (isSwitch) {
+      snapshot.value = null
+      error.value = null
+    }
+
+    if (restaurantId === null) {
+      snapshot.value = null
+      return
+    }
 
     controller = new AbortController()
     const { signal } = controller
-    loading.value = true
+    if (isSwitch) loading.value = true
+    else refreshing.value = true
 
     try {
       const result = await operationsService.live(restaurantId, signal)
       if (signal.aborted) return
       snapshot.value = result
+      error.value = null
     } catch (err) {
       if (signal.aborted) return
-      error.value = normalizeApiError(err)
+      // A background refresh failing keeps the last-known-good snapshot on
+      // screen rather than replacing working content with an error banner —
+      // only a real switch/first-load failure is surfaced that way.
+      if (isSwitch) error.value = normalizeApiError(err)
     } finally {
-      if (!signal.aborted) loading.value = false
+      if (!signal.aborted) {
+        loading.value = false
+        refreshing.value = false
+      }
     }
   }
 
   function refetch(): void {
-    void fetch(restaurantStore.currentRestaurantId)
+    void fetch(restaurantStore.currentRestaurantId, false)
   }
 
-  watch(() => restaurantStore.currentRestaurantId, fetch, { immediate: true })
+  watch(
+    () => restaurantStore.currentRestaurantId,
+    (id) => void fetch(id, true),
+    { immediate: true },
+  )
 
   onBeforeUnmount(() => controller?.abort())
 
-  return { snapshot, loading, error, refetch }
+  return { snapshot, loading, refreshing, error, refetch }
 }

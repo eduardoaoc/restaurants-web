@@ -40,6 +40,15 @@ function selectFloor(id: number): void {
   selectedTableId.value = null
 }
 
+// Fixes a real crash: without this, picking a table in Zone A then switching
+// to Zone B left `selectedTableId` pointing at a table absent from Zone B's
+// list — the "change shape" control's non-null `.find(...)!.layout` then
+// threw on render.
+function selectZone(id: number): void {
+  selectedZoneId.value = id
+  selectedTableId.value = null
+}
+
 async function addFloor(): Promise<void> {
   const name = newFloorName.value.trim()
   if (!name) return
@@ -59,16 +68,30 @@ async function addZone(): Promise<void> {
 }
 
 async function addTable(capacity: 2 | 4): Promise<void> {
-  if (selectedZoneId.value === null) return
-  const existingNumbers = (currentZone.value?.tables ?? [])
+  if (selectedZoneId.value === null || !editor.floorPlan.value) return
+  // Numbered against every table in the restaurant, not just this zone's —
+  // found via real testing, numbering only within the current zone let two
+  // different tables both end up displayed as "Mesa 1" the moment a second
+  // zone existed.
+  const plan = editor.floorPlan.value
+  const allTableNumbers = [
+    ...plan.floors.flatMap((floor) => floor.zones.flatMap((zone) => zone.tables)),
+    ...plan.unassigned_tables,
+  ]
     .map((table) => table.number ?? 0)
     .concat(0)
-  const nextNumber = Math.max(...existingNumbers) + 1
+  const nextNumber = Math.max(...allTableNumbers) + 1
   await editor.createTable(t('operations.editor.tableName', { number: nextNumber }), selectedZoneId.value, capacity)
 }
 
 function onPointerDown(zoneId: number, tableId: number, event: PointerEvent): void {
   event.preventDefault()
+  // preventDefault() above (needed to stop native drag/text-selection
+  // artifacts while dragging) also suppresses the browser's default
+  // focus-on-click for the button — found via real keyboard testing, this
+  // silently broke the arrow-key nudge for anyone who clicked a table
+  // first instead of Tab-ing to it. Restore focus explicitly.
+  ;(event.currentTarget as HTMLElement).focus()
   selectedTableId.value = tableId
   const canvas = zoneCanvasRefs[zoneId]
   if (!canvas) return
@@ -85,6 +108,26 @@ function onPointerDown(zoneId: number, tableId: number, event: PointerEvent): vo
   }
   window.addEventListener('pointermove', move)
   window.addEventListener('pointerup', up)
+}
+
+// Keyboard alternative to the pointer drag above — the read-only map is
+// already fully keyboard-operable (real <button> markers), so the editor's
+// own reposition control needs the same (§27); arrow keys nudge by 2% of
+// the canvas per press, clamped to the same 0..1 range as a drag.
+function onTableKeydown(tableId: number, currentLayout: { x: number | null; y: number | null }, event: KeyboardEvent): void {
+  const step = 0.02
+  let dx = 0
+  let dy = 0
+  if (event.key === 'ArrowLeft') dx = -step
+  else if (event.key === 'ArrowRight') dx = step
+  else if (event.key === 'ArrowUp') dy = -step
+  else if (event.key === 'ArrowDown') dy = step
+  else return
+
+  event.preventDefault()
+  const x = Math.min(Math.max((currentLayout.x ?? 0.5) + dx, 0), 1)
+  const y = Math.min(Math.max((currentLayout.y ?? 0.5) + dy, 0), 1)
+  editor.updateDraft(tableId, { x, y })
 }
 
 function cycleShape(tableId: number, current: string): void {
@@ -156,7 +199,7 @@ async function saveAndClose(): Promise<void> {
               {{ floor.name }}
             </button>
             <ATextField v-model="newFloorName" :label="t('operations.editor.newFloor')" class="w-40" />
-            <AIconButton :label="t('operations.editor.addFloor')" @click="addFloor">
+            <AIconButton :label="t('operations.editor.addFloor')" :disabled="editor.saving.value || !newFloorName.trim()" @click="addFloor">
               <PhPlus :size="16" />
             </AIconButton>
           </div>
@@ -177,12 +220,12 @@ async function saveAndClose(): Promise<void> {
                 type="button"
                 class="rounded-full px-3 py-1.5 text-label-lg font-medium"
                 :class="selectedZoneId === zone.id ? 'bg-secondary-container text-on-secondary-container' : 'bg-surface-container-high text-on-surface-variant'"
-                @click="selectedZoneId = zone.id"
+                @click="selectZone(zone.id)"
               >
                 {{ zone.name }}
               </button>
               <ATextField v-model="newZoneName" :label="t('operations.editor.newZone')" class="w-40" />
-              <AIconButton :label="t('operations.editor.addZone')" @click="addZone">
+              <AIconButton :label="t('operations.editor.addZone')" :disabled="editor.saving.value || !newZoneName.trim()" @click="addZone">
                 <PhPlus :size="16" />
               </AIconButton>
             </div>
@@ -228,7 +271,9 @@ async function saveAndClose(): Promise<void> {
                     transform: `translate(-50%, -50%) rotate(${editor.mergedLayout(tableItem.id, tableItem.layout).rotation}deg)`,
                     cursor: 'grab',
                   }"
+                  :aria-label="t('operations.editor.tableAriaLabel', { name: tableItem.name })"
                   @pointerdown="onPointerDown(currentZone!.id, tableItem.id, $event)"
+                  @keydown="onTableKeydown(tableItem.id, editor.mergedLayout(tableItem.id, tableItem.layout), $event)"
                   @click="selectedTableId = tableItem.id"
                 >
                   <span class="text-label-md font-semibold">{{ tableItem.name }}</span>

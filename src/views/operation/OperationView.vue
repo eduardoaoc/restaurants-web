@@ -5,6 +5,7 @@ import { PhBellRinging, PhCookingPot, PhGauge, PhTable, PhUsersThree, PhWallet }
 
 import EmptyState from '@/components/dashboard/EmptyState.vue'
 import MetricCard from '@/components/dashboard/MetricCard.vue'
+import RestaurantOnboarding from '@/components/dashboard/RestaurantOnboarding.vue'
 import SectionCard from '@/components/dashboard/SectionCard.vue'
 import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
@@ -13,6 +14,7 @@ import BottleneckPanel from '@/components/dashboard/operation/BottleneckPanel.vu
 import CapacityPanel from '@/components/dashboard/operation/CapacityPanel.vue'
 import FloorMapEditor from '@/components/dashboard/operation/FloorMapEditor.vue'
 import KitchenLivePanel from '@/components/dashboard/operation/KitchenLivePanel.vue'
+import QuickActions from '@/components/dashboard/operation/QuickActions.vue'
 import QuickMetrics from '@/components/dashboard/operation/QuickMetrics.vue'
 import RestaurantFloorMap from '@/components/dashboard/operation/RestaurantFloorMap.vue'
 import StaffLivePanel from '@/components/dashboard/operation/StaffLivePanel.vue'
@@ -24,6 +26,7 @@ const props = defineProps<{
   restaurantId: number | null
   snapshot: OperationsLiveSnapshot | null
   loading: boolean
+  refreshing: boolean
   error: import('@/api/errors').ApiError | null
 }>()
 
@@ -43,6 +46,10 @@ const allTables = computed<OperationsTable[]>(() => {
 const selectedTable = computed(() => allTables.value.find((table) => table.id === selectedTableId.value) ?? null)
 const freeTables = computed(() => allTables.value.filter((table) => table.primary_status === 'free'))
 const criticalAlertsCount = computed(() => props.snapshot?.alerts.filter((a) => a.severity === 'critical').length ?? 0)
+// Nothing configured anywhere yet (not "this zone is empty" — the whole
+// restaurant) — every operational panel would just be a wall of empty
+// states in that case, so the onboarding card replaces them instead.
+const hasAnyTables = computed(() => allTables.value.length > 0)
 
 function openTableById(tableId: number): void {
   selectedTableId.value = tableId
@@ -85,6 +92,11 @@ function onEditorClose(): void {
     </ASurface>
 
     <template v-else-if="snapshot">
+      <QuickActions :refreshing="refreshing" @edit-floor-plan="showEditor = true" @refresh="emit('refresh')" />
+
+      <RestaurantOnboarding v-if="!hasAnyTables" :total-tables="allTables.length" @open-floor-editor="showEditor = true" />
+
+      <template v-else>
       <QuickMetrics :summary="snapshot.summary" :critical-alerts-count="criticalAlertsCount" />
 
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1.75fr_1fr]">
@@ -143,6 +155,7 @@ function onEditorClose(): void {
           :value="formatMoney(snapshot.summary.sales.received_today, locale, snapshot.restaurant.currency)"
         />
       </div>
+      </template>
     </template>
 
     <EmptyState v-else :icon="PhTable" :message="t('operations.noData')" />

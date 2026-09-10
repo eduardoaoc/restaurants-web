@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PhWifiSlash } from '@phosphor-icons/vue'
 
+import AProgress from '@/components/ui/AProgress.vue'
 import type { OperationHealthLevel } from '@/types/operations'
 import DashboardTabs, { type DashboardTab } from './DashboardTabs.vue'
 
@@ -10,6 +11,8 @@ const props = defineProps<{
   tab: DashboardTab
   health: { score: number; level: OperationHealthLevel } | null
   attentionCount: number
+  /** A background refresh after a table/session action — never blanks existing content, just a quiet hint. */
+  refreshing?: boolean
 }>()
 
 defineEmits<{ 'update:tab': [DashboardTab] }>()
@@ -36,8 +39,9 @@ const ringStyle = computed(() => {
         <h2 class="text-headline font-bold text-on-surface">{{ t('operations.pageTitle') }}</h2>
         <!-- Real, truthful connection state — never a fixed "live" pulse before Realtime actually ships -->
         <span class="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2.5 py-1 text-label-md text-on-surface-variant">
-          <PhWifiSlash :size="12" aria-hidden="true" />
-          {{ t('operations.connection.restOnly') }}
+          <AProgress v-if="refreshing" size="sm" />
+          <PhWifiSlash v-else :size="12" aria-hidden="true" />
+          {{ refreshing ? t('operations.connection.refreshing') : t('operations.connection.restOnly') }}
         </span>
       </div>
       <p class="mt-1.5 text-body-md text-on-surface-variant">{{ t('operations.pageSubtitle') }}</p>

@@ -21,6 +21,11 @@ export default {
       network: "No s'ha pogut connectar amb el servidor.",
       server: "S'ha produït un error al servidor.",
       generic: 'Ha ocorregut un error. Torna-ho a provar.',
+      codes: {
+        tableSessionHasNoBillableOrders: 'Esta taula encara no té cap comanda, per la qual cosa no es pot tancar.',
+        zoneHasTables: 'Esta zona encara té taules assignades — mou-les abans d\'eliminar-la.',
+        floorHasZones: 'Esta planta encara té zones — elimina-les abans d\'eliminar la planta.',
+      },
     },
   },
   auth: {
@@ -128,6 +133,7 @@ export default {
     pageSubtitle: 'Visió operativa en temps real.',
     connection: {
       restOnly: 'Actualització automàtica pendent',
+      refreshing: 'Actualitzant…',
       connected: 'Temps real connectat',
       connecting: 'Connectant…',
       reconnecting: 'Reconnectant…',
@@ -164,6 +170,11 @@ export default {
     },
     noData: 'Encara no hi ha dades operatives.',
     salesToday: 'Rebut hui',
+    quickActions: {
+      title: 'Accions ràpides',
+      editFloorPlan: 'Edita el saló',
+      refresh: 'Actualitza',
+    },
     tableStatus: {
       free: 'Lliure',
       occupied: 'Ocupada',
@@ -247,9 +258,10 @@ export default {
       addZone: 'Afig zona',
       noZones: 'Esta planta encara no té zones. Crea\'n una per a afegir taules.',
       addTableSeats: 'Taula · {count}',
-      hint: 'Arrossega una taula per a reposicionar-la. Selecciona-la per a canviar-ne la forma.',
+      hint: 'Arrossega una taula per a reposicionar-la, o selecciona-la i usa les fletxes del teclat. Selecciona-la per a canviar-ne la forma.',
       cycleShape: 'Canvia la forma',
       tableName: 'Taula {number}',
+      tableAriaLabel: '{name}. Arrossega o usa les fletxes del teclat per a moure-la.',
     },
   },
   tableDrawer: {
@@ -260,6 +272,8 @@ export default {
     waiter: 'Cambrer',
     total: 'Total actual',
     unassigned: 'Sense assignar',
+    noStaffToAssign: 'No hi ha personal en torn per a assignar.',
+    outstandingBalance: 'Saldo pendent: {amount}',
     actions: {
       open: 'Obri la taula',
       reassignWaiter: 'Assigna / reassigna cambrer',
@@ -352,6 +366,21 @@ export default {
       noData: 'Sense dades suficients',
       ordersReady: 'Comandes completades',
       ordersCancelled: 'Comandes cancel·lades',
+    },
+  },
+  onboarding: {
+    title: 'Configura el teu restaurant',
+    subtitle: "Completa estos passos per a començar a operar amb AFORO.",
+    progress: '{done} de {total} passos completats',
+    comingSoon: 'disponible pròximament',
+    configure: 'Configura',
+    steps: {
+      basicInfo: 'Dades bàsiques del restaurant',
+      floorPlan: 'Saló i taules',
+      menu: 'Carta i productes',
+      staff: 'Equip',
+      qr: 'Codi QR per a les taules',
+      settings: 'Ajustos del restaurant',
     },
   },
 }

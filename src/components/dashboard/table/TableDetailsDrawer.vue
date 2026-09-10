@@ -47,6 +47,22 @@ watch(
 
 const style = computed(() => (props.table ? getTableStatusStyle(props.table.primary_status) : null))
 
+// Matches the house dropdown pattern (RestaurantSwitcher/LanguageSwitcher/
+// ThemeSwitcher/UserMenu, see CLAUDE.md's component notes): without this,
+// the waiter menu had no way to close except re-clicking its own toggle —
+// found via real interaction testing, it stayed open and its absolutely
+// positioned panel silently intercepted clicks on the buttons below it.
+function onWaiterMenuFocusOut(event: FocusEvent): void {
+  const root = event.currentTarget as HTMLElement
+  if (!root.contains(event.relatedTarget as Node | null)) {
+    showWaiterMenu.value = false
+  }
+}
+
+function onWaiterMenuKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') showWaiterMenu.value = false
+}
+
 async function run(action: string, task: () => Promise<unknown>, successKey: string): Promise<void> {
   submittingAction.value = action
   feedback.value = null
@@ -93,14 +109,18 @@ function unassignWaiter(): void {
   void run('assign', () => tableSessionsService.unassignWaiter(props.table!.session!.id), 'tableDrawer.feedback.unassigned')
 }
 
-function confirmTransfer(targetTableId: number): void {
+async function confirmTransfer(targetTableId: number): Promise<void> {
   if (!props.table?.session) return
-  showTransfer.value = false
-  void run(
+  // Keep the dialog open (with its own submitting/disabled state) until the
+  // request actually resolves — closing it immediately on click, as a
+  // previous version did, made its `submitting` prop dead code and left no
+  // visible feedback for the entire duration of the request.
+  await run(
     'transfer',
     () => tableSessionsService.transfer(props.table!.session!.id, { target_table_id: targetTableId }),
     'tableDrawer.feedback.transferred',
   )
+  showTransfer.value = false
 }
 </script>
 
@@ -165,7 +185,7 @@ function confirmTransfer(targetTableId: number): void {
         </div>
 
         <!-- Waiter assignment -->
-        <div class="relative mt-4">
+        <div class="relative mt-4" @focusout="onWaiterMenuFocusOut" @keydown="onWaiterMenuKeydown">
           <button
             type="button"
             class="flex w-full items-center justify-between rounded-lg border border-outline-variant px-3 py-2.5 text-body-md text-on-surface hover:bg-surface-container-highest focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -176,8 +196,10 @@ function confirmTransfer(targetTableId: number): void {
           </button>
           <ASurface v-if="showWaiterMenu" tone="highest" radius="md" class="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto py-1 shadow-elevated">
             <button
+              v-if="table.session?.assigned_waiter"
               type="button"
-              class="flex w-full items-center gap-2 px-3 py-2 text-left text-body-md text-on-surface hover:bg-surface-container-high"
+              :disabled="submittingAction === 'assign'"
+              class="flex w-full items-center gap-2 px-3 py-2 text-left text-body-md text-on-surface hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50"
               @click="unassignWaiter"
             >
               <PhUserCircleMinus :size="16" />
@@ -187,32 +209,49 @@ function confirmTransfer(targetTableId: number): void {
               v-for="member in staff"
               :key="member.user.id"
               type="button"
-              class="flex w-full items-center justify-between px-3 py-2 text-left text-body-md text-on-surface hover:bg-surface-container-high"
+              :disabled="submittingAction === 'assign'"
+              class="flex w-full items-center justify-between px-3 py-2 text-left text-body-md text-on-surface hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50"
               @click="assignWaiter(member.user.id)"
             >
               {{ member.user.name ?? t('operations.staff.unnamed') }}
               <PhCheck v-if="table.session?.assigned_waiter?.id === member.user.id" :size="14" />
             </button>
+            <p v-if="staff.length === 0" class="px-3 py-2 text-label-md text-on-surface-variant">
+              {{ t('tableDrawer.noStaffToAssign') }}
+            </p>
           </ASurface>
         </div>
 
         <div class="mt-4 grid grid-cols-2 gap-2">
           <AButton variant="tonal" @click="showOrders = !showOrders">{{ t('tableDrawer.actions.viewOrders') }}</AButton>
-          <AButton
-            variant="outlined"
-            disabled
-            :title="t('tableDrawer.actions.newOrderDisabledHint')"
-          >
+          <AButton variant="outlined" disabled>
             {{ t('tableDrawer.actions.newOrder') }}
           </AButton>
           <AButton variant="outlined" :loading="submittingAction === 'call'" @click="callWaiter">
             {{ t('tableDrawer.actions.callWaiter') }}
           </AButton>
           <AButton variant="outlined" @click="showTransfer = true">{{ t('tableDrawer.actions.transfer') }}</AButton>
-          <AButton variant="filled" full-width class="col-span-2" :loading="submittingAction === 'close'" @click="closeTable">
-            {{ t('tableDrawer.actions.close') }}
-          </AButton>
         </div>
+        <!-- Visible, not just a hover title — a disabled native <button> never receives focus, so a
+             title-only explanation would be unreachable by keyboard/screen-reader users (§27). -->
+        <p class="mt-1.5 text-label-md text-on-surface-variant">{{ t('tableDrawer.actions.newOrderDisabledHint') }}</p>
+
+        <p
+          v-if="table.billing && Number(table.billing.outstanding) > 0"
+          class="mt-3 rounded-md bg-warning-container px-3 py-2 text-label-lg text-on-warning-container"
+        >
+          {{ t('tableDrawer.outstandingBalance', { amount: formatMoney(table.billing.outstanding, locale, currency) }) }}
+        </p>
+
+        <AButton
+          variant="filled"
+          full-width
+          class="mt-3"
+          :loading="submittingAction === 'close'"
+          @click="closeTable"
+        >
+          {{ t('tableDrawer.actions.close') }}
+        </AButton>
 
         <div v-if="showOrders" class="mt-4 border-t border-outline-variant pt-4">
           <TableOrdersList :table-session-id="table.session.id" :currency="currency" />

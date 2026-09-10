@@ -58,13 +58,19 @@ const attentionCount = computed(() => operations.snapshot.value?.alerts.length ?
     </ASurface>
 
     <template v-else>
-      <DashboardPageHead v-model:tab="tab" :health="health" :attention-count="attentionCount" />
+      <DashboardPageHead
+        v-model:tab="tab"
+        :health="health"
+        :attention-count="attentionCount"
+        :refreshing="operations.refreshing.value"
+      />
 
       <OperationView
         v-if="tab === 'operation'"
         :restaurant-id="restaurantStore.currentRestaurantId"
         :snapshot="operations.snapshot.value"
         :loading="operations.loading.value"
+        :refreshing="operations.refreshing.value"
         :error="operations.error.value"
         @refresh="operations.refetch"
       />

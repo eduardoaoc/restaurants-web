@@ -21,6 +21,11 @@ export default {
       network: "Couldn't connect to the server.",
       server: 'A server error occurred.',
       generic: 'Something went wrong. Please try again.',
+      codes: {
+        tableSessionHasNoBillableOrders: "This table doesn't have any orders yet, so it can't be closed.",
+        zoneHasTables: 'This zone still has tables assigned — move them before deleting it.',
+        floorHasZones: 'This floor still has zones — delete them before deleting the floor.',
+      },
     },
   },
   auth: {
@@ -128,6 +133,7 @@ export default {
     pageSubtitle: 'Real-time operational view.',
     connection: {
       restOnly: 'Live updates pending',
+      refreshing: 'Refreshing…',
       connected: 'Live updates connected',
       connecting: 'Connecting…',
       reconnecting: 'Reconnecting…',
@@ -164,6 +170,11 @@ export default {
     },
     noData: 'No operational data yet.',
     salesToday: 'Received today',
+    quickActions: {
+      title: 'Quick actions',
+      editFloorPlan: 'Edit floor plan',
+      refresh: 'Refresh',
+    },
     tableStatus: {
       free: 'Free',
       occupied: 'Occupied',
@@ -247,9 +258,10 @@ export default {
       addZone: 'Add zone',
       noZones: 'This floor has no zones yet. Create one to add tables.',
       addTableSeats: 'Table · {count}',
-      hint: 'Drag a table to reposition it. Select it to change its shape.',
+      hint: 'Drag a table to reposition it, or select it and use the arrow keys. Select it to change its shape.',
       cycleShape: 'Change shape',
       tableName: 'Table {number}',
+      tableAriaLabel: '{name}. Drag or use the arrow keys to move.',
     },
   },
   tableDrawer: {
@@ -260,6 +272,8 @@ export default {
     waiter: 'Waiter',
     total: 'Current total',
     unassigned: 'Unassigned',
+    noStaffToAssign: 'No staff on shift to assign.',
+    outstandingBalance: 'Outstanding balance: {amount}',
     actions: {
       open: 'Open table',
       reassignWaiter: 'Assign / reassign waiter',
@@ -352,6 +366,21 @@ export default {
       noData: 'Not enough data',
       ordersReady: 'Orders completed',
       ordersCancelled: 'Orders cancelled',
+    },
+  },
+  onboarding: {
+    title: 'Set up your restaurant',
+    subtitle: 'Complete these steps to start operating with AFORO.',
+    progress: '{done} of {total} steps done',
+    comingSoon: 'coming soon',
+    configure: 'Configure',
+    steps: {
+      basicInfo: 'Basic restaurant details',
+      floorPlan: 'Floor plan and tables',
+      menu: 'Menu and products',
+      staff: 'Team',
+      qr: 'QR code for tables',
+      settings: 'Restaurant settings',
     },
   },
 }
