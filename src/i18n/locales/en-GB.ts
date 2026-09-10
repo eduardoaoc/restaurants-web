@@ -76,6 +76,7 @@ export default {
   dashboard: {
     periodLabel: 'Period: {from} – {to}',
     noRestaurantAccess: "You don't have access to any restaurant yet.",
+    platformAdminNoTenant: "Your account is a platform administrator and doesn't belong to any restaurant yet. Platform management is coming soon.",
     errors: {
       forbidden: "You don't have permission to view this restaurant's reports.",
       notFound: 'This restaurant is no longer available.',
@@ -373,6 +374,7 @@ export default {
     subtitle: 'Complete these steps to start operating with AFORO.',
     progress: '{done} of {total} steps done',
     comingSoon: 'coming soon',
+    noPermission: 'no permission',
     configure: 'Configure',
     steps: {
       basicInfo: 'Basic restaurant details',

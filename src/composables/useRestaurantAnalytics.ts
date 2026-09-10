@@ -11,8 +11,17 @@ import type { AnalyticsQuery, RestaurantAnalytics } from '@/types/analytics'
  * being opened), so switching restaurants while on the Operação tab never
  * triggers an unnecessary GET /analytics. Once the tab has been opened at
  * least once, a restaurant switch re-fetches with the same query.
+ *
+ * `enabled` (Passo 1.2C-B): GET /restaurants/{id}/analytics reuses the
+ * `viewReports` ability (RestaurantAnalyticsController::show ->
+ * $this->authorize('viewReports', ...) -> RestaurantPolicy::viewReports ->
+ * `view_reports`, verified against the real restaurants-api Policy) — the
+ * same permission that already gates /dashboard, and deliberately NOT
+ * `view_operations`. When `enabled()` returns false, this never calls the
+ * endpoint at all, mirroring useRestaurantOperations' `view_operations`
+ * gate exactly.
  */
-export function useRestaurantAnalytics() {
+export function useRestaurantAnalytics(enabled: () => boolean = () => true) {
   const restaurantStore = useRestaurantStore()
 
   const data = ref<RestaurantAnalytics | null>(null)
@@ -27,6 +36,12 @@ export function useRestaurantAnalytics() {
     const restaurantId = restaurantStore.currentRestaurantId
     controller?.abort()
     error.value = null
+
+    if (!enabled()) {
+      data.value = null
+      loading.value = false
+      return
+    }
 
     if (restaurantId === null) {
       data.value = null

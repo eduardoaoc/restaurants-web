@@ -1,11 +1,22 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import { useAuthStore } from '@/stores/auth'
+import type { PermissionSlug } from '@/types/auth-context'
 
 declare module 'vue-router' {
   interface RouteMeta {
     requiresAuth?: boolean
     guestOnly?: boolean
+    /**
+     * Restaurant-scoped capability a route requires (Passo 1.2C). Not set
+     * on any route yet — Dashboard is still the app's only authenticated
+     * destination and handles its own permission-aware rendering
+     * internally (see DashboardView), so there is nowhere sensible to
+     * redirect a denied user to yet. This is here so the next
+     * permission-gated route (Mesas/Staff/Settings/...) is a one-line
+     * `meta: { permission: '...' }` addition, not a new mechanism.
+     */
+    permission?: PermissionSlug
   }
 }
 

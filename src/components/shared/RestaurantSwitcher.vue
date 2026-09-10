@@ -35,7 +35,7 @@ function onKeydown(event: KeyboardEvent): void {
   </div>
 
   <p
-    v-else-if="restaurantStore.restaurants.length === 0"
+    v-else-if="restaurantStore.availableRestaurants.length === 0"
     class="flex h-11 items-center gap-2 px-3 text-label-lg text-on-surface-variant"
   >
     <PhStorefront :size="18" />
@@ -44,7 +44,7 @@ function onKeydown(event: KeyboardEvent): void {
 
   <!-- Single restaurant: a plain label, not an interactive control with nothing to switch to -->
   <p
-    v-else-if="restaurantStore.restaurants.length === 1"
+    v-else-if="restaurantStore.availableRestaurants.length === 1"
     class="flex h-11 max-w-40 sm:max-w-64 items-center gap-2 truncate px-3 text-label-lg font-medium text-on-surface"
   >
     <PhStorefront :size="18" class="shrink-0 text-on-surface-variant" />
@@ -72,7 +72,7 @@ function onKeydown(event: KeyboardEvent): void {
       class="absolute left-0 z-20 mt-2 min-w-56 py-1 shadow-elevated"
     >
       <button
-        v-for="restaurant in restaurantStore.restaurants"
+        v-for="restaurant in restaurantStore.availableRestaurants"
         :key="restaurant.id"
         type="button"
         role="menuitemradio"

@@ -6,11 +6,14 @@ import ASurface from '@/components/ui/ASurface.vue'
 import AButton from '@/components/ui/AButton.vue'
 import { useRestaurantOnboarding } from '@/composables/useRestaurantOnboarding'
 
-const props = defineProps<{ totalTables: number }>()
+const props = defineProps<{ totalTables: number; canManageFloorPlan: boolean }>()
 const emit = defineEmits<{ 'open-floor-editor': [] }>()
 
 const { t } = useI18n()
-const { steps, completedCount, totalCount, percent } = useRestaurantOnboarding(() => props.totalTables)
+const { steps, completedCount, totalCount, percent } = useRestaurantOnboarding(
+  () => props.totalTables,
+  () => props.canManageFloorPlan,
+)
 
 function onStepAction(action: 'open-floor-editor' | undefined): void {
   if (action === 'open-floor-editor') emit('open-floor-editor')
@@ -51,10 +54,11 @@ function onStepAction(action: 'open-floor-editor' | undefined): void {
 
         <span
           class="flex-1 text-body-md"
-          :class="step.status === 'future' ? 'text-on-surface-variant/60' : 'text-on-surface'"
+          :class="step.status === 'future' || step.status === 'restricted' ? 'text-on-surface-variant/60' : 'text-on-surface'"
         >
           {{ t(step.labelKey) }}
           <span v-if="step.status === 'future'" class="ml-1 text-label-md">({{ t('onboarding.comingSoon') }})</span>
+          <span v-else-if="step.status === 'restricted'" class="ml-1 text-label-md">({{ t('onboarding.noPermission') }})</span>
         </span>
 
         <AButton v-if="step.status === 'available'" variant="text" @click="onStepAction(step.action)">

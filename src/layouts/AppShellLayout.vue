@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { PhGauge, PhList, PhX } from '@phosphor-icons/vue'
@@ -10,7 +10,9 @@ import LanguageSwitcher from '@/components/shared/LanguageSwitcher.vue'
 import RestaurantSwitcher from '@/components/shared/RestaurantSwitcher.vue'
 import ThemeSwitcher from '@/components/shared/ThemeSwitcher.vue'
 import UserMenu from '@/components/shared/UserMenu.vue'
+import { usePermissions } from '@/composables/usePermissions'
 import { useRestaurantStore } from '@/stores/restaurant'
+import type { PermissionSlug } from '@/types/auth-context'
 import aforoSymbol from '@/assets/brand/aforo-symbol.png'
 import aforoWordmark from '@/assets/brand/aforo-wordmark.png'
 
@@ -18,6 +20,15 @@ interface NavItem {
   routeName: string
   labelKey: string
   icon: typeof PhGauge
+  /**
+   * Restaurant-scoped capability required to see this item — undefined
+   * means "always visible to an authenticated user" (Dashboard today: it
+   * renders its own permission-aware content internally rather than
+   * disappearing from the rail, since it's currently the app's only
+   * destination — see DashboardView). Future items (Mesas/Pedidos/Cocina/
+   * ...) can set this the moment they're added, per CLAUDE.md §17/§23.
+   */
+  permission?: PermissionSlug
 }
 
 // Only Dashboard exists in this block — this is deliberately a data-driven
@@ -28,6 +39,8 @@ const NAV_ITEMS: NavItem[] = [{ routeName: 'app-dashboard', labelKey: 'common.da
 const { t } = useI18n()
 const route = useRoute()
 const restaurantStore = useRestaurantStore()
+const { can } = usePermissions()
+const visibleNavItems = computed(() => NAV_ITEMS.filter((item) => !item.permission || can(item.permission)))
 const drawerOpen = ref(false)
 
 function isActive(routeName: string): boolean {
@@ -59,7 +72,7 @@ onMounted(() => {
     >
       <img :src="aforoSymbol" alt="AFORO" class="h-9 w-9" />
       <RouterLink
-        v-for="item in NAV_ITEMS"
+        v-for="item in visibleNavItems"
         :key="item.routeName"
         :to="{ name: item.routeName }"
         class="flex w-16 flex-col items-center gap-1 rounded-lg py-2 text-label-md text-on-surface-variant transition-colors duration-200 ease-out hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -92,7 +105,7 @@ onMounted(() => {
           </div>
           <nav class="flex flex-col gap-1">
             <RouterLink
-              v-for="item in NAV_ITEMS"
+              v-for="item in visibleNavItems"
               :key="item.routeName"
               :to="{ name: item.routeName }"
               class="flex items-center gap-3 rounded-md px-3 py-3 text-body-lg text-on-surface hover:bg-surface-container-high"

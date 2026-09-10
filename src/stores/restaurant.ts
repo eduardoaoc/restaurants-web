@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 
 import { normalizeApiError, type ApiError } from '@/api/errors'
 import { restaurantsService } from '@/services/restaurants.service'
+import { useAuthStore } from '@/stores/auth'
 import type { Restaurant, RestaurantSettings } from '@/types/restaurant'
 
 const PERSIST_KEY = 'aforo-restaurant-id'
@@ -15,6 +16,18 @@ const PERSIST_KEY = 'aforo-restaurant-id'
  * persisted client-side, and it is always revalidated against the loaded
  * list before being trusted — a stale/foreign id from a previous session
  * or a different account is discarded, never used as-is.
+ *
+ * Passo 1.2C adds a second, independent cross-check: GET /auth/context
+ * (owned by the auth store) reports, per organization, exactly which
+ * restaurants that organization's roles actually reach, and their live
+ * status. `isRestaurantEligible()` below folds that in — a restaurant
+ * dropped from the auth context, or whose organization/restaurant status
+ * is no longer 'active', is never auto-selected as "current" and never
+ * offered by the switcher, even if it still happens to appear in the
+ * /restaurants list. When the auth context simply hasn't loaded (or its
+ * last fetch failed), this stays neutral — it never revokes access the
+ * /restaurants-based logic already granted, only narrows it once real
+ * context data says to.
  */
 export const useRestaurantStore = defineStore('restaurant', () => {
   const restaurants = ref<Restaurant[]>([])
@@ -26,6 +39,23 @@ export const useRestaurantStore = defineStore('restaurant', () => {
 
   const currentRestaurant = computed<Restaurant | null>(
     () => restaurants.value.find((restaurant) => restaurant.id === currentRestaurantId.value) ?? null,
+  )
+
+  function isRestaurantEligible(id: number): boolean {
+    const ctx = useAuthStore().authContext
+    if (!ctx) return true
+
+    for (const organization of ctx.organizations) {
+      const match = organization.restaurants.find((restaurant) => restaurant.id === id)
+      if (match) return organization.status === 'active' && match.status === 'active'
+    }
+
+    return false
+  }
+
+  /** What the switcher and auto-selection should offer — see the class docblock. */
+  const availableRestaurants = computed<Restaurant[]>(() =>
+    restaurants.value.filter((restaurant) => isRestaurantEligible(restaurant.id)),
   )
 
   let loadPromise: Promise<void> | null = null
@@ -60,19 +90,21 @@ export const useRestaurantStore = defineStore('restaurant', () => {
   /**
    * Validate → reuse → discard → select, per CLAUDE.md §6: a persisted id
    * is only ever reused after confirming it's still in the freshly loaded
-   * list; otherwise it's dropped and the first accessible restaurant wins.
+   * list AND still eligible per the auth context; otherwise it's dropped
+   * and the first accessible+eligible restaurant wins.
    */
   function resolveCurrentRestaurant(): void {
     const persisted = readPersistedId()
-    const stillAccessible = persisted !== null && restaurants.value.some((r) => r.id === persisted)
+    const stillAccessible =
+      persisted !== null && availableRestaurants.value.some((r) => r.id === persisted)
 
-    currentRestaurantId.value = stillAccessible ? persisted : (restaurants.value[0]?.id ?? null)
+    currentRestaurantId.value = stillAccessible ? persisted : (availableRestaurants.value[0]?.id ?? null)
     persistId(currentRestaurantId.value)
   }
 
   async function selectRestaurant(id: number): Promise<void> {
     if (currentRestaurantId.value === id) return
-    if (!restaurants.value.some((r) => r.id === id)) return
+    if (!availableRestaurants.value.some((r) => r.id === id)) return
 
     currentRestaurantId.value = id
     persistId(id)
@@ -125,6 +157,7 @@ export const useRestaurantStore = defineStore('restaurant', () => {
 
   return {
     restaurants,
+    availableRestaurants,
     currentRestaurantId,
     currentRestaurant,
     currentSettings,

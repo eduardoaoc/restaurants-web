@@ -8,6 +8,7 @@ import AButton from '@/components/ui/AButton.vue'
 import AIconButton from '@/components/ui/AIconButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import ATextField from '@/components/ui/ATextField.vue'
+import { usePermissions } from '@/composables/usePermissions'
 import { getTableStatusStyle } from '@/composables/useTableStatusStyle'
 import { tableSessionsService } from '@/services/table-sessions.service'
 import { tablesService } from '@/services/tables.service'
@@ -27,6 +28,26 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; refresh: [] }>()
 
 const { t, locale } = useI18n()
+
+/**
+ * Every table-session action here maps to the exact backend Policy ability
+ * it hits (verified against restaurants-api's TablePolicy/TableSessionPolicy/
+ * WaiterCallPolicy — see the Passo 1.2C report's TableDetailsDrawer table):
+ *   - open:            TablePolicy::open            -> manage_tables
+ *   - close:            TableSessionPolicy::close     -> manage_tables OR close_bill
+ *   - assign/unassign:  TableSessionPolicy::assignWaiter -> assign_waiters
+ *   - call responsible: WaiterCallPolicy::create      -> assign_waiters (reused, not a dedicated slug)
+ *   - transfer:         TableSessionPolicy::transfer   -> transfer_tables
+ *   - view orders:      OrderPolicy::viewAny's OR set  -> create_orders/approve_customer_orders/update_kitchen_status/serve_orders/close_bill
+ */
+const { can, canAny } = usePermissions()
+const canOpenTable = computed(() => can('manage_tables'))
+const canCloseTable = computed(() => can('manage_tables') || can('close_bill'))
+const canAssignWaiters = computed(() => can('assign_waiters'))
+const canTransferTables = computed(() => can('transfer_tables'))
+const canViewOrders = computed(() =>
+  canAny(['create_orders', 'approve_customer_orders', 'update_kitchen_status', 'serve_orders', 'close_bill']),
+)
 
 const showOrders = ref(false)
 const showTransfer = ref(false)
@@ -153,12 +174,13 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
         {{ feedback.message }}
       </p>
 
-      <!-- No active session: only real action is opening one -->
-      <div v-if="!table.session" class="mt-4 flex flex-col gap-3">
+      <!-- No active session: only real action is opening one, and only for a user who holds manage_tables -->
+      <div v-if="!table.session && canOpenTable" class="mt-4 flex flex-col gap-3">
         <p class="text-body-md text-on-surface-variant">{{ t('tableDrawer.freeHint') }}</p>
         <ATextField v-model="openGuestCount" :label="t('tableDrawer.guestCount')" inputmode="numeric" type="number" />
         <AButton :loading="submittingAction === 'open'" @click="openTable">{{ t('tableDrawer.actions.open') }}</AButton>
       </div>
+      <p v-else-if="!table.session" class="mt-4 text-body-md text-on-surface-variant">{{ t('tableDrawer.freeHint') }}</p>
 
       <template v-else>
         <div class="mt-4 grid grid-cols-2 gap-2">
@@ -184,8 +206,8 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
           </div>
         </div>
 
-        <!-- Waiter assignment -->
-        <div class="relative mt-4" @focusout="onWaiterMenuFocusOut" @keydown="onWaiterMenuKeydown">
+        <!-- Waiter assignment — assign_waiters only -->
+        <div v-if="canAssignWaiters" class="relative mt-4" @focusout="onWaiterMenuFocusOut" @keydown="onWaiterMenuKeydown">
           <button
             type="button"
             class="flex w-full items-center justify-between rounded-lg border border-outline-variant px-3 py-2.5 text-body-md text-on-surface hover:bg-surface-container-highest focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -223,18 +245,18 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
         </div>
 
         <div class="mt-4 grid grid-cols-2 gap-2">
-          <AButton variant="tonal" @click="showOrders = !showOrders">{{ t('tableDrawer.actions.viewOrders') }}</AButton>
-          <AButton variant="outlined" disabled>
+          <AButton v-if="canViewOrders" variant="tonal" @click="showOrders = !showOrders">{{ t('tableDrawer.actions.viewOrders') }}</AButton>
+          <AButton v-if="canViewOrders" variant="outlined" disabled>
             {{ t('tableDrawer.actions.newOrder') }}
           </AButton>
-          <AButton variant="outlined" :loading="submittingAction === 'call'" @click="callWaiter">
+          <AButton v-if="canAssignWaiters" variant="outlined" :loading="submittingAction === 'call'" @click="callWaiter">
             {{ t('tableDrawer.actions.callWaiter') }}
           </AButton>
-          <AButton variant="outlined" @click="showTransfer = true">{{ t('tableDrawer.actions.transfer') }}</AButton>
+          <AButton v-if="canTransferTables" variant="outlined" @click="showTransfer = true">{{ t('tableDrawer.actions.transfer') }}</AButton>
         </div>
         <!-- Visible, not just a hover title — a disabled native <button> never receives focus, so a
              title-only explanation would be unreachable by keyboard/screen-reader users (§27). -->
-        <p class="mt-1.5 text-label-md text-on-surface-variant">{{ t('tableDrawer.actions.newOrderDisabledHint') }}</p>
+        <p v-if="canViewOrders" class="mt-1.5 text-label-md text-on-surface-variant">{{ t('tableDrawer.actions.newOrderDisabledHint') }}</p>
 
         <p
           v-if="table.billing && Number(table.billing.outstanding) > 0"
@@ -244,6 +266,7 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
         </p>
 
         <AButton
+          v-if="canCloseTable"
           variant="filled"
           full-width
           class="mt-3"

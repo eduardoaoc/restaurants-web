@@ -19,6 +19,7 @@ import QuickMetrics from '@/components/dashboard/operation/QuickMetrics.vue'
 import RestaurantFloorMap from '@/components/dashboard/operation/RestaurantFloorMap.vue'
 import StaffLivePanel from '@/components/dashboard/operation/StaffLivePanel.vue'
 import TableDetailsDrawer from '@/components/dashboard/table/TableDetailsDrawer.vue'
+import { usePermissions } from '@/composables/usePermissions'
 import { formatMoney } from '@/utils/format'
 import type { OperationsLiveSnapshot, OperationsTable } from '@/types/operations'
 
@@ -33,9 +34,23 @@ const props = defineProps<{
 const emit = defineEmits<{ refresh: [] }>()
 
 const { t, locale } = useI18n()
+const { can } = usePermissions()
+
+const canManageFloorPlan = computed(() => can('manage_floor_plan'))
 
 const selectedTableId = ref<number | null>(null)
 const showEditor = ref(false)
+
+/**
+ * Every trigger that opens the Floor Map Editor goes through this — never
+ * `showEditor.value = true` directly — so a user without manage_floor_plan
+ * can never reach it, even in depth (CLAUDE.md §17): the template also
+ * hides every CTA that would call this, this is defense in depth for that.
+ */
+function openFloorEditor(): void {
+  if (!canManageFloorPlan.value) return
+  showEditor.value = true
+}
 
 const allTables = computed<OperationsTable[]>(() => {
   if (!props.snapshot) return []
@@ -92,9 +107,19 @@ function onEditorClose(): void {
     </ASurface>
 
     <template v-else-if="snapshot">
-      <QuickActions :refreshing="refreshing" @edit-floor-plan="showEditor = true" @refresh="emit('refresh')" />
+      <QuickActions
+        :refreshing="refreshing"
+        :can-manage-floor-plan="canManageFloorPlan"
+        @edit-floor-plan="openFloorEditor"
+        @refresh="emit('refresh')"
+      />
 
-      <RestaurantOnboarding v-if="!hasAnyTables" :total-tables="allTables.length" @open-floor-editor="showEditor = true" />
+      <RestaurantOnboarding
+        v-if="!hasAnyTables"
+        :total-tables="allTables.length"
+        :can-manage-floor-plan="canManageFloorPlan"
+        @open-floor-editor="openFloorEditor"
+      />
 
       <template v-else>
       <QuickMetrics :summary="snapshot.summary" :critical-alerts-count="criticalAlertsCount" />
@@ -107,9 +132,10 @@ function onEditorClose(): void {
                 {{ t('operations.floorMap.summary', { tables: snapshot.summary.tables.total, guests: snapshot.summary.active_guests }) }}
               </span>
               <button
+                v-if="canManageFloorPlan"
                 type="button"
                 class="rounded-md border border-primary/30 bg-primary-container/40 px-3 py-1.5 text-label-md font-medium text-on-primary-container hover:bg-primary-container/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                @click="showEditor = true"
+                @click="openFloorEditor"
               >
                 {{ t('operations.floorMap.edit') }}
               </button>
@@ -169,6 +195,6 @@ function onEditorClose(): void {
       @refresh="onDrawerRefresh"
     />
 
-    <FloorMapEditor v-if="showEditor" :restaurant-id="restaurantId" @close="onEditorClose" />
+    <FloorMapEditor v-if="showEditor && canManageFloorPlan" :restaurant-id="restaurantId" @close="onEditorClose" />
   </div>
 </template>

@@ -76,6 +76,7 @@ export default {
   dashboard: {
     periodLabel: 'Període: {from} – {to}',
     noRestaurantAccess: 'Encara no tens accés a cap restaurant.',
+    platformAdminNoTenant: 'El teu compte és d\'administrador de la plataforma i encara no pertany a cap restaurant. La gestió de la plataforma estarà disponible pròximament.',
     errors: {
       forbidden: 'No tens permís per a veure els informes d\'aquest restaurant.',
       notFound: 'Este restaurant ja no està disponible.',
@@ -373,6 +374,7 @@ export default {
     subtitle: "Completa estos passos per a començar a operar amb AFORO.",
     progress: '{done} de {total} passos completats',
     comingSoon: 'disponible pròximament',
+    noPermission: 'sense permís',
     configure: 'Configura',
     steps: {
       basicInfo: 'Dades bàsiques del restaurant',

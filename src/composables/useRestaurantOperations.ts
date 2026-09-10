@@ -20,8 +20,14 @@ import type { OperationsLiveSnapshot } from '@/types/operations'
  * background refresh — a real bug found auditing the open/close/assign/
  * transfer/call flows end to end. `refreshing` lets the UI show a quiet
  * indicator instead, keeping the last-known-good snapshot on screen.
+ *
+ * `enabled` (Passo 1.2C, CLAUDE.md §16): when it returns false — the
+ * current restaurant's auth context doesn't grant `view_operations` — this
+ * never calls GET /operations/live at all. The UI is expected to already
+ * be showing a permission-aware message in that case (see DashboardView);
+ * this composable just makes sure no request goes out for it to react to.
  */
-export function useRestaurantOperations() {
+export function useRestaurantOperations(enabled: () => boolean = () => true) {
   const restaurantStore = useRestaurantStore()
 
   const snapshot = ref<OperationsLiveSnapshot | null>(null)
@@ -69,12 +75,23 @@ export function useRestaurantOperations() {
   }
 
   function refetch(): void {
+    if (!enabled()) return
     void fetch(restaurantStore.currentRestaurantId, false)
   }
 
   watch(
-    () => restaurantStore.currentRestaurantId,
-    (id) => void fetch(id, true),
+    () => [restaurantStore.currentRestaurantId, enabled()] as const,
+    ([id, isEnabled]) => {
+      if (!isEnabled) {
+        controller?.abort()
+        snapshot.value = null
+        error.value = null
+        loading.value = false
+        refreshing.value = false
+        return
+      }
+      void fetch(id, true)
+    },
     { immediate: true },
   )
 
