@@ -53,3 +53,20 @@ export function formatNumber(value: number, locale: string): string {
     return new Intl.NumberFormat('es-ES').format(value)
   }
 }
+
+/**
+ * Formats a raw seconds count (elapsed_seconds / active_seconds / age_seconds
+ * — every one of these is a plain integer from the Operations Live / Analytics
+ * read models, never a pre-formatted string) as `1h07m` / `42m` / `18s`.
+ * Locale-independent on purpose: these are compact operational badges, not
+ * localized prose — every locale in this project already reads latin digits.
+ */
+export function formatDuration(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds))
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+
+  if (hours > 0) return `${hours}h${String(minutes).padStart(2, '0')}m`
+  if (minutes > 0) return `${minutes}m`
+  return `${seconds}s`
+}

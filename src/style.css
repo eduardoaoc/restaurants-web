@@ -57,6 +57,20 @@
   --color-brand-panel: var(--brand-panel-surface);
   --color-on-brand-panel: var(--brand-panel-on-surface);
 
+  /* Status roles — table primary_status / alert severity, see tokens.css */
+  --color-success: var(--status-success);
+  --color-on-success: var(--status-on-success);
+  --color-success-container: var(--status-success-container);
+  --color-on-success-container: var(--status-on-success-container);
+  --color-warning: var(--status-warning);
+  --color-on-warning: var(--status-on-warning);
+  --color-warning-container: var(--status-warning-container);
+  --color-on-warning-container: var(--status-on-warning-container);
+  --color-critical: var(--status-critical);
+  --color-on-critical: var(--status-on-critical);
+  --color-critical-container: var(--status-critical-container);
+  --color-on-critical-container: var(--status-on-critical-container);
+
   /* Material 3 shape scale -> Tailwind radius utilities */
   --radius-xs: var(--shape-corner-extra-small);
   --radius-sm: var(--shape-corner-small);

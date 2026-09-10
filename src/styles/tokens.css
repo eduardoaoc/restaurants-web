@@ -116,6 +116,29 @@
   --chart-neutral-mid: var(--md-sys-color-on-surface-variant);
   --chart-neutral-low: var(--md-sys-color-outline);
 
+  /* Status roles: the Operations dashboard (table primary_status, alert
+     severity) is the first real consumer of a "state" signal distinct from
+     brand/chart color — never color-alone (always paired with an icon/label
+     per docs/design-system.md §13). `critical`/`warning` reuse the existing
+     error/tertiary roles rather than inventing new hues; `success` is the
+     one genuinely new hue in this file — a desaturated, muted green (not a
+     saturated "gaming" green) so it still reads as premium/technological
+     alongside the warm orange accent, built as an M3 tonal pair (on-color
+     at the light/dark extreme, container at a mid tone) the same way every
+     other role above was derived. */
+  --status-success: #2e7d5b;
+  --status-on-success: #ffffff;
+  --status-success-container: #c8f0dd;
+  --status-on-success-container: #00210f;
+  --status-warning: var(--md-sys-color-tertiary);
+  --status-on-warning: var(--md-sys-color-on-tertiary);
+  --status-warning-container: var(--md-sys-color-tertiary-container);
+  --status-on-warning-container: var(--md-sys-color-on-tertiary-container);
+  --status-critical: var(--md-sys-color-error);
+  --status-on-critical: var(--md-sys-color-on-error);
+  --status-critical-container: var(--md-sys-color-error-container);
+  --status-on-critical-container: var(--md-sys-color-on-error-container);
+
   /* ---------- 3. Shape scale (Material 3 corner sizes) ---------- */
   --shape-corner-none: 0px;
   --shape-corner-extra-small: 4px;
@@ -188,6 +211,11 @@
     --card-shadow:
       0 1px 2px rgba(0, 0, 0, 0.2),
       0 6px 18px rgba(0, 0, 0, 0.22);
+
+    --status-success: #8fdbb5;
+    --status-on-success: #00391f;
+    --status-success-container: #0b5132;
+    --status-on-success-container: #abf2c8;
   }
 }
 
@@ -233,4 +261,9 @@
   --card-shadow:
     0 1px 2px rgba(0, 0, 0, 0.2),
     0 6px 18px rgba(0, 0, 0, 0.22);
+
+  --status-success: #8fdbb5;
+  --status-on-success: #00391f;
+  --status-success-container: #0b5132;
+  --status-on-success-container: #abf2c8;
 }
