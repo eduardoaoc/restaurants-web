@@ -3,6 +3,7 @@ import { onBeforeUnmount, ref, watch } from 'vue'
 import { normalizeApiError, type ApiError } from '@/api/errors'
 import { categoryService } from '@/services/category.service'
 import { useRestaurantStore } from '@/stores/restaurant'
+import { computeAdjacentSwap, nextSortOrder as computeNextSortOrder } from '@/utils/reorder'
 import type { Category, CreateCategoryPayload, UpdateCategoryPayload } from '@/types/category'
 
 /**
@@ -74,11 +75,6 @@ export function useRestaurantCategories(enabled: () => boolean = () => true) {
     { immediate: true },
   )
 
-  /** Newly created categories default to sort_order 0 on the backend if omitted (CreateCategoryAction) — every category without an explicit order would collide at 0, so this always appends past the current max. */
-  function nextSortOrder(): number {
-    return categories.value.reduce((max, category) => Math.max(max, category.sort_order), -1) + 1
-  }
-
   async function createCategory(payload: CreateCategoryPayload): Promise<ApiError | null> {
     const restaurantId = restaurantStore.currentRestaurantId
     if (restaurantId === null) return null
@@ -88,7 +84,7 @@ export function useRestaurantCategories(enabled: () => boolean = () => true) {
     try {
       const created = await categoryService.create(restaurantId, {
         ...payload,
-        sort_order: payload.sort_order ?? nextSortOrder(),
+        sort_order: payload.sort_order ?? computeNextSortOrder(categories.value),
       })
       categories.value = sortByOrder([...categories.value, created])
       return null
@@ -134,28 +130,16 @@ export function useRestaurantCategories(enabled: () => boolean = () => true) {
   async function move(categoryId: number, direction: 'up' | 'down'): Promise<ApiError | null> {
     if (reordering.value) return null
 
-    const index = categories.value.findIndex((c) => c.id === categoryId)
-    if (index === -1) return null
-
-    const targetIndex = direction === 'up' ? index - 1 : index + 1
-    if (targetIndex < 0 || targetIndex >= categories.value.length) return null
-
-    const current = categories.value[index]
-    const target = categories.value[targetIndex]
-    const currentOrder = current.sort_order
-    const targetOrder = target.sort_order
+    const swap = computeAdjacentSwap(categories.value, categoryId, direction)
+    if (!swap) return null
 
     reordering.value = true
     reorderError.value = null
-
-    const optimistic = categories.value.slice()
-    optimistic[index] = { ...current, sort_order: targetOrder }
-    optimistic[targetIndex] = { ...target, sort_order: currentOrder }
-    categories.value = sortByOrder(optimistic)
+    categories.value = swap.reordered
 
     try {
-      await categoryService.update(current.id, { sort_order: targetOrder })
-      await categoryService.update(target.id, { sort_order: currentOrder })
+      await categoryService.update(swap.current.id, { sort_order: swap.target.sort_order })
+      await categoryService.update(swap.target.id, { sort_order: swap.current.sort_order })
       return null
     } catch (err) {
       const normalized = normalizeApiError(err)

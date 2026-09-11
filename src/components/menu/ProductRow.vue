@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhArchive, PhCheckCircle, PhPauseCircle, PhPencilSimple } from '@phosphor-icons/vue'
+import { PhArchive, PhCheckCircle, PhPauseCircle, PhPencilSimple, PhSliders } from '@phosphor-icons/vue'
 
 import type { ApiError } from '@/api/errors'
 import AButton from '@/components/ui/AButton.vue'
@@ -25,6 +25,8 @@ const props = defineProps<{
   onSaveProduct: (payload: UpdateProductPayload) => Promise<ApiError | null>
   onSaveRestaurantProduct: (payload: UpdateRestaurantProductPayload) => Promise<ApiError | null>
 }>()
+
+const emit = defineEmits<{ 'open-options': [RestaurantProduct] }>()
 
 const { t, locale } = useI18n()
 const restaurantStore = useRestaurantStore()
@@ -116,9 +118,13 @@ async function toggleAvailable(): Promise<void> {
             </div>
           </div>
 
-          <div v-if="canEdit" class="flex shrink-0 items-center gap-1">
+          <div v-if="canEdit" class="flex flex-wrap items-center justify-end gap-1">
             <AButton variant="text" :loading="quickToggling" @click="toggleAvailable">
               {{ restaurantProduct.available ? t('menu.products.markUnavailable') : t('menu.products.markAvailable') }}
+            </AButton>
+            <AButton variant="outlined" @click="emit('open-options', restaurantProduct)">
+              <template #leading><PhSliders :size="16" /></template>
+              {{ t('menu.products.options') }}
             </AButton>
             <AButton variant="tonal" @click="startEditing">
               <template #leading><PhPencilSimple :size="16" /></template>

@@ -8,8 +8,8 @@ import ASurface from '@/components/ui/ASurface.vue'
 import CategoryList from '@/components/menu/CategoryList.vue'
 import MenuEmptyState from '@/components/menu/MenuEmptyState.vue'
 import MenuHeaderCard from '@/components/menu/MenuHeaderCard.vue'
-import MenuSectionPlaceholder from '@/components/menu/MenuSectionPlaceholder.vue'
 import MenuSectionTabs, { type MenuSection } from '@/components/menu/MenuSectionTabs.vue'
+import ModifiersOverview from '@/components/menu/ModifiersOverview.vue'
 import ProductList from '@/components/menu/ProductList.vue'
 import { usePermissions } from '@/composables/usePermissions'
 import { useRestaurantMenu } from '@/composables/useRestaurantMenu'
@@ -138,12 +138,9 @@ watch(visibleSections, (sections) => {
           :can-manage="canManageProducts"
           :primary-locale="primaryLocale"
         />
-        <MenuSectionPlaceholder
+        <ModifiersOverview
           v-else-if="activeSection === 'modifiers' && canManageProducts"
-          :icon="PhFaders"
-          :title="t('menu.sections.modifiers.title')"
-          :description="t('menu.sections.modifiers.description')"
-          :coming-soon="t('menu.sections.modifiers.comingSoon')"
+          @go-to-products="activeSection = 'products'"
         />
       </div>
     </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PhPlus } from '@phosphor-icons/vue'
 
@@ -7,11 +7,13 @@ import AButton from '@/components/ui/AButton.vue'
 import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import { useRestaurantProducts } from '@/composables/useRestaurantProducts'
+import { useRestaurantStore } from '@/stores/restaurant'
 import type { AppLocale } from '@/i18n'
 import { describeApiError } from '@/utils/error-message'
-import type { CreateProductPayload, UpdateProductPayload } from '@/types/product'
+import type { CreateProductPayload, RestaurantProduct, UpdateProductPayload } from '@/types/product'
 import ProductAddPanel from './ProductAddPanel.vue'
 import ProductEmptyState from './ProductEmptyState.vue'
+import ProductModifiersView from './ProductModifiersView.vue'
 import ProductRow from './ProductRow.vue'
 
 const props = defineProps<{
@@ -21,6 +23,7 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+const restaurantStore = useRestaurantStore()
 
 const {
   restaurantProducts,
@@ -44,6 +47,31 @@ const {
 const attachedProductIds = computed(() => new Set(restaurantProducts.value.map((rp) => rp.product_id)))
 
 const showAddPanel = ref(false)
+
+// Modifiers are entered from a specific product (CLAUDE.md Passo 2.5 §5) —
+// a full unmount/remount of ProductModifiersView between two different
+// products (never switching its restaurantProductId prop in place) is what
+// guarantees no modifier state from A can ever appear while configuring B
+// (§28): the owner always goes through "Volver" first, so a fresh
+// composable instance is created on every open. A restaurant switch closes
+// this contextual selection outright (§29) — RestaurantProduct only makes
+// sense within the restaurant it was loaded from.
+const selectedRestaurantProduct = ref<RestaurantProduct | null>(null)
+
+watch(
+  () => restaurantStore.currentRestaurantId,
+  () => {
+    selectedRestaurantProduct.value = null
+  },
+)
+
+function onOpenOptions(restaurantProduct: RestaurantProduct): void {
+  selectedRestaurantProduct.value = restaurantProduct
+}
+
+function onBackFromOptions(): void {
+  selectedRestaurantProduct.value = null
+}
 
 async function onCreate(payload: { product: CreateProductPayload | UpdateProductPayload; restaurantProduct: { price: number; available: boolean } }): Promise<void> {
   // Two independent backend calls (CLAUDE.md §10/§33) — if a Product was
@@ -85,7 +113,15 @@ function onCancelAdd(): void {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <ProductModifiersView
+    v-if="selectedRestaurantProduct"
+    :restaurant-product="selectedRestaurantProduct"
+    :can-manage="canManage"
+    :primary-locale="primaryLocale"
+    @back="onBackFromOptions"
+  />
+
+  <div v-else class="flex flex-col gap-4">
     <div v-if="loading" class="flex items-center justify-center py-16">
       <AProgress />
     </div>
@@ -150,6 +186,7 @@ function onCancelAdd(): void {
           :primary-locale="primaryLocale"
           :on-save-product="(payload) => updateProduct(rp.product_id, payload)"
           :on-save-restaurant-product="(payload) => updateRestaurantProduct(rp.id, payload)"
+          @open-options="onOpenOptions"
         />
       </div>
     </template>
