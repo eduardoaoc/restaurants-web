@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 
 import ATextField from '@/components/ui/ATextField.vue'
 import { AVAILABLE_LOCALES, LOCALE_LABEL, type AppLocale } from '@/i18n'
-import type { TranslationDraft, TranslationDraftMap } from '@/utils/category-translation-draft'
+import type { TranslationDraft, TranslationDraftMap } from '@/utils/translation-draft'
 
 const props = defineProps<{
   modelValue: TranslationDraftMap
@@ -21,7 +21,8 @@ const descriptionId = useId()
 
 // Content language being edited right now — starts on the restaurant's
 // primary locale, independent from the admin interface's own language
-// (whatever `useI18n().locale` currently is). CLAUDE.md Passo 2.3 §4.
+// (whatever `useI18n().locale` currently is). CLAUDE.md Passo 2.3 §4 —
+// shared as-is by Category (2.3) and Product (2.4) forms, same distinction.
 const activeLocale = ref<AppLocale>(props.primaryLocale)
 
 function setField(locale: AppLocale, field: keyof TranslationDraft, value: string): void {
@@ -35,11 +36,11 @@ function setField(locale: AppLocale, field: keyof TranslationDraft, value: strin
 <template>
   <div class="flex flex-col gap-3">
     <div>
-      <span class="text-label-lg font-medium text-on-surface-variant">{{ t('menu.categories.translationsLabel') }}</span>
+      <span class="text-label-lg font-medium text-on-surface-variant">{{ t('menu.translations.translationsLabel') }}</span>
       <div
         class="mt-1.5 inline-flex flex-wrap gap-1 rounded-lg border border-outline-variant bg-surface-container-low p-1"
         role="tablist"
-        :aria-label="t('menu.categories.translationsLabel')"
+        :aria-label="t('menu.translations.translationsLabel')"
       >
         <button
           v-for="locale in AVAILABLE_LOCALES"
@@ -55,14 +56,14 @@ function setField(locale: AppLocale, field: keyof TranslationDraft, value: strin
           <span
             v-if="locale === primaryLocale"
             class="rounded-full bg-surface-container-high px-1.5 py-0.5 text-label-md text-on-surface-variant"
-            :title="t('menu.categories.primaryLocaleHint')"
+            :title="t('menu.translations.primaryLocaleHint')"
           >
-            {{ t('menu.categories.primaryBadge') }}
+            {{ t('menu.translations.primaryBadge') }}
           </span>
           <span
             v-else-if="modelValue[locale]?.name"
             class="h-1.5 w-1.5 rounded-full bg-primary"
-            :aria-label="t('menu.categories.translationFilled')"
+            :aria-label="t('menu.translations.translationFilled')"
           />
         </button>
       </div>
@@ -70,7 +71,7 @@ function setField(locale: AppLocale, field: keyof TranslationDraft, value: strin
 
     <ATextField
       :model-value="modelValue[activeLocale]?.name ?? ''"
-      :label="t('menu.categories.nameLabel')"
+      :label="t('menu.translations.nameLabel')"
       :required="activeLocale === primaryLocale"
       :error="activeLocale === primaryLocale ? primaryNameError : undefined"
       :disabled="disabled"
@@ -78,7 +79,7 @@ function setField(locale: AppLocale, field: keyof TranslationDraft, value: strin
     />
 
     <div class="flex flex-col gap-1.5">
-      <label :for="descriptionId" class="text-label-lg font-medium text-on-surface-variant">{{ t('menu.categories.descriptionLabel') }}</label>
+      <label :for="descriptionId" class="text-label-lg font-medium text-on-surface-variant">{{ t('menu.translations.descriptionLabel') }}</label>
       <textarea
         :id="descriptionId"
         :value="modelValue[activeLocale]?.description ?? ''"

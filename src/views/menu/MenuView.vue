@@ -10,6 +10,7 @@ import MenuEmptyState from '@/components/menu/MenuEmptyState.vue'
 import MenuHeaderCard from '@/components/menu/MenuHeaderCard.vue'
 import MenuSectionPlaceholder from '@/components/menu/MenuSectionPlaceholder.vue'
 import MenuSectionTabs, { type MenuSection } from '@/components/menu/MenuSectionTabs.vue'
+import ProductList from '@/components/menu/ProductList.vue'
 import { usePermissions } from '@/composables/usePermissions'
 import { useRestaurantMenu } from '@/composables/useRestaurantMenu'
 import { AVAILABLE_LOCALES, DEFAULT_LOCALE, type AppLocale } from '@/i18n'
@@ -131,12 +132,11 @@ watch(visibleSections, (sections) => {
           :can-manage="canManageMenu"
           :primary-locale="primaryLocale"
         />
-        <MenuSectionPlaceholder
+        <ProductList
           v-else-if="activeSection === 'products' && canManageProducts"
-          :icon="PhForkKnife"
-          :title="t('menu.sections.products.title')"
-          :description="t('menu.sections.products.description')"
-          :coming-soon="t('menu.sections.products.comingSoon')"
+          :enabled="canManageProducts && menu !== null"
+          :can-manage="canManageProducts"
+          :primary-locale="primaryLocale"
         />
         <MenuSectionPlaceholder
           v-else-if="activeSection === 'modifiers' && canManageProducts"

@@ -7,11 +7,11 @@ import type { ApiError } from '@/api/errors'
 import AButton from '@/components/ui/AButton.vue'
 import ATextField from '@/components/ui/ATextField.vue'
 import { AVAILABLE_LOCALES, type AppLocale } from '@/i18n'
-import { emptyTranslationDraftMap, type TranslationDraftMap } from '@/utils/category-translation-draft'
 import { describeApiError } from '@/utils/error-message'
 import { slugify } from '@/utils/slugify'
+import { populateTranslationDraftMap, type TranslationDraftMap } from '@/utils/translation-draft'
 import type { Category, CategoryStatus, CategoryTranslationInput, CreateCategoryPayload, UpdateCategoryPayload } from '@/types/category'
-import CategoryTranslationEditor from './CategoryTranslationEditor.vue'
+import TranslationEditor from './TranslationEditor.vue'
 
 const props = defineProps<{
   mode: 'create' | 'edit'
@@ -28,20 +28,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-function initTranslations(): TranslationDraftMap {
-  const draft = emptyTranslationDraftMap()
-  for (const translation of props.category?.translations ?? []) {
-    if (translation.locale in draft) {
-      draft[translation.locale as AppLocale] = {
-        name: translation.name,
-        description: translation.description ?? '',
-      }
-    }
-  }
-  return draft
-}
-
-const translations = ref<TranslationDraftMap>(initTranslations())
+const translations = ref<TranslationDraftMap>(populateTranslationDraftMap(props.category?.translations ?? []))
 const slug = ref(props.category?.slug ?? '')
 const status = ref<CategoryStatus>(props.category?.status ?? 'active')
 
@@ -125,7 +112,7 @@ function submit(): void {
 
 <template>
   <form class="flex flex-col gap-4" @submit.prevent="submit">
-    <CategoryTranslationEditor
+    <TranslationEditor
       v-model="translations"
       :primary-locale="primaryLocale"
       :disabled="saving"
