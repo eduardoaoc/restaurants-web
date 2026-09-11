@@ -5,15 +5,34 @@ import { PhBookOpen, PhFaders, PhForkKnife, PhSquaresFour } from '@phosphor-icon
 
 import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
+import CategoryList from '@/components/menu/CategoryList.vue'
 import MenuEmptyState from '@/components/menu/MenuEmptyState.vue'
 import MenuHeaderCard from '@/components/menu/MenuHeaderCard.vue'
 import MenuSectionPlaceholder from '@/components/menu/MenuSectionPlaceholder.vue'
 import MenuSectionTabs, { type MenuSection } from '@/components/menu/MenuSectionTabs.vue'
 import { usePermissions } from '@/composables/usePermissions'
 import { useRestaurantMenu } from '@/composables/useRestaurantMenu'
+import { AVAILABLE_LOCALES, DEFAULT_LOCALE, type AppLocale } from '@/i18n'
+import { useRestaurantStore } from '@/stores/restaurant'
 
 const { t } = useI18n()
 const { can } = usePermissions()
+const restaurantStore = useRestaurantStore()
+
+/**
+ * The restaurant's own primary content language for the Carta (CLAUDE.md
+ * Passo 2.3 §5) — read from RestaurantSettings.default_locale, which is
+ * best-effort (only loads for a user who also holds manage_restaurants,
+ * see restaurant.ts's own docblock). When it's unavailable, or holds a
+ * value this app doesn't recognize, this falls back to DEFAULT_LOCALE
+ * ('es-ES') rather than guessing — never invented, always the same
+ * documented fallback (PENDÊNCIA: no other reliable signal exists for a
+ * manage_menu-only user who lacks manage_restaurants).
+ */
+const primaryLocale = computed<AppLocale>(() => {
+  const raw = restaurantStore.currentSettings?.default_locale
+  return raw && (AVAILABLE_LOCALES as readonly string[]).includes(raw) ? (raw as AppLocale) : DEFAULT_LOCALE
+})
 
 // CLAUDE.md §16/§24: never call GET .../menu while the current restaurant's
 // context already says manage_menu is missing — same proactive-gate pattern
@@ -106,12 +125,11 @@ watch(visibleSections, (sections) => {
       <div class="flex flex-col gap-4">
         <MenuSectionTabs v-model="activeSection" :sections="sectionTabs" />
 
-        <MenuSectionPlaceholder
+        <CategoryList
           v-if="activeSection === 'categories'"
-          :icon="PhSquaresFour"
-          :title="t('menu.sections.categories.title')"
-          :description="t('menu.sections.categories.description')"
-          :coming-soon="t('menu.sections.categories.comingSoon')"
+          :enabled="canManageMenu && menu !== null"
+          :can-manage="canManageMenu"
+          :primary-locale="primaryLocale"
         />
         <MenuSectionPlaceholder
           v-else-if="activeSection === 'products' && canManageProducts"

@@ -4,24 +4,12 @@ import { useI18n } from 'vue-i18n'
 import { PhCheck, PhGlobe } from '@phosphor-icons/vue'
 
 import ASurface from '@/components/ui/ASurface.vue'
-import { AVAILABLE_LOCALES, changeLocale, type AppLocale } from '@/i18n'
+import { AVAILABLE_LOCALES, changeLocale, LOCALE_CODE, LOCALE_LABEL, type AppLocale } from '@/i18n'
 
 const { t, locale } = useI18n()
 
 const open = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
-
-const LOCALE_LABEL: Record<AppLocale, string> = {
-  'es-ES': 'Castellano',
-  'ca-ES-valencia': 'Valencià',
-  'en-GB': 'English',
-}
-
-const LOCALE_CODE: Record<AppLocale, string> = {
-  'es-ES': 'ES',
-  'ca-ES-valencia': 'VAL',
-  'en-GB': 'EN',
-}
 
 function select(next: AppLocale): void {
   changeLocale(next)

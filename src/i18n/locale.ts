@@ -2,6 +2,26 @@ export const AVAILABLE_LOCALES = ['es-ES', 'ca-ES-valencia', 'en-GB'] as const
 export type AppLocale = (typeof AVAILABLE_LOCALES)[number]
 export const DEFAULT_LOCALE: AppLocale = 'es-ES'
 
+/**
+ * A language's own name is conventionally shown in that language, not
+ * translated per the active UI locale — so these are plain constants, not
+ * i18n keys. Shared by LanguageSwitcher (interface language) and, from
+ * Passo 2.3, the Carta's per-locale content-translation tabs (a completely
+ * different axis — see CategoryTranslationEditor.vue) so both pickers name
+ * the same 3 tags identically.
+ */
+export const LOCALE_LABEL: Record<AppLocale, string> = {
+  'es-ES': 'Castellano',
+  'ca-ES-valencia': 'Valencià',
+  'en-GB': 'English',
+}
+
+export const LOCALE_CODE: Record<AppLocale, string> = {
+  'es-ES': 'ES',
+  'ca-ES-valencia': 'VAL',
+  'en-GB': 'EN',
+}
+
 const STORAGE_KEY = 'aforo-locale'
 
 function isAppLocale(value: string): value is AppLocale {

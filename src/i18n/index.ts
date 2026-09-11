@@ -24,5 +24,5 @@ export function changeLocale(locale: AppLocale): void {
   persistLocale(i18n, locale)
 }
 
-export { AVAILABLE_LOCALES, DEFAULT_LOCALE } from './locale'
+export { AVAILABLE_LOCALES, DEFAULT_LOCALE, LOCALE_CODE, LOCALE_LABEL } from './locale'
 export type { AppLocale } from './locale'
