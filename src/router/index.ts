@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
+import { usePermissions } from '@/composables/usePermissions'
 import { useAuthStore } from '@/stores/auth'
+import { useRestaurantStore } from '@/stores/restaurant'
 import type { PermissionSlug } from '@/types/auth-context'
 
 declare module 'vue-router' {
@@ -8,13 +10,13 @@ declare module 'vue-router' {
     requiresAuth?: boolean
     guestOnly?: boolean
     /**
-     * Restaurant-scoped capability a route requires (Passo 1.2C). Not set
-     * on any route yet — Dashboard is still the app's only authenticated
-     * destination and handles its own permission-aware rendering
-     * internally (see DashboardView), so there is nowhere sensible to
-     * redirect a denied user to yet. This is here so the next
-     * permission-gated route (Mesas/Staff/Settings/...) is a one-line
-     * `meta: { permission: '...' }` addition, not a new mechanism.
+     * Restaurant-scoped capability a route requires (Passo 1.2C, enforced
+     * from Passo 2.2 — Carta is the first route to set this). The guard
+     * below awaits restaurantStore.load() then checks it against the
+     * CURRENT restaurant's permissions, redirecting to the Dashboard on
+     * denial. The backend remains the real authority (CLAUDE.md §9) — this
+     * only avoids rendering a screen / firing requests the backend would
+     * 403 anyway.
      */
     permission?: PermissionSlug
   }
@@ -41,6 +43,12 @@ const router = createRouter({
           name: 'app-dashboard',
           component: () => import('@/views/DashboardView.vue'),
         },
+        {
+          path: 'menu',
+          name: 'app-menu',
+          component: () => import('@/views/menu/MenuView.vue'),
+          meta: { permission: 'manage_menu' },
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },
@@ -61,6 +69,20 @@ router.beforeEach(async (to) => {
 
   if (to.meta.guestOnly && auth.authenticated) {
     return { name: 'app-dashboard' }
+  }
+
+  if (to.meta.permission) {
+    // Restaurants (and with them, the auth-context-derived permissions) may
+    // not be loaded yet on a cold navigation (direct URL / full refresh) —
+    // load() is memoized the same way auth.bootstrap() is, so this never
+    // triggers a duplicate GET /restaurants on a warm navigation. Without
+    // this await, `can()` would read a not-yet-resolved currentRestaurantId
+    // and fail closed on a user who actually has the permission.
+    await useRestaurantStore().load()
+
+    if (!usePermissions().can(to.meta.permission)) {
+      return { name: 'app-dashboard' }
+    }
   }
 })
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PhArmchair, PhPlus } from '@phosphor-icons/vue'
 
@@ -10,13 +10,44 @@ import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import ATextField from '@/components/ui/ATextField.vue'
 import { useFloorPlanEditor } from '@/composables/useFloorPlanEditor'
+import type { ReceivedRealtimeEvent } from '@/composables/useRestaurantRealtime'
 import { describeApiError } from '@/utils/error-message'
 
-const props = defineProps<{ restaurantId: number | null }>()
+const props = defineProps<{ restaurantId: number | null; lastRealtimeEvent: ReceivedRealtimeEvent | null }>()
 const emit = defineEmits<{ close: [] }>()
 
 const { t } = useI18n()
 const editor = useFloorPlanEditor(() => props.restaurantId)
+
+/**
+ * Passo 1.3 §20 — never silently overwrite a draft the admin is actively
+ * editing. A `floor_plan.updated` event from another device/tab either:
+ *   - reloads immediately, when there's nothing local to lose; or
+ *   - only raises a banner, when there IS an unsaved draft — the draft
+ *     itself is left untouched (this is safe even if the user keeps
+ *     editing and saves afterward: save() PATCHes only the tables the
+ *     draft actually changed, so it can never clobber a remote change to
+ *     a different table).
+ */
+const remoteChangesPending = ref(false)
+
+watch(
+  () => props.lastRealtimeEvent,
+  (event) => {
+    if (!event || event.name !== 'floor_plan.updated') return
+    if (editor.hasUnsavedChanges.value) {
+      remoteChangesPending.value = true
+    } else {
+      void editor.load()
+    }
+  },
+)
+
+async function reloadRemoteChanges(): Promise<void> {
+  editor.discardDraft()
+  remoteChangesPending.value = false
+  await editor.load()
+}
 
 const selectedFloorId = ref<number | null>(null)
 const selectedZoneId = ref<number | null>(null)
@@ -174,6 +205,16 @@ async function saveAndClose(): Promise<void> {
           <AButton variant="text" @click="confirmingDiscard = false">{{ t('operations.editor.keepEditing') }}</AButton>
           <AButton variant="outlined" @click="discardAndClose">{{ t('operations.editor.discard') }}</AButton>
         </div>
+      </div>
+
+      <!-- Someone else changed the floor plan while this draft has unsaved
+           edits — never silently overwritten, see the composable-level note above. -->
+      <div
+        v-if="remoteChangesPending"
+        class="flex items-center justify-between gap-3 bg-primary-container/40 px-5 py-3 text-on-primary-container"
+      >
+        <p class="text-body-md">{{ t('operations.editor.remoteChanged') }}</p>
+        <AButton variant="outlined" @click="reloadRemoteChanges">{{ t('operations.editor.reloadRemote') }}</AButton>
       </div>
 
       <p v-if="editor.error.value" class="mx-5 mt-3 rounded-md bg-critical-container px-3 py-2 text-label-lg text-on-critical-container">

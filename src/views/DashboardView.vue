@@ -9,6 +9,7 @@ import ASurface from '@/components/ui/ASurface.vue'
 import { usePermissions } from '@/composables/usePermissions'
 import { useRestaurantAnalytics } from '@/composables/useRestaurantAnalytics'
 import { useRestaurantOperations } from '@/composables/useRestaurantOperations'
+import { useRestaurantRealtime } from '@/composables/useRestaurantRealtime'
 import { useRestaurantStore } from '@/stores/restaurant'
 import AnalyticsView from './analytics/AnalyticsView.vue'
 import OperationView from './operation/OperationView.vue'
@@ -23,6 +24,18 @@ const tab = ref<DashboardTab>('operation')
 // missing — useRestaurantOperations() simply never fetches while this is false.
 const canViewOperations = computed(() => can('view_operations'))
 const operations = useRestaurantOperations(() => canViewOperations.value)
+
+// Passo 1.3: same reactive gate as `operations` above — subscribes to
+// `restaurant.{id}` only while there's a snapshot on screen worth keeping
+// fresh. `refreshTick` is a debounced/coalesced signal (see the
+// composable's own docblock): every bump here means "call
+// operations.refetch()", never a manual snapshot mutation, so no domain
+// logic is duplicated on the frontend (docs/realtime.md).
+const realtime = useRestaurantRealtime(() => restaurantStore.currentRestaurantId, () => canViewOperations.value)
+watch(
+  () => realtime.refreshTick.value,
+  () => operations.refetch(),
+)
 // Passo 1.2C-B: GET /analytics reuses RestaurantPolicy::viewReports ->
 // view_reports (verified against the real backend Policy) — a distinct
 // permission from view_operations. Same proactive-gate treatment: never
@@ -84,6 +97,7 @@ const attentionCount = computed(() => operations.snapshot.value?.alerts.length ?
         :health="health"
         :attention-count="attentionCount"
         :refreshing="operations.refreshing.value"
+        :connection-state="realtime.connectionState.value"
       />
 
       <!-- view_operations missing for the current restaurant: never call
@@ -104,6 +118,7 @@ const attentionCount = computed(() => operations.snapshot.value?.alerts.length ?
         :loading="operations.loading.value"
         :refreshing="operations.refreshing.value"
         :error="operations.error.value"
+        :last-realtime-event="realtime.lastEvent.value"
         @refresh="operations.refetch"
       />
       <!-- view_reports missing for the current restaurant: never call

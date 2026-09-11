@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhWifiSlash } from '@phosphor-icons/vue'
+import { PhPlugsConnected, PhWifiHigh, PhWifiSlash, PhWifiX } from '@phosphor-icons/vue'
 
 import AProgress from '@/components/ui/AProgress.vue'
 import type { OperationHealthLevel } from '@/types/operations'
+import type { RealtimeConnectionState } from '@/types/realtime'
 import DashboardTabs, { type DashboardTab } from './DashboardTabs.vue'
 
 const props = defineProps<{
@@ -13,11 +14,29 @@ const props = defineProps<{
   attentionCount: number
   /** A background refresh after a table/session action — never blanks existing content, just a quiet hint. */
   refreshing?: boolean
+  /**
+   * Passo 1.3: the real Reverb connection state — this badge used to be a
+   * hardcoded "REST only" label (true at the time: realtime didn't exist
+   * yet). Never fake a green/live pulse here again once it's wired up.
+   */
+  connectionState?: RealtimeConnectionState
 }>()
 
 defineEmits<{ 'update:tab': [DashboardTab] }>()
 
 const { t } = useI18n()
+
+const CONNECTION_ICON: Record<RealtimeConnectionState, typeof PhWifiHigh> = {
+  connected: PhWifiHigh,
+  connecting: PhPlugsConnected,
+  reconnecting: PhPlugsConnected,
+  disconnected: PhWifiSlash,
+  unavailable: PhWifiSlash,
+  error: PhWifiX,
+}
+
+const connectionIcon = computed(() => CONNECTION_ICON[props.connectionState ?? 'unavailable'])
+const connectionLabel = computed(() => t(`operations.connection.${props.connectionState ?? 'unavailable'}`))
 
 const HEALTH_RING_TONE: Record<OperationHealthLevel, string> = {
   healthy: 'var(--color-success)',
@@ -37,11 +56,13 @@ const ringStyle = computed(() => {
     <div>
       <div class="flex items-center gap-2">
         <h2 class="text-headline font-bold text-on-surface">{{ t('operations.pageTitle') }}</h2>
-        <!-- Real, truthful connection state — never a fixed "live" pulse before Realtime actually ships -->
+        <!-- Real Reverb connection state (Passo 1.3) — a background HTTP
+             refresh still takes visual priority when one is in flight, same
+             as before; never a fixed "live" pulse regardless of the actual socket. -->
         <span class="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2.5 py-1 text-label-md text-on-surface-variant">
           <AProgress v-if="refreshing" size="sm" />
-          <PhWifiSlash v-else :size="12" aria-hidden="true" />
-          {{ refreshing ? t('operations.connection.refreshing') : t('operations.connection.restOnly') }}
+          <component :is="connectionIcon" v-else :size="12" aria-hidden="true" />
+          {{ refreshing ? t('operations.connection.refreshing') : connectionLabel }}
         </span>
       </div>
       <p class="mt-1.5 text-body-md text-on-surface-variant">{{ t('operations.pageSubtitle') }}</p>

@@ -22,6 +22,7 @@ import TableDetailsDrawer from '@/components/dashboard/table/TableDetailsDrawer.
 import { usePermissions } from '@/composables/usePermissions'
 import { formatMoney } from '@/utils/format'
 import type { OperationsLiveSnapshot, OperationsTable } from '@/types/operations'
+import type { ReceivedRealtimeEvent } from '@/composables/useRestaurantRealtime'
 
 const props = defineProps<{
   restaurantId: number | null
@@ -29,6 +30,8 @@ const props = defineProps<{
   loading: boolean
   refreshing: boolean
   error: import('@/api/errors').ApiError | null
+  /** Passo 1.3: raw, non-debounced — only the Floor Map Editor cares about one specific event name here (§20). */
+  lastRealtimeEvent: ReceivedRealtimeEvent | null
 }>()
 
 const emit = defineEmits<{ refresh: [] }>()
@@ -195,6 +198,11 @@ function onEditorClose(): void {
       @refresh="onDrawerRefresh"
     />
 
-    <FloorMapEditor v-if="showEditor && canManageFloorPlan" :restaurant-id="restaurantId" @close="onEditorClose" />
+    <FloorMapEditor
+      v-if="showEditor && canManageFloorPlan"
+      :restaurant-id="restaurantId"
+      :last-realtime-event="lastRealtimeEvent"
+      @close="onEditorClose"
+    />
   </div>
 </template>

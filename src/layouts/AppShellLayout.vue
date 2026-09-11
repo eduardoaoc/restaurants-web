@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { PhGauge, PhList, PhX } from '@phosphor-icons/vue'
+import { PhBookOpen, PhGauge, PhList, PhX } from '@phosphor-icons/vue'
 
 import AIconButton from '@/components/ui/AIconButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
@@ -31,10 +31,15 @@ interface NavItem {
   permission?: PermissionSlug
 }
 
-// Only Dashboard exists in this block — this is deliberately a data-driven
-// list (not hardcoded markup) so Mesas/Pedidos/Cocina/etc. are a one-line
-// addition later, without rebuilding the rail/drawer. See CLAUDE.md §17.
-const NAV_ITEMS: NavItem[] = [{ routeName: 'app-dashboard', labelKey: 'common.dashboard', icon: PhGauge }]
+// Data-driven list (not hardcoded markup) so Mesas/Pedidos/Cocina/etc. are a
+// one-line addition later, without rebuilding the rail/drawer. See
+// CLAUDE.md §17. Carta (Passo 2.2) is the first item to actually set
+// `permission` — it disappears from both rail and drawer for a user whose
+// current restaurant lacks manage_menu, never a role-name check.
+const NAV_ITEMS: NavItem[] = [
+  { routeName: 'app-dashboard', labelKey: 'common.dashboard', icon: PhGauge },
+  { routeName: 'app-menu', labelKey: 'common.menu', icon: PhBookOpen, permission: 'manage_menu' },
+]
 
 const { t } = useI18n()
 const route = useRoute()
@@ -68,7 +73,7 @@ onMounted(() => {
     <!-- Desktop / tablet: Material 3 navigation rail -->
     <nav
       class="hidden w-20 shrink-0 flex-col items-center gap-6 border-r border-outline-variant bg-surface-container-low py-6 md:flex"
-      :aria-label="t('common.dashboard')"
+      :aria-label="t('appShell.mainNav')"
     >
       <img :src="aforoSymbol" alt="AFORO" class="h-9 w-9" />
       <RouterLink

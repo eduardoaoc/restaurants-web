@@ -3,6 +3,7 @@ export default {
     login: 'Sign in',
     logout: 'Sign out',
     dashboard: 'Dashboard',
+    menu: 'Menu',
     restaurants: 'Restaurants',
     orders: 'Orders',
     tables: 'Tables',
@@ -65,6 +66,7 @@ export default {
   appShell: {
     skipToContent: 'Skip to main content',
     bootstrapLoading: 'Loading AFORO…',
+    mainNav: 'Main navigation',
     userMenu: 'User menu',
     openMenu: 'Open menu',
     closeMenu: 'Close menu',
@@ -139,6 +141,8 @@ export default {
       connecting: 'Connecting…',
       reconnecting: 'Reconnecting…',
       disconnected: 'Live updates disconnected',
+      unavailable: 'Live updates unavailable',
+      error: 'Live updates connection error',
     },
     tabs: {
       operation: 'Operations',
@@ -260,6 +264,8 @@ export default {
       noZones: 'This floor has no zones yet. Create one to add tables.',
       addTableSeats: 'Table · {count}',
       hint: 'Drag a table to reposition it, or select it and use the arrow keys. Select it to change its shape.',
+      remoteChanged: 'The floor plan changed on another device.',
+      reloadRemote: 'Reload',
       cycleShape: 'Change shape',
       tableName: 'Table {number}',
       tableAriaLabel: '{name}. Drag or use the arrow keys to move.',
@@ -383,6 +389,60 @@ export default {
       staff: 'Team',
       qr: 'QR code for tables',
       settings: 'Restaurant settings',
+    },
+  },
+  menu: {
+    pageTitle: 'Menu',
+    pageSubtitle: 'Manage your restaurant’s menu and catalogue.',
+    status: {
+      active: 'Active',
+      inactive: 'Inactive',
+    },
+    header: {
+      subtitle: 'Restaurant’s main menu.',
+      edit: 'Edit',
+      save: 'Save',
+      nameLabel: 'Menu name',
+      statusLabel: 'Status',
+      errors: {
+        nameRequired: 'Enter a name for the menu.',
+      },
+    },
+    empty: {
+      title: 'Set up your menu',
+      subtitle: 'Create your restaurant’s menu to start adding categories and products.',
+      cta: 'Create menu',
+      noPermission: "You don't have permission to create this restaurant's menu.",
+      nameLabel: 'Menu name',
+      namePlaceholder: 'Main menu',
+      create: 'Create menu',
+      errors: {
+        nameRequired: 'Enter a name for the menu.',
+      },
+    },
+    sections: {
+      categories: {
+        title: 'Categories',
+        description: 'Organise your menu into categories.',
+        comingSoon: 'Category management will be available in a future step.',
+      },
+      products: {
+        title: 'Products',
+        description: 'Add and manage your menu’s products.',
+        comingSoon: 'Product management will be available in a future step.',
+      },
+      modifiers: {
+        title: 'Modifiers',
+        description: 'Configure options and extras for your products.',
+        comingSoon: 'Modifier management will be available in a future step.',
+      },
+    },
+    errors: {
+      forbidden: "You don't have permission to view this restaurant's menu.",
+      notFound: 'This restaurant is no longer available.',
+      conflict: 'This restaurant already has a menu.',
+      network: "Couldn't connect to the server.",
+      generic: "Couldn't load the menu. Please try again.",
     },
   },
 }

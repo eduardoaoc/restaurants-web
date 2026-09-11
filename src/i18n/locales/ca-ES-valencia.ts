@@ -3,6 +3,7 @@ export default {
     login: 'Iniciar sessió',
     logout: 'Tancar sessió',
     dashboard: 'Tauler',
+    menu: 'Carta',
     restaurants: 'Restaurants',
     orders: 'Comandes',
     tables: 'Taules',
@@ -65,6 +66,7 @@ export default {
   appShell: {
     skipToContent: 'Vés al contingut principal',
     bootstrapLoading: 'Carregant AFORO…',
+    mainNav: 'Navegació principal',
     userMenu: "Menú d'usuari",
     openMenu: 'Obri el menú',
     closeMenu: 'Tanca el menú',
@@ -139,6 +141,8 @@ export default {
       connecting: 'Connectant…',
       reconnecting: 'Reconnectant…',
       disconnected: 'Sense connexió en temps real',
+      unavailable: 'Temps real no disponible',
+      error: 'Error de connexió en temps real',
     },
     tabs: {
       operation: 'Operació',
@@ -260,6 +264,8 @@ export default {
       noZones: 'Esta planta encara no té zones. Crea\'n una per a afegir taules.',
       addTableSeats: 'Taula · {count}',
       hint: 'Arrossega una taula per a reposicionar-la, o selecciona-la i usa les fletxes del teclat. Selecciona-la per a canviar-ne la forma.',
+      remoteChanged: 'El disseny del saló ha canviat en un altre dispositiu.',
+      reloadRemote: 'Recarrega',
       cycleShape: 'Canvia la forma',
       tableName: 'Taula {number}',
       tableAriaLabel: '{name}. Arrossega o usa les fletxes del teclat per a moure-la.',
@@ -383,6 +389,60 @@ export default {
       staff: 'Equip',
       qr: 'Codi QR per a les taules',
       settings: 'Ajustos del restaurant',
+    },
+  },
+  menu: {
+    pageTitle: 'Carta',
+    pageSubtitle: 'Gestiona la carta i el catàleg del teu restaurant.',
+    status: {
+      active: 'Activa',
+      inactive: 'Inactiva',
+    },
+    header: {
+      subtitle: 'Carta principal del restaurant.',
+      edit: 'Edita',
+      save: 'Guarda',
+      nameLabel: 'Nom de la carta',
+      statusLabel: 'Estat',
+      errors: {
+        nameRequired: 'Introdueix un nom per a la carta.',
+      },
+    },
+    empty: {
+      title: 'Configura la teua carta',
+      subtitle: 'Crea la carta del teu restaurant per a començar a afegir categories i productes.',
+      cta: 'Crea la carta',
+      noPermission: 'No tens permís per a crear la carta d\'este restaurant.',
+      nameLabel: 'Nom de la carta',
+      namePlaceholder: 'Carta principal',
+      create: 'Crea la carta',
+      errors: {
+        nameRequired: 'Introdueix un nom per a la carta.',
+      },
+    },
+    sections: {
+      categories: {
+        title: 'Categories',
+        description: 'Organitza la teua carta en categories.',
+        comingSoon: 'La gestió de categories estarà disponible en un pròxim pas.',
+      },
+      products: {
+        title: 'Productes',
+        description: 'Afig i gestiona els productes de la teua carta.',
+        comingSoon: 'La gestió de productes estarà disponible en un pròxim pas.',
+      },
+      modifiers: {
+        title: 'Modificadors',
+        description: 'Configura opcions i extres per als teus productes.',
+        comingSoon: 'La gestió de modificadors estarà disponible en un pròxim pas.',
+      },
+    },
+    errors: {
+      forbidden: 'No tens permís per a veure la carta d\'este restaurant.',
+      notFound: 'Este restaurant ja no està disponible.',
+      conflict: 'Este restaurant ja té una carta.',
+      network: "No s'ha pogut connectar amb el servidor.",
+      generic: "No s'ha pogut carregar la carta. Torna-ho a provar.",
     },
   },
 }

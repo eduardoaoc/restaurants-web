@@ -3,6 +3,7 @@ export default {
     login: 'Iniciar sesión',
     logout: 'Cerrar sesión',
     dashboard: 'Panel',
+    menu: 'Carta',
     restaurants: 'Restaurantes',
     orders: 'Pedidos',
     tables: 'Mesas',
@@ -65,6 +66,7 @@ export default {
   appShell: {
     skipToContent: 'Ir al contenido principal',
     bootstrapLoading: 'Cargando AFORO…',
+    mainNav: 'Navegación principal',
     userMenu: 'Menú de usuario',
     openMenu: 'Abrir menú',
     closeMenu: 'Cerrar menú',
@@ -139,6 +141,8 @@ export default {
       connecting: 'Conectando…',
       reconnecting: 'Reconectando…',
       disconnected: 'Sin conexión en tiempo real',
+      unavailable: 'Tiempo real no disponible',
+      error: 'Error de conexión en tiempo real',
     },
     tabs: {
       operation: 'Operación',
@@ -260,6 +264,8 @@ export default {
       noZones: 'Esta planta todavía no tiene zonas. Crea una para añadir mesas.',
       addTableSeats: 'Mesa · {count}',
       hint: 'Arrastra una mesa para reposicionarla, o selecciónala y usa las flechas del teclado. Selecciónala para cambiar su forma.',
+      remoteChanged: 'El diseño del salón ha cambiado en otro dispositivo.',
+      reloadRemote: 'Recargar',
       cycleShape: 'Cambiar forma',
       tableName: 'Mesa {number}',
       tableAriaLabel: '{name}. Arrastra o usa las flechas del teclado para mover.',
@@ -383,6 +389,60 @@ export default {
       staff: 'Equipo',
       qr: 'Código QR para las mesas',
       settings: 'Ajustes del restaurante',
+    },
+  },
+  menu: {
+    pageTitle: 'Carta',
+    pageSubtitle: 'Gestiona la carta y el catálogo de tu restaurante.',
+    status: {
+      active: 'Activa',
+      inactive: 'Inactiva',
+    },
+    header: {
+      subtitle: 'Carta principal del restaurante.',
+      edit: 'Editar',
+      save: 'Guardar',
+      nameLabel: 'Nombre de la carta',
+      statusLabel: 'Estado',
+      errors: {
+        nameRequired: 'Introduce un nombre para la carta.',
+      },
+    },
+    empty: {
+      title: 'Configura tu carta',
+      subtitle: 'Crea la carta de tu restaurante para empezar a añadir categorías y productos.',
+      cta: 'Crear carta',
+      noPermission: 'No tienes permiso para crear la carta de este restaurante.',
+      nameLabel: 'Nombre de la carta',
+      namePlaceholder: 'Carta principal',
+      create: 'Crear carta',
+      errors: {
+        nameRequired: 'Introduce un nombre para la carta.',
+      },
+    },
+    sections: {
+      categories: {
+        title: 'Categorías',
+        description: 'Organiza tu carta en categorías.',
+        comingSoon: 'La gestión de categorías estará disponible en un próximo paso.',
+      },
+      products: {
+        title: 'Productos',
+        description: 'Añade y gestiona los productos de tu carta.',
+        comingSoon: 'La gestión de productos estará disponible en un próximo paso.',
+      },
+      modifiers: {
+        title: 'Modificadores',
+        description: 'Configura opciones y extras para tus productos.',
+        comingSoon: 'La gestión de modificadores estará disponible en un próximo paso.',
+      },
+    },
+    errors: {
+      forbidden: 'No tienes permiso para ver la carta de este restaurante.',
+      notFound: 'Este restaurante ya no está disponible.',
+      conflict: 'Este restaurante ya tiene una carta.',
+      network: 'No se ha podido conectar con el servidor.',
+      generic: 'No se ha podido cargar la carta. Inténtalo de nuevo.',
     },
   },
 }

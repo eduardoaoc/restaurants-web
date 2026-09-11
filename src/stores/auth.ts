@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 
+import { disconnectEcho } from '@/realtime/echo'
 import { authService } from '@/services/auth.service'
 import { useRestaurantStore } from '@/stores/restaurant'
 import type { AuthenticatedUser, LoginPayload } from '@/types/auth'
@@ -104,10 +105,15 @@ export const useAuthStore = defineStore('auth', () => {
       // Every piece of the previous session's authorization state is
       // dropped here — user, authContext (platform + every organization/
       // restaurant permission list), and the restaurant selection — so
-      // nothing can leak into whoever logs in next on this browser.
+      // nothing can leak into whoever logs in next on this browser. The
+      // realtime socket is closed outright (Passo 1.3 §14), not just its
+      // channel left: an authenticated WebSocket has no reason to linger
+      // past logout, and the next session's first subscribe should always
+      // start from a fresh connection/auth handshake.
       user.value = null
       authContext.value = null
       useRestaurantStore().clearRestaurant()
+      disconnectEcho()
     }
   }
 
