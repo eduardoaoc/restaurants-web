@@ -6,7 +6,9 @@ import { PhPlus } from '@phosphor-icons/vue'
 import AButton from '@/components/ui/AButton.vue'
 import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
+import { useCategoryProducts } from '@/composables/useCategoryProducts'
 import { useRestaurantCategories } from '@/composables/useRestaurantCategories'
+import { useRestaurantProducts } from '@/composables/useRestaurantProducts'
 import type { AppLocale } from '@/i18n'
 import { describeApiError } from '@/utils/error-message'
 import type { CreateCategoryPayload, UpdateCategoryPayload } from '@/types/category'
@@ -17,6 +19,8 @@ import CategoryRow from './CategoryRow.vue'
 const props = defineProps<{
   enabled: boolean
   canManage: boolean
+  /** Only relevant to the "Añadir productos" picker — see CategoryRow.vue's own docblock. */
+  canManageProducts: boolean
   primaryLocale: AppLocale
 }>()
 
@@ -24,6 +28,33 @@ const { t } = useI18n()
 
 const { categories, loading, error, saving, saveError, reordering, reorderError, createCategory, updateCategory, move } =
   useRestaurantCategories(() => props.enabled)
+
+const {
+  productsByCategory,
+  loadingByCategory,
+  attachingByCategory,
+  attachErrorByCategory,
+  reorderingByCategory,
+  reorderErrorByCategory,
+  detachErrorByCategory,
+  isDetaching,
+  attachProduct,
+  detachProduct,
+  moveProduct,
+} = useCategoryProducts(() => categories.value, () => props.enabled)
+
+// Only fetched at all once the owner can actually attach anything (manage_products) —
+// a manage_menu-only user never triggers this call, so it never comes back 403
+// (CLAUDE.md Passo 2.6 §27: GET /restaurants/{restaurant}/products itself requires
+// manage_products, independent of the category-product endpoints' own manage_menu gate).
+const { restaurantProducts, loading: restaurantProductsLoading } = useRestaurantProducts(
+  () => props.enabled && props.canManageProducts,
+)
+
+function pickableFor(categoryId: number) {
+  const inCategory = new Set((productsByCategory[categoryId] ?? []).map((cp) => cp.restaurant_product_id))
+  return restaurantProducts.value.filter((rp) => !inCategory.has(rp.id))
+}
 
 const showCreateForm = ref(false)
 
@@ -101,6 +132,21 @@ function onMove(categoryId: number, direction: 'up' | 'down') {
           :reordering="reordering"
           :on-save="(payload) => onUpdate(category.id, payload)"
           :on-move="(direction) => onMove(category.id, direction)"
+          :products="productsByCategory[category.id] ?? []"
+          :products-loading="loadingByCategory[category.id] ?? false"
+          :can-organize="canManage"
+          :can-attach-products="canManageProducts"
+          :pickable-products="pickableFor(category.id)"
+          :pickable-loading="restaurantProductsLoading"
+          :product-reordering="reorderingByCategory[category.id] ?? false"
+          :attaching="attachingByCategory[category.id] ?? false"
+          :attach-error="attachErrorByCategory[category.id] ?? null"
+          :reorder-error="reorderErrorByCategory[category.id] ?? null"
+          :detach-error="detachErrorByCategory[category.id] ?? null"
+          :is-detaching="(restaurantProductId) => isDetaching(category.id, restaurantProductId)"
+          :on-move-product="(categoryProductId, direction) => moveProduct(category.id, categoryProductId, direction)"
+          :on-detach-product="(restaurantProductId) => detachProduct(category.id, restaurantProductId)"
+          :on-attach-product="(restaurantProductId) => attachProduct(category.id, restaurantProductId)"
         />
       </div>
     </template>

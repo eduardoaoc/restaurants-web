@@ -1,5 +1,5 @@
 <script setup lang="ts">
-export type MenuSection = 'categories' | 'products' | 'modifiers'
+export type MenuSection = 'categories' | 'products' | 'modifiers' | 'preview'
 
 defineProps<{
   modelValue: MenuSection

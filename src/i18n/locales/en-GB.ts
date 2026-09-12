@@ -437,6 +437,9 @@ export default {
         description: 'Configure options and extras for your products.',
         comingSoon: 'Modifier management will be available in a future step.',
       },
+      preview: {
+        title: 'Preview',
+      },
     },
     errors: {
       forbidden: "You don't have permission to view this restaurant's menu.",
@@ -452,6 +455,8 @@ export default {
       primaryLocaleHint: 'Primary language',
       primaryBadge: 'Primary',
       translationFilled: 'Translation available',
+      autoTranslateCta: 'Translate automatically',
+      autoTranslateUnavailable: 'Not available yet — pending integration with a translation service.',
     },
     categories: {
       statusLabel: 'Status',
@@ -580,6 +585,27 @@ export default {
           priceInvalid: 'Enter a valid price (e.g. 1.50).',
         },
       },
+    },
+    categoryProducts: {
+      moveUp: 'Move product up',
+      moveDown: 'Move product down',
+      removeFromCategory: 'Remove from this category',
+      addProducts: 'Add products',
+      addToCategory: 'Add to category',
+      empty: "This category doesn't have any products yet.",
+      noAttachPermission: "You don't have permission to add products to categories.",
+      searchLabel: 'Search product',
+      searchPlaceholder: 'Product name',
+      noPickableProducts: 'Every product on this restaurant is already in this category.',
+      errors: {
+        duplicateInCategory: 'This product is already in this category.',
+        reorderFailed: "Couldn't reorder. The real order has been restored.",
+      },
+    },
+    preview: {
+      bannerTitle: 'Admin preview',
+      bannerSubtitle: "This is how your menu is organised right now. It isn't the final experience customers will see via QR.",
+      empty: 'Create categories and add products to see your menu preview here.',
     },
   },
 }

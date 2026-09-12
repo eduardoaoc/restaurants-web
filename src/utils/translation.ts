@@ -14,15 +14,31 @@ export interface Translatable {
   name: string
 }
 
+export interface TranslatableWithDescription extends Translatable {
+  description?: string | null
+}
+
+function resolveTranslation<T extends Translatable>(translations: T[], preferredLocales: string[]): T | undefined {
+  for (const locale of preferredLocales) {
+    const match = translations.find((translation) => translation.locale === locale)
+    if (match) return match
+  }
+
+  return translations[0]
+}
+
 export function resolveTranslatedName<T extends Translatable>(
   translations: T[],
   preferredLocales: string[],
   fallback: string,
 ): string {
-  for (const locale of preferredLocales) {
-    const match = translations.find((translation) => translation.locale === locale)
-    if (match) return match.name
-  }
+  return resolveTranslation(translations, preferredLocales)?.name ?? fallback
+}
 
-  return translations[0]?.name ?? fallback
+/** Sibling to resolveTranslatedName, for callers that also need the description (e.g. MenuPreview, Passo 2.6). */
+export function resolveTranslatedDescription<T extends TranslatableWithDescription>(
+  translations: T[],
+  preferredLocales: string[],
+): string | null {
+  return resolveTranslation(translations, preferredLocales)?.description ?? null
 }

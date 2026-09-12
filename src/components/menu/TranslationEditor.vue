@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { PhSparkle } from '@phosphor-icons/vue'
 
 import ATextField from '@/components/ui/ATextField.vue'
 import { AVAILABLE_LOCALES, LOCALE_LABEL, type AppLocale } from '@/i18n'
@@ -89,5 +90,26 @@ function setField(locale: AppLocale, field: keyof TranslationDraft, value: strin
         @input="setField(activeLocale, 'description', ($event.target as HTMLTextAreaElement).value)"
       />
     </div>
+
+    <!--
+      Auto-translate CTA — genuinely disabled, never a fake/mocked action
+      (CLAUDE.md Passo 2.6 §22): no auto-translation provider exists yet,
+      frontend or backend (see the Passo 2.6 report §16/§21). Shown only
+      from the primary-locale tab, matching the intended future flow
+      ("Castellano -> translate to pending target locales"). Kept as a
+      real, reachable, properly-disabled control (not hidden) so the owner
+      understands the capability exists and is coming, rather than
+      wondering why it's missing entirely.
+    -->
+    <button
+      v-if="activeLocale === primaryLocale"
+      type="button"
+      disabled
+      :title="t('menu.translations.autoTranslateUnavailable')"
+      class="inline-flex w-fit items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-label-lg font-medium text-on-surface-variant opacity-[0.38] disabled:cursor-not-allowed"
+    >
+      <PhSparkle :size="16" aria-hidden="true" />
+      {{ t('menu.translations.autoTranslateCta') }}
+    </button>
   </div>
 </template>

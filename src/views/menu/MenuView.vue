@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhBookOpen, PhFaders, PhForkKnife, PhSquaresFour } from '@phosphor-icons/vue'
+import { PhBookOpen, PhEye, PhFaders, PhForkKnife, PhSquaresFour } from '@phosphor-icons/vue'
 
 import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import CategoryList from '@/components/menu/CategoryList.vue'
 import MenuEmptyState from '@/components/menu/MenuEmptyState.vue'
 import MenuHeaderCard from '@/components/menu/MenuHeaderCard.vue'
+import MenuPreview from '@/components/menu/MenuPreview.vue'
 import MenuSectionTabs, { type MenuSection } from '@/components/menu/MenuSectionTabs.vue'
 import ModifiersOverview from '@/components/menu/ModifiersOverview.vue'
 import ProductList from '@/components/menu/ProductList.vue'
@@ -51,6 +52,7 @@ const ALL_SECTIONS: { id: MenuSection; icon: typeof PhSquaresFour; permission?: 
   { id: 'categories', icon: PhSquaresFour },
   { id: 'products', icon: PhForkKnife, permission: 'manage_products' },
   { id: 'modifiers', icon: PhFaders, permission: 'manage_products' },
+  { id: 'preview', icon: PhEye },
 ]
 
 // Categorías always shows once the Carta exists (gated only by manage_menu,
@@ -130,6 +132,7 @@ watch(visibleSections, (sections) => {
           v-if="activeSection === 'categories'"
           :enabled="canManageMenu && menu !== null"
           :can-manage="canManageMenu"
+          :can-manage-products="canManageProducts"
           :primary-locale="primaryLocale"
         />
         <ProductList
@@ -141,6 +144,11 @@ watch(visibleSections, (sections) => {
         <ModifiersOverview
           v-else-if="activeSection === 'modifiers' && canManageProducts"
           @go-to-products="activeSection = 'products'"
+        />
+        <MenuPreview
+          v-else-if="activeSection === 'preview'"
+          :enabled="canManageMenu && menu !== null"
+          :primary-locale="primaryLocale"
         />
       </div>
     </template>

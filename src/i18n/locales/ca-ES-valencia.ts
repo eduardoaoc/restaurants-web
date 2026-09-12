@@ -437,6 +437,9 @@ export default {
         description: 'Configura opcions i extres per als teus productes.',
         comingSoon: 'La gestió de modificadors estarà disponible en un pròxim pas.',
       },
+      preview: {
+        title: 'Vista prèvia',
+      },
     },
     errors: {
       forbidden: 'No tens permís per a veure la carta d\'este restaurant.',
@@ -452,6 +455,8 @@ export default {
       primaryLocaleHint: 'Idioma principal',
       primaryBadge: 'Principal',
       translationFilled: 'Traducció disponible',
+      autoTranslateCta: 'Traduir automàticament',
+      autoTranslateUnavailable: 'Funció encara no disponible — pendent d\'integració amb un servei de traducció.',
     },
     categories: {
       statusLabel: 'Estat',
@@ -580,6 +585,27 @@ export default {
           priceInvalid: 'Introdueix un preu vàlid (per exemple, 1,50).',
         },
       },
+    },
+    categoryProducts: {
+      moveUp: 'Mou el producte amunt',
+      moveDown: 'Mou el producte avall',
+      removeFromCategory: 'Trau d\'esta categoria',
+      addProducts: 'Afig productes',
+      addToCategory: 'Afig a la categoria',
+      empty: 'Esta categoria encara no té productes.',
+      noAttachPermission: 'No tens permís per a afegir productes a categories.',
+      searchLabel: 'Busca producte',
+      searchPlaceholder: 'Nom del producte',
+      noPickableProducts: 'Tots els productes del restaurant ja estan en esta categoria.',
+      errors: {
+        duplicateInCategory: 'Este producte ja està en esta categoria.',
+        reorderFailed: 'No s\'ha pogut reordenar. S\'ha restablit l\'ordre real.',
+      },
+    },
+    preview: {
+      bannerTitle: 'Vista prèvia administrativa',
+      bannerSubtitle: 'Així està organitzada la teua carta ara mateix. Açò no és l\'experiència final que veurà el client pel QR.',
+      empty: 'Crea categories i afig productes per a veure ací la vista prèvia de la teua carta.',
     },
   },
 }

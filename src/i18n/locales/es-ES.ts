@@ -437,6 +437,9 @@ export default {
         description: 'Configura opciones y extras para tus productos.',
         comingSoon: 'La gestión de modificadores estará disponible en un próximo paso.',
       },
+      preview: {
+        title: 'Vista previa',
+      },
     },
     errors: {
       forbidden: 'No tienes permiso para ver la carta de este restaurante.',
@@ -452,6 +455,8 @@ export default {
       primaryLocaleHint: 'Idioma principal',
       primaryBadge: 'Principal',
       translationFilled: 'Traducción disponible',
+      autoTranslateCta: 'Traducir automáticamente',
+      autoTranslateUnavailable: 'Función no disponible todavía — pendiente de integración con un servicio de traducción.',
     },
     categories: {
       statusLabel: 'Estado',
@@ -580,6 +585,27 @@ export default {
           priceInvalid: 'Introduce un precio válido (por ejemplo, 1,50).',
         },
       },
+    },
+    categoryProducts: {
+      moveUp: 'Mover producto arriba',
+      moveDown: 'Mover producto abajo',
+      removeFromCategory: 'Quitar de esta categoría',
+      addProducts: 'Añadir productos',
+      addToCategory: 'Añadir a la categoría',
+      empty: 'Esta categoría todavía no tiene productos.',
+      noAttachPermission: 'No tienes permiso para añadir productos a categorías.',
+      searchLabel: 'Buscar producto',
+      searchPlaceholder: 'Nombre del producto',
+      noPickableProducts: 'Todos los productos del restaurante ya están en esta categoría.',
+      errors: {
+        duplicateInCategory: 'Este producto ya está en esta categoría.',
+        reorderFailed: 'No se ha podido reordenar. Se ha restablecido el orden real.',
+      },
+    },
+    preview: {
+      bannerTitle: 'Vista previa administrativa',
+      bannerSubtitle: 'Así está organizada tu carta ahora mismo. Esto no es la experiencia final que verá el cliente por QR.',
+      empty: 'Crea categorías y añade productos para ver aquí la vista previa de tu carta.',
     },
   },
 }
