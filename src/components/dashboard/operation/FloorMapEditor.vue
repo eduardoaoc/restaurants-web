@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { PhArmchair, PhPlus } from '@phosphor-icons/vue'
 
 import EmptyState from '@/components/dashboard/EmptyState.vue'
+import FloorPlanCanvas from '@/components/tables/FloorPlanCanvas.vue'
 import AButton from '@/components/ui/AButton.vue'
 import AIconButton from '@/components/ui/AIconButton.vue'
 import AProgress from '@/components/ui/AProgress.vue'
@@ -55,7 +56,6 @@ const selectedTableId = ref<number | null>(null)
 const newFloorName = ref('')
 const newZoneName = ref('')
 const confirmingDiscard = ref(false)
-const zoneCanvasRefs: Record<number, HTMLElement | null> = {}
 
 onMounted(async () => {
   await editor.load()
@@ -112,53 +112,13 @@ async function addTable(capacity: 2 | 4): Promise<void> {
     .map((table) => table.number ?? 0)
     .concat(0)
   const nextNumber = Math.max(...allTableNumbers) + 1
-  await editor.createTable(t('operations.editor.tableName', { number: nextNumber }), selectedZoneId.value, capacity)
-}
-
-function onPointerDown(zoneId: number, tableId: number, event: PointerEvent): void {
-  event.preventDefault()
-  // preventDefault() above (needed to stop native drag/text-selection
-  // artifacts while dragging) also suppresses the browser's default
-  // focus-on-click for the button — found via real keyboard testing, this
-  // silently broke the arrow-key nudge for anyone who clicked a table
-  // first instead of Tab-ing to it. Restore focus explicitly.
-  ;(event.currentTarget as HTMLElement).focus()
-  selectedTableId.value = tableId
-  const canvas = zoneCanvasRefs[zoneId]
-  if (!canvas) return
-  const rect = canvas.getBoundingClientRect()
-
-  const move = (moveEvent: PointerEvent): void => {
-    const x = Math.min(Math.max((moveEvent.clientX - rect.left) / rect.width, 0), 1)
-    const y = Math.min(Math.max((moveEvent.clientY - rect.top) / rect.height, 0), 1)
-    editor.updateDraft(tableId, { x, y })
-  }
-  const up = (): void => {
-    window.removeEventListener('pointermove', move)
-    window.removeEventListener('pointerup', up)
-  }
-  window.addEventListener('pointermove', move)
-  window.addEventListener('pointerup', up)
-}
-
-// Keyboard alternative to the pointer drag above — the read-only map is
-// already fully keyboard-operable (real <button> markers), so the editor's
-// own reposition control needs the same (§27); arrow keys nudge by 2% of
-// the canvas per press, clamped to the same 0..1 range as a drag.
-function onTableKeydown(tableId: number, currentLayout: { x: number | null; y: number | null }, event: KeyboardEvent): void {
-  const step = 0.02
-  let dx = 0
-  let dy = 0
-  if (event.key === 'ArrowLeft') dx = -step
-  else if (event.key === 'ArrowRight') dx = step
-  else if (event.key === 'ArrowUp') dy = -step
-  else if (event.key === 'ArrowDown') dy = step
-  else return
-
-  event.preventDefault()
-  const x = Math.min(Math.max((currentLayout.x ?? 0.5) + dx, 0), 1)
-  const y = Math.min(Math.max((currentLayout.y ?? 0.5) + dy, 0), 1)
-  editor.updateDraft(tableId, { x, y })
+  await editor.createTable({
+    name: t('operations.editor.tableName', { number: nextNumber }),
+    zone_id: selectedZoneId.value,
+    capacity,
+    layout_x: 0.5,
+    layout_y: 0.5,
+  })
 }
 
 function cycleShape(tableId: number, current: string): void {
@@ -291,36 +251,13 @@ async function saveAndClose(): Promise<void> {
 
               <p class="mt-2 text-label-md text-on-surface-variant">{{ t('operations.editor.hint') }}</p>
 
-              <div
-                :ref="(el) => (zoneCanvasRefs[currentZone!.id] = el as HTMLElement)"
-                class="relative mt-3 min-h-72 select-none rounded-xl border border-dashed border-outline-variant bg-surface-container-low"
-              >
-                <button
-                  v-for="tableItem in currentZone.tables"
-                  :key="tableItem.id"
-                  type="button"
-                  class="absolute flex flex-col items-center justify-center gap-0.5 border border-outline bg-surface-container-highest text-on-surface shadow-card"
-                  :class="[
-                    editor.mergedLayout(tableItem.id, tableItem.layout).shape === 'round' ? 'rounded-full' : 'rounded-lg',
-                    selectedTableId === tableItem.id ? 'ring-2 ring-primary' : '',
-                  ]"
-                  :style="{
-                    left: `${(editor.mergedLayout(tableItem.id, tableItem.layout).x ?? 0.5) * 100}%`,
-                    top: `${(editor.mergedLayout(tableItem.id, tableItem.layout).y ?? 0.5) * 100}%`,
-                    width: `${editor.mergedLayout(tableItem.id, tableItem.layout).width}px`,
-                    height: `${editor.mergedLayout(tableItem.id, tableItem.layout).height}px`,
-                    transform: `translate(-50%, -50%) rotate(${editor.mergedLayout(tableItem.id, tableItem.layout).rotation}deg)`,
-                    cursor: 'grab',
-                  }"
-                  :aria-label="t('operations.editor.tableAriaLabel', { name: tableItem.name })"
-                  @pointerdown="onPointerDown(currentZone!.id, tableItem.id, $event)"
-                  @keydown="onTableKeydown(tableItem.id, editor.mergedLayout(tableItem.id, tableItem.layout), $event)"
-                  @click="selectedTableId = tableItem.id"
-                >
-                  <span class="text-label-md font-semibold">{{ tableItem.name }}</span>
-                  <span class="text-[10px] opacity-70">{{ tableItem.capacity ?? '—' }}</span>
-                </button>
-              </div>
+              <FloorPlanCanvas
+                v-model:selected-table-id="selectedTableId"
+                class="mt-3"
+                :tables="currentZone.tables"
+                :layout-for="(table) => editor.mergedLayout(table.id, table.layout)"
+                @move="(tableId, position) => editor.updateDraft(tableId, position)"
+              />
 
               <div v-if="selectedTableId" class="mt-3 flex items-center gap-2">
                 <AButton

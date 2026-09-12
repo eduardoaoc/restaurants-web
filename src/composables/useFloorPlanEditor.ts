@@ -1,9 +1,16 @@
 import { computed, reactive, ref } from 'vue'
 
 import { normalizeApiError, type ApiError } from '@/api/errors'
+import { usePermissions } from '@/composables/usePermissions'
 import { floorPlanService } from '@/services/floor-plan.service'
 import { tablesService } from '@/services/tables.service'
-import type { FloorPlan, FloorPlanTableLayout, LayoutTableUpdate } from '@/types/floor-plan'
+import type {
+  CreateTablePayload,
+  FloorPlan,
+  FloorPlanTableLayout,
+  LayoutTableUpdate,
+  UpdateTablePayload,
+} from '@/types/floor-plan'
 
 /** A drag/shape edit always produces a definite number — never null, unlike the original (possibly-never-positioned) layout. */
 interface LayoutDraft {
@@ -23,6 +30,7 @@ interface LayoutDraft {
  * restores the last-loaded snapshot.
  */
 export function useFloorPlanEditor(restaurantId: () => number | null) {
+  const { can } = usePermissions()
   const floorPlan = ref<FloorPlan | null>(null)
   const loading = ref(false)
   const saving = ref(false)
@@ -86,18 +94,59 @@ export function useFloorPlanEditor(restaurantId: () => number | null) {
     }
   }
 
-  async function createTable(name: string, zoneId: number | null, capacity?: number): Promise<boolean> {
+  /**
+   * Floor-plan fields (zone_id + every layout_*) additionally require
+   * `manage_floor_plan` on the backend — TableController::LAYOUT_FIELDS runs
+   * a second authorize() the moment the payload mentions any of them, even
+   * on create. Stripping them for a manage_tables-only user is what lets
+   * that user still create and rename tables instead of eating a 403 for a
+   * default position they never asked for (CLAUDE.md §9 — adapt the request
+   * to the capability, never fire one the backend will refuse).
+   */
+  function stripLayoutFields<T extends UpdateTablePayload | CreateTablePayload>(payload: T): T {
+    if (can('manage_floor_plan')) return payload
+
+    const { zone_id, layout_x, layout_y, layout_rotation, layout_shape, layout_width, layout_height, ...rest } =
+      payload as UpdateTablePayload
+    void zone_id
+    void layout_x
+    void layout_y
+    void layout_rotation
+    void layout_shape
+    void layout_width
+    void layout_height
+    return rest as T
+  }
+
+  async function createTable(payload: CreateTablePayload): Promise<boolean> {
     const id = restaurantId()
     if (id === null) return false
     saving.value = true
     error.value = null
     try {
-      await tablesService.create(id, { name, zone_id: zoneId, capacity, layout_x: 0.5, layout_y: 0.5 })
+      await tablesService.create(id, stripLayoutFields(payload))
       await load()
       return true
     } catch (err) {
       error.value = normalizeApiError(err)
       return false
+    } finally {
+      saving.value = false
+    }
+  }
+
+  /** Identity edits (name/number/capacity/status) need only `manage_tables`; see stripLayoutFields. */
+  async function updateTable(tableId: number, payload: UpdateTablePayload): Promise<ApiError | null> {
+    saving.value = true
+    error.value = null
+    try {
+      await tablesService.update(tableId, stripLayoutFields(payload))
+      await load()
+      return null
+    } catch (err) {
+      const normalized = normalizeApiError(err)
+      error.value = normalized
+      return normalized
     } finally {
       saving.value = false
     }
@@ -149,6 +198,7 @@ export function useFloorPlanEditor(restaurantId: () => number | null) {
     discardDraft,
     save,
     createTable,
+    updateTable,
     createFloor,
     createZone,
   }

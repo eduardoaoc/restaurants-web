@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { PhBookOpen, PhGauge, PhList, PhX } from '@phosphor-icons/vue'
+import { PhArmchair, PhBookOpen, PhGauge, PhList, PhX } from '@phosphor-icons/vue'
 
 import AIconButton from '@/components/ui/AIconButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
@@ -39,6 +39,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { routeName: 'app-dashboard', labelKey: 'common.dashboard', icon: PhGauge },
   { routeName: 'app-menu', labelKey: 'common.menu', icon: PhBookOpen, permission: 'manage_menu' },
+  { routeName: 'app-tables', labelKey: 'common.tables', icon: PhArmchair, permission: 'manage_tables' },
 ]
 
 const { t } = useI18n()

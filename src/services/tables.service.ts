@@ -1,5 +1,5 @@
 import { http } from '@/api/http'
-import type { CreateTablePayload, FloorPlanTable } from '@/types/floor-plan'
+import type { CreateTablePayload, FloorPlanTable, UpdateTablePayload } from '@/types/floor-plan'
 import type { OpenTablePayload, TableSession } from '@/types/table-sessions'
 import type { CreateStaffOrderPayload, Order } from '@/types/orders'
 
@@ -24,6 +24,11 @@ interface OrderEnvelope {
 export const tablesService = {
   async create(restaurantId: number, payload: CreateTablePayload): Promise<FloorPlanTable> {
     const { data } = await http.post<TableEnvelope>(`/api/v1/restaurants/${restaurantId}/tables`, payload)
+    return data.data.table
+  },
+
+  async update(tableId: number, payload: UpdateTablePayload): Promise<FloorPlanTable> {
+    const { data } = await http.patch<TableEnvelope>(`/api/v1/tables/${tableId}`, payload)
     return data.data.table
   },
 

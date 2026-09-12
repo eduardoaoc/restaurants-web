@@ -49,6 +49,16 @@ const router = createRouter({
           component: () => import('@/views/menu/MenuView.vue'),
           meta: { permission: 'manage_menu' },
         },
+        {
+          path: 'tables',
+          name: 'app-tables',
+          component: () => import('@/views/tables/TablesView.vue'),
+          // Configuring the dining room is gated on manage_tables, matching
+          // TablePolicy::create/update. Placing tables on the map needs the
+          // separate manage_floor_plan on top — enforced per-control inside
+          // the view, since the backend splits the two within one endpoint.
+          meta: { permission: 'manage_tables' },
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },

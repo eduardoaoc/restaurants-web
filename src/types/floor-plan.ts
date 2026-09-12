@@ -116,6 +116,48 @@ export interface CreateTablePayload {
   layout_height?: number
 }
 
+/**
+ * A table's CONFIGURATION status — confirmed against the real
+ * UpdateTableRequest (`Rule::in(['active','blocked','inactive'])`). Never
+ * conflated with the operational `primary_status` (free/occupied/
+ * bill_requested/... — see src/types/operations.ts), which is derived from
+ * the live session and is a completely different axis: a table can be
+ * `active` (exists, bookable) and `occupied` (someone is sitting at it) at
+ * the same time. StoreTableRequest has no `status` field at all — the
+ * controller always creates tables as 'active'.
+ */
+export type TableStatus = 'active' | 'blocked' | 'inactive'
+
+export const TABLE_STATUSES: readonly TableStatus[] = ['active', 'blocked', 'inactive']
+
+/** Shapes accepted by the backend — `Table::SHAPES` (round/square/rectangle). */
+export const TABLE_SHAPES: readonly string[] = ['round', 'square', 'rectangle']
+
+/**
+ * PATCH /api/v1/tables/{table} body. Every field is `sometimes` on the
+ * backend, so only what actually changed is ever sent.
+ *
+ * IMPORTANT (real backend rule, TableController::LAYOUT_FIELDS): touching
+ * ANY of zone_id/layout_* additionally requires `manage_floor_plan` on top
+ * of `manage_tables`. The identity fields (name/number/capacity/status)
+ * need only `manage_tables`. useFloorPlanEditor splits the payload
+ * accordingly so a manage_tables-only user never triggers a 403 by
+ * accidentally including a layout field.
+ */
+export interface UpdateTablePayload {
+  name?: string
+  number?: number | null
+  capacity?: number | null
+  status?: TableStatus
+  zone_id?: number | null
+  layout_x?: number
+  layout_y?: number
+  layout_rotation?: number
+  layout_shape?: string
+  layout_width?: number
+  layout_height?: number
+}
+
 /** Every field but `id` is optional — PATCH-per-item semantics, send only what changed. */
 export interface LayoutTableUpdate {
   id: number
