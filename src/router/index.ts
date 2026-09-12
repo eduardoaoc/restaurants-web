@@ -59,6 +59,14 @@ const router = createRouter({
           // the view, since the backend splits the two within one endpoint.
           meta: { permission: 'manage_tables' },
         },
+        {
+          path: 'staff',
+          name: 'app-staff',
+          component: () => import('@/views/staff/StaffView.vue'),
+          // Matches StaffPolicy exactly: every Staff ability is gated on
+          // manage_users in the active organization — never a role name.
+          meta: { permission: 'manage_users' },
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },
