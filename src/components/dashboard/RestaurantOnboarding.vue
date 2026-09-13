@@ -1,22 +1,48 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { PhCheckCircle, PhCircle, PhLockSimple, PhStorefront } from '@phosphor-icons/vue'
 
 import ASurface from '@/components/ui/ASurface.vue'
 import AButton from '@/components/ui/AButton.vue'
+import { usePermissions } from '@/composables/usePermissions'
+import { useOrganizationStaff } from '@/composables/useOrganizationStaff'
+import { useRestaurantMenu } from '@/composables/useRestaurantMenu'
 import { useRestaurantOnboarding } from '@/composables/useRestaurantOnboarding'
 
 const props = defineProps<{ totalTables: number; canManageFloorPlan: boolean }>()
 const emit = defineEmits<{ 'open-floor-editor': [] }>()
 
 const { t } = useI18n()
+const router = useRouter()
+const { can } = usePermissions()
+
+const canManageMenu = () => can('manage_menu')
+const canManageStaff = () => can('manage_users')
+
+// Only fetched while this card is actually on screen (it only renders
+// before the restaurant has any table, see OperationView's `!hasAnyTables`
+// gate) — both composables already self-gate on their own permission and
+// abort/reset on a restaurant switch, so this is the same one-call-while-
+// visible cost as everything else on this card, never a standing fetch.
+const menu = useRestaurantMenu(canManageMenu)
+const orgStaff = useOrganizationStaff(canManageStaff)
+
 const { steps, completedCount, totalCount, percent } = useRestaurantOnboarding(
   () => props.totalTables,
   () => props.canManageFloorPlan,
+  canManageMenu,
+  () => menu.menu.value !== null,
+  canManageStaff,
+  // "Someone besides the owner has been added" — the same done/not-done
+  // shape as floor_plan's hasTables, never an invented headcount target.
+  () => orgStaff.staff.value.length > 1,
 )
 
-function onStepAction(action: 'open-floor-editor' | undefined): void {
+function onStepAction(action: 'open-floor-editor' | 'navigate-menu' | 'navigate-staff' | undefined): void {
   if (action === 'open-floor-editor') emit('open-floor-editor')
+  else if (action === 'navigate-menu') void router.push({ name: 'app-menu' })
+  else if (action === 'navigate-staff') void router.push({ name: 'app-staff' })
 }
 </script>
 

@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhBellRinging, PhCookingPot, PhGauge, PhTable, PhUsersThree, PhWallet } from '@phosphor-icons/vue'
+import { PhBellRinging, PhCookingPot, PhTable, PhUsersThree } from '@phosphor-icons/vue'
 
 import EmptyState from '@/components/dashboard/EmptyState.vue'
-import MetricCard from '@/components/dashboard/MetricCard.vue'
 import RestaurantOnboarding from '@/components/dashboard/RestaurantOnboarding.vue'
 import SectionCard from '@/components/dashboard/SectionCard.vue'
 import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import AttentionPanel from '@/components/dashboard/operation/AttentionPanel.vue'
-import BottleneckPanel from '@/components/dashboard/operation/BottleneckPanel.vue'
 import CapacityPanel from '@/components/dashboard/operation/CapacityPanel.vue'
 import FloorMapEditor from '@/components/dashboard/operation/FloorMapEditor.vue'
 import KitchenLivePanel from '@/components/dashboard/operation/KitchenLivePanel.vue'
@@ -20,7 +18,6 @@ import RestaurantFloorMap from '@/components/dashboard/operation/RestaurantFloor
 import StaffLivePanel from '@/components/dashboard/operation/StaffLivePanel.vue'
 import TableDetailsDrawer from '@/components/dashboard/table/TableDetailsDrawer.vue'
 import { usePermissions } from '@/composables/usePermissions'
-import { formatMoney } from '@/utils/format'
 import type { OperationsLiveSnapshot, OperationsTable } from '@/types/operations'
 import type { ReceivedRealtimeEvent } from '@/composables/useRestaurantRealtime'
 
@@ -36,7 +33,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ refresh: [] }>()
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const { can } = usePermissions()
 
 const canManageFloorPlan = computed(() => can('manage_floor_plan'))
@@ -63,7 +60,6 @@ const allTables = computed<OperationsTable[]>(() => {
 
 const selectedTable = computed(() => allTables.value.find((table) => table.id === selectedTableId.value) ?? null)
 const freeTables = computed(() => allTables.value.filter((table) => table.primary_status === 'free'))
-const criticalAlertsCount = computed(() => props.snapshot?.alerts.filter((a) => a.severity === 'critical').length ?? 0)
 // Nothing configured anywhere yet (not "this zone is empty" — the whole
 // restaurant) — every operational panel would just be a wall of empty
 // states in that case, so the onboarding card replaces them instead.
@@ -125,10 +121,23 @@ function onEditorClose(): void {
       />
 
       <template v-else>
-      <QuickMetrics :summary="snapshot.summary" :critical-alerts-count="criticalAlertsCount" />
+      <QuickMetrics
+        :summary="snapshot.summary"
+        :currency="snapshot.restaurant.currency"
+        :pending-attention-count="snapshot.alerts.length"
+      />
 
-      <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1.75fr_1fr]">
-        <SectionCard :icon="PhTable" :title="t('operations.floorMap.title')">
+      <!-- Problems before the map (§5/§11): "Necesita atención" is first in
+           document order — mobile AND tablet (both below `lg`) stack it
+           above the Floor Map, and it's also what a screen reader reaches
+           first. `lg:order-*` only re-flows the VISUAL position once there's
+           room for the map to stay wide and prominent side-by-side. -->
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-[1.75fr_1fr]">
+        <SectionCard :icon="PhBellRinging" :title="t('operations.alerts.title')" class="lg:order-2">
+          <AttentionPanel :alerts="snapshot.alerts" @open-table="openTableById" />
+        </SectionCard>
+
+        <SectionCard :icon="PhTable" :title="t('operations.floorMap.title')" class="lg:order-1">
           <template #default>
             <div class="mb-3 flex items-center justify-between gap-3">
               <span class="text-label-md text-on-surface-variant">
@@ -151,38 +160,18 @@ function onEditorClose(): void {
             />
           </template>
         </SectionCard>
-
-        <SectionCard :icon="PhBellRinging" :title="t('operations.alerts.title')">
-          <AttentionPanel :alerts="snapshot.alerts" @open-table="openTableById" />
-        </SectionCard>
       </div>
 
-      <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <SectionCard :icon="PhCookingPot" :title="t('operations.kitchen.title')">
           <KitchenLivePanel :kitchen="snapshot.kitchen" />
         </SectionCard>
         <SectionCard :icon="PhUsersThree" :title="t('operations.staff.title')">
           <StaffLivePanel :staff="snapshot.staff" />
         </SectionCard>
-      </div>
-
-      <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <SectionCard :icon="PhGauge" :title="t('operations.bottleneck.title')">
-          <BottleneckPanel :bottleneck="snapshot.operation.bottleneck" />
-        </SectionCard>
         <SectionCard :icon="PhTable" :title="t('operations.capacity.title')">
-          <CapacityPanel
-            :tables="allTables"
-            :active-guests="snapshot.summary.active_guests"
-            :occupied-tables="snapshot.summary.tables.occupied"
-            :total-tables="snapshot.summary.tables.total"
-          />
+          <CapacityPanel :tables="allTables" :active-guests="snapshot.summary.active_guests" />
         </SectionCard>
-        <MetricCard
-          :icon="PhWallet"
-          :label="t('operations.salesToday')"
-          :value="formatMoney(snapshot.summary.sales.received_today, locale, snapshot.restaurant.currency)"
-        />
       </div>
       </template>
     </template>

@@ -9,8 +9,6 @@ import { formatNumber } from '@/utils/format'
 const props = defineProps<{
   tables: OperationsTable[]
   activeGuests: number
-  occupiedTables: number
-  totalTables: number
 }>()
 
 const { t, locale } = useI18n()
@@ -33,9 +31,6 @@ const ratio = computed(() => (totalSeats.value > 0 ? Math.min(props.activeGuests
     <div>
       <p class="text-title-md font-semibold text-on-surface">
         {{ t('operations.capacity.guestsOfSeats', { guests: formatNumber(activeGuests, locale), seats: formatNumber(totalSeats, locale) }) }}
-      </p>
-      <p class="text-label-md text-on-surface-variant">
-        {{ t('operations.capacity.tables', { occupied: formatNumber(occupiedTables, locale), total: formatNumber(totalTables, locale) }) }}
       </p>
       <p class="text-label-md text-on-surface-variant">{{ t('operations.capacity.available', { count: formatNumber(availableSeats, locale) }) }}</p>
     </div>

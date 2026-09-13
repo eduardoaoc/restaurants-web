@@ -162,11 +162,10 @@ export default {
     quick: {
       occupancy: 'Ocupació',
       occupancyContext: '{percent}% ocupat',
-      guestsNow: 'Clients ara',
       activeOrders: 'Comandes actives',
-      alerts: 'Alertes crítiques',
-      alertsCritical: 'Requereixen atenció',
-      alertsNone: 'Sense alertes crítiques',
+      pendingAttention: 'Atencions pendents',
+      pendingAttentionActive: 'Requereix la teua atenció',
+      pendingAttentionNone: 'Tot al dia',
     },
     errors: {
       forbidden: "No tens permís per a veure l'operació d'este restaurant.",
@@ -240,16 +239,9 @@ export default {
       unnamed: 'Sense nom',
       summary: '{tables} taules · {guests} clients · {pending} pendents',
     },
-    bottleneck: {
-      title: 'Coll d\'ampolla ara',
-      none: 'No hi ha cap coll d\'ampolla operatiu rellevant ara mateix.',
-      affected: 'Sense taules afectades | 1 taula afectada | {count} taules afectades',
-      oldest: 'la més antiga porta {age}',
-    },
     capacity: {
       title: 'Capacitat ara',
       guestsOfSeats: '{guests} / {seats} clients',
-      tables: '{occupied} / {total} taules',
       available: '{count} places disponibles',
     },
     editor: {

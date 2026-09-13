@@ -162,11 +162,10 @@ export default {
     quick: {
       occupancy: 'Occupancy',
       occupancyContext: '{percent}% occupied',
-      guestsNow: 'Guests now',
       activeOrders: 'Active orders',
-      alerts: 'Critical alerts',
-      alertsCritical: 'Need attention',
-      alertsNone: 'No critical alerts',
+      pendingAttention: 'Pending attention',
+      pendingAttentionActive: 'Needs your attention',
+      pendingAttentionNone: 'All clear',
     },
     errors: {
       forbidden: "You don't have permission to view this restaurant's operations.",
@@ -240,16 +239,9 @@ export default {
       unnamed: 'Unnamed',
       summary: '{tables} tables · {guests} guests · {pending} pending',
     },
-    bottleneck: {
-      title: 'Bottleneck now',
-      none: 'No relevant operational bottleneck right now.',
-      affected: 'No tables affected | 1 table affected | {count} tables affected',
-      oldest: 'oldest is {age}',
-    },
     capacity: {
       title: 'Capacity now',
       guestsOfSeats: '{guests} / {seats} guests',
-      tables: '{occupied} / {total} tables',
       available: '{count} seats available',
     },
     editor: {

@@ -162,11 +162,10 @@ export default {
     quick: {
       occupancy: 'Ocupación',
       occupancyContext: '{percent}% ocupado',
-      guestsNow: 'Clientes ahora',
       activeOrders: 'Pedidos activos',
-      alerts: 'Alertas críticas',
-      alertsCritical: 'Requieren atención',
-      alertsNone: 'Sin alertas críticas',
+      pendingAttention: 'Atenciones pendientes',
+      pendingAttentionActive: 'Requiere tu atención',
+      pendingAttentionNone: 'Todo al día',
     },
     errors: {
       forbidden: 'No tienes permiso para ver la operación de este restaurante.',
@@ -240,16 +239,9 @@ export default {
       unnamed: 'Sin nombre',
       summary: '{tables} mesas · {guests} clientes · {pending} pendientes',
     },
-    bottleneck: {
-      title: 'Cuello de botella ahora',
-      none: 'No hay ningún cuello de botella operativo relevante ahora mismo.',
-      affected: 'Sin mesas afectadas | 1 mesa afectada | {count} mesas afectadas',
-      oldest: 'el más antiguo lleva {age}',
-    },
     capacity: {
       title: 'Capacidad ahora',
       guestsOfSeats: '{guests} / {seats} clientes',
-      tables: '{occupied} / {total} mesas',
       available: '{count} asientos disponibles',
     },
     editor: {

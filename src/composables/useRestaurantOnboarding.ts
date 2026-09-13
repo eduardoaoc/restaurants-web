@@ -7,7 +7,7 @@ export interface OnboardingStep {
   labelKey: string
   status: OnboardingStepStatus
   /** Only 'available' steps carry an action — 'future'/'restricted' steps never link anywhere, per CLAUDE.md §21. */
-  action?: 'open-floor-editor'
+  action?: 'open-floor-editor' | 'navigate-menu' | 'navigate-staff'
 }
 
 /**
@@ -23,18 +23,36 @@ export interface OnboardingStep {
  *     manage_floor_plan (Passo 1.2C) — otherwise it's 'restricted': a
  *     purely informational state, never a CTA that would just 403
  *     (CLAUDE.md §21).
- *   - menu/staff/qr/settings: this app has no screen for them yet (Passo
- *     1.1 scope — Carta, Staff Admin, Customer QR, and a Settings view are
- *     all future steps per the task's own "don't build these now" list),
- *     so they are always 'future' and never link anywhere — never a route
- *     that doesn't exist yet.
+ *   - menu (Passo 2.9): /app/menu is a real route now (Passo 2.2). 'done'
+ *     once GET .../menu actually returns a Menu record (never a guess —
+ *     the caller passes `hasMenu` straight from useRestaurantMenu's own
+ *     404-vs-200 signal); 'available' with a real navigate action while not
+ *     done AND the user holds manage_menu; 'restricted' otherwise.
+ *   - staff (Passo 2.9): /app/staff is a real route (Passo 2.8). 'done'
+ *     once the organization roster has more than just the signed-in owner
+ *     — the same "have you actually added anything yet" shape as
+ *     floor_plan's `hasTables`, not an invented headcount target;
+ *     'available'/'restricted' mirror menu's, gated on manage_users.
+ *   - qr/settings: neither has a dedicated screen yet (QR lives inside
+ *     Mesas as a per-table feature, not its own onboarding-able flow; a
+ *     Settings view doesn't exist in the router at all) — always 'future',
+ *     never linking to a route that doesn't exist.
  * Percentage is a plain done/total ratio over these 6 fixed steps — e.g.
  * "3 of 6 steps done = 50%", never a random/estimated number.
  */
-export function useRestaurantOnboarding(totalTables: () => number, canManageFloorPlan: () => boolean) {
+export function useRestaurantOnboarding(
+  totalTables: () => number,
+  canManageFloorPlan: () => boolean,
+  canManageMenu: () => boolean,
+  hasMenu: () => boolean,
+  canManageStaff: () => boolean,
+  hasStaffBeyondOwner: () => boolean,
+) {
   const steps = computed<OnboardingStep[]>(() => {
     const hasTables = totalTables() > 0
     const floorPlanStatus: OnboardingStepStatus = hasTables ? 'done' : canManageFloorPlan() ? 'available' : 'restricted'
+    const menuStatus: OnboardingStepStatus = hasMenu() ? 'done' : canManageMenu() ? 'available' : 'restricted'
+    const staffStatus: OnboardingStepStatus = hasStaffBeyondOwner() ? 'done' : canManageStaff() ? 'available' : 'restricted'
 
     return [
       { id: 'basic_info', labelKey: 'onboarding.steps.basicInfo', status: 'done' },
@@ -44,8 +62,18 @@ export function useRestaurantOnboarding(totalTables: () => number, canManageFloo
         status: floorPlanStatus,
         action: floorPlanStatus === 'available' ? 'open-floor-editor' : undefined,
       },
-      { id: 'menu', labelKey: 'onboarding.steps.menu', status: 'future' },
-      { id: 'staff', labelKey: 'onboarding.steps.staff', status: 'future' },
+      {
+        id: 'menu',
+        labelKey: 'onboarding.steps.menu',
+        status: menuStatus,
+        action: menuStatus === 'available' ? 'navigate-menu' : undefined,
+      },
+      {
+        id: 'staff',
+        labelKey: 'onboarding.steps.staff',
+        status: staffStatus,
+        action: staffStatus === 'available' ? 'navigate-staff' : undefined,
+      },
       { id: 'qr', labelKey: 'onboarding.steps.qr', status: 'future' },
       { id: 'settings', labelKey: 'onboarding.steps.settings', status: 'future' },
     ]
