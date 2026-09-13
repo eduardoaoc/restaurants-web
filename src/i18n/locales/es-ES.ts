@@ -399,6 +399,7 @@ export default {
     searchLabel: 'Buscar en el equipo',
     searchPlaceholder: 'Nombre, correo o función',
     filterLabel: 'Filtrar por función',
+    statusFilterLabel: 'Filtrar por estado',
     listLabel: 'Personas del equipo',
     // Vue I18n pluralisation: zero | one | many
     count: 'Nadie en el equipo | 1 persona | {count} personas',
@@ -406,6 +407,34 @@ export default {
     selectHint: 'Selecciona a una persona para ver su ficha.',
     filters: {
       all: 'Todos',
+    },
+    statusFilters: {
+      all: 'Todos',
+      active: 'Con acceso',
+      inactive: 'Sin acceso',
+    },
+    // Estado OPERATIVO dentro de esta organización. Nunca es una suspensión
+    // de la plataforma ni una eliminación: por eso el texto habla siempre de
+    // "acceso a tu restaurante" y nunca de la cuenta global.
+    status: {
+      label: 'Estado',
+      active: 'Acceso activo',
+      inactive: 'Acceso desactivado',
+      badgeInactive: 'Sin acceso',
+      activeHelp: 'Puede iniciar sesión y trabajar en tu restaurante.',
+      // Verificado contra el backend: la persona todavía puede autenticarse
+      // (su cuenta global sigue activa), lo que pierde es el acceso a esta
+      // organización. Decir "no puede iniciar sesión" sería falso.
+      inactiveHelp:
+        'Ya no puede trabajar en tu restaurante. Puede entrar en AFORO con su cuenta, pero no verá este restaurante ni sus datos. Su información y su histórico se conservan.',
+      selfNotice: 'Esta es tu cuenta: no puedes desactivar tu propio acceso.',
+      deactivate: 'Desactivar acceso',
+      reactivate: 'Reactivar acceso',
+      confirmTitle: 'Confirmar la desactivación',
+      confirmBody:
+        '{name} ya no podrá trabajar en tu restaurante. Podrá entrar en AFORO con su cuenta, pero no verá este restaurante. Sus datos, su histórico y sus valoraciones se conservan, y puedes volver a darle acceso cuando quieras.',
+      confirmDeactivate: 'Sí, desactivar',
+      activeShiftNotice: 'Esta persona tiene un turno activo. Desactivarla no cerrará el turno automáticamente.',
     },
     empty: {
       title: 'Tu equipo',

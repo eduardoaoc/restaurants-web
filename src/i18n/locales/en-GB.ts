@@ -399,12 +399,35 @@ export default {
     searchLabel: 'Search the team',
     searchPlaceholder: 'Name, email or role',
     filterLabel: 'Filter by role',
+    statusFilterLabel: 'Filter by status',
     listLabel: 'Team members',
     count: 'Nobody on the team | 1 person | {count} people',
     noResults: 'Nobody matches that search.',
     selectHint: 'Select a person to see their details.',
     filters: {
       all: 'All',
+    },
+    statusFilters: {
+      all: 'All',
+      active: 'With access',
+      inactive: 'No access',
+    },
+    status: {
+      label: 'Status',
+      active: 'Access active',
+      inactive: 'Access deactivated',
+      badgeInactive: 'No access',
+      activeHelp: 'Can sign in and work at your restaurant.',
+      inactiveHelp:
+        'Can no longer work at your restaurant. They can still sign in to AFORO, but they will not see this restaurant or its data. Their information and history are kept.',
+      selfNotice: 'This is your own account: you cannot deactivate your own access.',
+      deactivate: 'Deactivate access',
+      reactivate: 'Reactivate access',
+      confirmTitle: 'Confirm deactivation',
+      confirmBody:
+        '{name} will no longer be able to work at your restaurant. They can still sign in to AFORO, but they will not see this restaurant. Their data, history and reviews are kept, and you can give them access again whenever you want.',
+      confirmDeactivate: 'Yes, deactivate',
+      activeShiftNotice: 'This person is on an active shift. Deactivating them will not close the shift automatically.',
     },
     empty: {
       title: 'Your team',

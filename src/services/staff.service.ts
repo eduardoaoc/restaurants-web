@@ -35,7 +35,8 @@ interface StaffPerformanceEnvelope {
  *
  * GET /staff is ORGANIZATION-wide (scoped server-side to the restaurants the
  * requester can reach), not restaurant-scoped — see StaffController::staffQuery.
- * There is no DELETE and no status field anywhere in this contract.
+ * There is no DELETE. PATCH accepts a tenant-scoped `status` (active/inactive
+ * — see StaffStatus), which is the reversible alternative to a deletion.
  */
 export const staffService = {
   async list(signal?: AbortSignal): Promise<StaffMember[]> {

@@ -399,12 +399,35 @@ export default {
     searchLabel: 'Busca en l\'equip',
     searchPlaceholder: 'Nom, correu o funció',
     filterLabel: 'Filtra per funció',
+    statusFilterLabel: 'Filtra per estat',
     listLabel: 'Persones de l\'equip',
     count: 'Ningú en l\'equip | 1 persona | {count} persones',
     noResults: 'No hi ha ningú que coincidisca amb eixa busca.',
     selectHint: 'Selecciona una persona per a veure la seua fitxa.',
     filters: {
       all: 'Tots',
+    },
+    statusFilters: {
+      all: 'Tots',
+      active: 'Amb accés',
+      inactive: 'Sense accés',
+    },
+    status: {
+      label: 'Estat',
+      active: 'Accés actiu',
+      inactive: 'Accés desactivat',
+      badgeInactive: 'Sense accés',
+      activeHelp: 'Pot iniciar sessió i treballar al teu restaurant.',
+      inactiveHelp:
+        'Ja no pot treballar al teu restaurant. Pot entrar a AFORO amb el seu compte, però no veurà este restaurant ni les seues dades. La seua informació i el seu historial es conserven.',
+      selfNotice: 'Este és el teu compte: no pots desactivar el teu propi accés.',
+      deactivate: 'Desactivar accés',
+      reactivate: 'Reactivar accés',
+      confirmTitle: 'Confirmar la desactivació',
+      confirmBody:
+        '{name} ja no podrà treballar al teu restaurant. Podrà entrar a AFORO amb el seu compte, però no veurà este restaurant. Les seues dades, el seu historial i les seues valoracions es conserven, i pots tornar-li a donar accés quan vulgues.',
+      confirmDeactivate: 'Sí, desactivar',
+      activeShiftNotice: 'Esta persona té un torn actiu. Desactivar-la no tancarà el torn automàticament.',
     },
     empty: {
       title: 'El teu equip',

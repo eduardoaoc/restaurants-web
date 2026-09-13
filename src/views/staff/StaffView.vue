@@ -12,10 +12,11 @@ import ASurface from '@/components/ui/ASurface.vue'
 import ATextField from '@/components/ui/ATextField.vue'
 import { useOrganizationStaff } from '@/composables/useOrganizationStaff'
 import { usePermissions } from '@/composables/usePermissions'
+import { useAuthStore } from '@/stores/auth'
 import { useRestaurantStore } from '@/stores/restaurant'
 import { describeApiError } from '@/utils/error-message'
-import { staffRoleLabelKey } from '@/utils/staff'
-import type { CreateStaffPayload, StaffMember, UpdateStaffPayload } from '@/types/staff'
+import { isStaffActive, staffRoleLabelKey } from '@/utils/staff'
+import type { CreateStaffPayload, StaffMember, StaffStatus, UpdateStaffPayload } from '@/types/staff'
 
 /**
  * "Equipo" — the owner's view of the people who work here (CLAUDE.md Passo
@@ -29,6 +30,7 @@ import type { CreateStaffPayload, StaffMember, UpdateStaffPayload } from '@/type
  */
 const { t } = useI18n()
 const restaurantStore = useRestaurantStore()
+const authStore = useAuthStore()
 const { can } = usePermissions()
 
 const canManageUsers = computed(() => can('manage_users'))
@@ -37,11 +39,19 @@ const { staff, loading, error, saving, saveError, activeShiftByUserId, canReadSh
   useOrganizationStaff(() => canManageUsers.value)
 
 type PanelMode = 'none' | 'detail' | 'create' | 'edit'
+type StatusFilter = 'all' | 'active' | 'inactive'
 
 const panelMode = ref<PanelMode>('none')
 const selectedId = ref<number | null>(null)
 const query = ref('')
 const roleFilter = ref<string>('all')
+
+/**
+ * Defaults to "all": a deactivated person stays in the roster by design —
+ * their history, role, restaurants, employee codes and reviews are all still
+ * there, and hiding them would look like they had been deleted.
+ */
+const statusFilter = ref<StatusFilter>('all')
 
 const selectedMember = computed(() => staff.value.find((member) => member.id === selectedId.value) ?? null)
 
@@ -58,8 +68,11 @@ watch(
     selectedId.value = null
     query.value = ''
     roleFilter.value = 'all'
+    statusFilter.value = 'all'
   },
 )
+
+const STATUS_FILTERS: StatusFilter[] = ['all', 'active', 'inactive']
 
 /** Filters are built from the roles actually present, never a hardcoded list. */
 const availableRoleFilters = computed(() => {
@@ -75,6 +88,7 @@ const filteredStaff = computed(() => {
 
   return staff.value.filter((member) => {
     if (roleFilter.value !== 'all' && member.role?.slug !== roleFilter.value) return false
+    if (statusFilter.value !== 'all' && isStaffActive(member.status) !== (statusFilter.value === 'active')) return false
     if (!needle) return true
 
     const roleLabel = member.role ? t(staffRoleLabelKey(member.role.slug)) : ''
@@ -86,14 +100,41 @@ const filteredStaff = computed(() => {
   })
 })
 
+/** The backend refuses self-deactivation; the UI simply doesn't offer it. */
+const isSelfSelected = computed(() => selectedMember.value !== null && selectedMember.value.id === authStore.user?.id)
+
+/** `saveError` is shared by the form and the status action — a stale message must never surface in the other one. */
+function clearSaveError(): void {
+  saveError.value = null
+}
+
 function select(member: StaffMember): void {
+  clearSaveError()
   selectedId.value = member.id
   panelMode.value = 'detail'
 }
 
 function startCreate(): void {
+  clearSaveError()
   selectedId.value = null
   panelMode.value = 'create'
+}
+
+function startEdit(): void {
+  clearSaveError()
+  panelMode.value = 'edit'
+}
+
+/**
+ * Status travels ALONE in the payload — `{ status: 'active' }` or
+ * `{ status: 'inactive' }`, never anything else and never `suspended`, which
+ * is a platform-level value this screen has no authority over. Reuses the
+ * same PATCH the profile edit uses (`updateStaff`), so the authoritative
+ * response is what updates the roster.
+ */
+async function changeStatus(status: StaffStatus): Promise<void> {
+  if (selectedId.value === null) return
+  await updateStaff(selectedId.value, { status })
 }
 
 async function onSave(payload: CreateStaffPayload | UpdateStaffPayload): Promise<void> {
@@ -165,7 +206,24 @@ async function onSave(payload: CreateStaffPayload | UpdateStaffPayload): Promise
             <template #leading><PhMagnifyingGlass :size="18" /></template>
           </ATextField>
 
-          <div class="flex flex-wrap items-center gap-1" role="group" :aria-label="t('staff.filterLabel')">
+          <!-- Two independent axes, two groups: mixing "función" and "estado"
+               into one chip row would make the pressed states read as one
+               exclusive choice. -->
+          <div class="flex flex-wrap items-center gap-2" role="group" :aria-label="t('staff.statusFilterLabel')">
+            <button
+              v-for="value in STATUS_FILTERS"
+              :key="value"
+              type="button"
+              class="inline-flex min-h-11 items-center rounded-full px-4 text-label-lg font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              :class="statusFilter === value ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container-high text-on-surface-variant'"
+              :aria-pressed="statusFilter === value"
+              @click="statusFilter = value"
+            >
+              {{ t(`staff.statusFilters.${value}`) }}
+            </button>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2" role="group" :aria-label="t('staff.filterLabel')">
             <button
               type="button"
               class="inline-flex min-h-11 items-center rounded-full px-4 text-label-lg font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -239,7 +297,12 @@ async function onSave(payload: CreateStaffPayload | UpdateStaffPayload): Promise
             :active-shift="activeShiftByUserId[selectedMember.id] ?? null"
             :shifts-visible="canReadShifts"
             :can-edit="canManageUsers"
-            @edit="panelMode = 'edit'"
+            :is-self="isSelfSelected"
+            :status-saving="saving"
+            :status-error="saveError"
+            @edit="startEdit"
+            @deactivate="changeStatus('inactive')"
+            @reactivate="changeStatus('active')"
           />
 
           <ASurface v-else tone="container" radius="lg" bordered class="p-6">

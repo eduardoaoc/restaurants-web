@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhClock, PhStorefront, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhClock, PhPauseCircle, PhStorefront, PhWarningCircle } from '@phosphor-icons/vue'
 
-import { staffInitials, staffRoleLabelKey } from '@/utils/staff'
+import { isStaffActive, staffInitials, staffRoleLabelKey } from '@/utils/staff'
 import type { StaffMember, StaffShift } from '@/types/staff'
 
 const props = defineProps<{
@@ -18,6 +18,8 @@ const props = defineProps<{
 defineEmits<{ select: [] }>()
 
 const { t } = useI18n()
+
+const active = computed(() => isStaffActive(props.member.status))
 
 const roleLabel = computed(() =>
   props.member.role ? t(staffRoleLabelKey(props.member.role.slug)) : t('staff.roles.unassigned'),
@@ -43,8 +45,12 @@ const shiftElapsed = computed(() => {
     :aria-pressed="selected"
     @click="$emit('select')"
   >
+    <!-- Deactivated people keep full text contrast (they must stay readable)
+         but lose the accent avatar — the roster still reads "these are the
+         ones working", without dimming anyone into a disabled-looking row. -->
     <span
-      class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-secondary-container text-label-lg font-semibold text-on-secondary-container"
+      class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-label-lg font-semibold"
+      :class="active ? 'bg-secondary-container text-on-secondary-container' : 'bg-surface-container-highest text-on-surface-variant'"
       aria-hidden="true"
     >
       {{ staffInitials(member.name) }}
@@ -53,6 +59,17 @@ const shiftElapsed = computed(() => {
     <span class="flex min-w-0 flex-1 flex-col gap-1">
       <span class="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span class="text-title-md font-medium text-on-surface">{{ member.name }}</span>
+
+        <!-- Shown only for the exception (deactivated), in words + icon and in
+             a neutral tone: this is "out of operation", not an error, not a
+             deleted account and not a platform suspension. -->
+        <span
+          v-if="!active"
+          class="inline-flex items-center gap-1 rounded-full bg-surface-container-highest px-2 py-0.5 text-label-md font-medium text-on-surface-variant"
+        >
+          <PhPauseCircle :size="12" aria-hidden="true" />
+          {{ t('staff.status.badgeInactive') }}
+        </span>
 
         <!-- No role row for this organization: stated in words + icon, never a bare colour. -->
         <span

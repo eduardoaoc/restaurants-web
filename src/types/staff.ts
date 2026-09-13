@@ -6,17 +6,23 @@
  *   App\Policies\StaffPolicy,
  *   App\Http\Resources\Api\V1\Staff\{StaffShift,StaffPerformance}Resource.
  *
- * Two facts about this contract drive most of the UI, and both are
- * deliberate absences — never "fix" them on the frontend:
+ * Two facts about this contract drive most of the UI:
  *
- *   1. There is NO status field. `users.status` exists in the database, but
- *      StaffResource never exposes it and neither Store nor Update accepts
- *      it. So a staff member cannot be activated/deactivated through this
- *      API, and no such control may be offered (CLAUDE.md: the backend
- *      doesn't have it → the frontend doesn't invent it).
- *   2. There is NO DELETE endpoint. Removing someone is not expressible.
+ *   1. `status` is TENANT-scoped, and only tenant-scoped (Passo 2.8C). It is
+ *      `organization_users.status` — this person's membership in THIS
+ *      organization — and its only values are `active` and `inactive`
+ *      (OrganizationUser::STATUSES). It is NOT `users.status`, the
+ *      platform-level flag whose values include `suspended`: that one
+ *      belongs to Platform Admin, the Staff API cannot touch it, and this
+ *      frontend must never send `suspended` nor describe a deactivation as
+ *      a global/platform suspension. Deactivating removes operational
+ *      access to this organization (ResolveTenant only accepts an active
+ *      membership) and nothing more — the person, their history, role,
+ *      restaurants, employee codes, shifts and reviews all stay.
+ *   2. There is NO DELETE endpoint. Removing someone is not expressible —
+ *      deactivation is the reversible alternative, never a deletion.
  *
- * See the Passo 2.8 report for both, filed as backend pendências.
+ * See the Passo 2.8 report for the DELETE pendency.
  */
 
 /**
@@ -52,10 +58,20 @@ export interface StaffRestaurantAssignment {
   sub_id: string
 }
 
+/**
+ * The only two states this API exposes or accepts. `suspended` is deliberately
+ * absent: it exists on `users.status` (platform level) and sending it here
+ * would be rejected by UpdateStaffRequest — and would mean something the
+ * owner of a restaurant has no authority to do.
+ */
+export type StaffStatus = 'active' | 'inactive'
+
 export interface StaffMember {
   id: number
   name: string
   email: string
+  /** Membership status in the ACTIVE organization — `active` unless deactivated here. */
+  status: StaffStatus
   role: StaffRole | null
   restaurants: StaffRestaurantAssignment[]
   created_at: string
@@ -79,14 +95,20 @@ export interface CreateStaffPayload {
 
 /**
  * PATCH /api/v1/staff/{user} — every field `sometimes`. Note there is no
- * password here (the API offers no way to change one) and no status.
+ * password here (the API offers no way to change one).
  * `restaurant_assignments`, when sent, REPLACES the whole set and must keep
  * at least one entry.
+ *
+ * `status` is sent ALONE (never merged into a profile edit) so that the one
+ * request the owner fires to deactivate somebody carries exactly that
+ * intent — and so a 403 on self-deactivation can never half-apply a name or
+ * role change the owner also made.
  */
 export interface UpdateStaffPayload {
   name?: string
   email?: string
   role?: StaffRoleSlug
+  status?: StaffStatus
   restaurant_assignments?: StaffAssignmentInput[]
 }
 
