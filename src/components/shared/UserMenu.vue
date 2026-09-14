@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
-import { PhSignOut } from '@phosphor-icons/vue'
+import { RouterLink, useRouter } from 'vue-router'
+import { PhGear, PhSignOut } from '@phosphor-icons/vue'
 
 import ASurface from '@/components/ui/ASurface.vue'
+import { usePermissions } from '@/composables/usePermissions'
 import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
 const router = useRouter()
 const auth = useAuthStore()
+const { can, canOrganization } = usePermissions()
+
+/** Same reachability rule as the Settings route itself (Passo 2.10) — shown the moment either half is usable. */
+const canSeeSettings = computed(() => can('manage_restaurants') || canOrganization('manage_organization'))
 
 const open = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
@@ -70,6 +75,17 @@ function onKeydown(event: KeyboardEvent): void {
         <p class="text-label-md text-on-surface-variant">{{ auth.user?.email }}</p>
       </div>
       <hr class="my-1 border-outline-variant" />
+      <RouterLink
+        v-if="canSeeSettings"
+        :to="{ name: 'app-settings' }"
+        role="menuitem"
+        class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-body-md text-on-surface hover:bg-surface-container-highest"
+        @click="open = false"
+      >
+        <PhGear :size="18" />
+        {{ t('common.settings') }}
+      </RouterLink>
+      <hr v-if="canSeeSettings" class="my-1 border-outline-variant" />
       <button
         type="button"
         role="menuitem"

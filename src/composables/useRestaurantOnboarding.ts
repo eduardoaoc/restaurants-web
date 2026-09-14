@@ -7,7 +7,7 @@ export interface OnboardingStep {
   labelKey: string
   status: OnboardingStepStatus
   /** Only 'available' steps carry an action — 'future'/'restricted' steps never link anywhere, per CLAUDE.md §21. */
-  action?: 'open-floor-editor' | 'navigate-menu' | 'navigate-staff'
+  action?: 'open-floor-editor' | 'navigate-menu' | 'navigate-staff' | 'navigate-settings'
 }
 
 /**
@@ -33,10 +33,16 @@ export interface OnboardingStep {
  *     — the same "have you actually added anything yet" shape as
  *     floor_plan's `hasTables`, not an invented headcount target;
  *     'available'/'restricted' mirror menu's, gated on manage_users.
- *   - qr/settings: neither has a dedicated screen yet (QR lives inside
- *     Mesas as a per-table feature, not its own onboarding-able flow; a
- *     Settings view doesn't exist in the router at all) — always 'future',
- *     never linking to a route that doesn't exist.
+ *   - settings (Passo 2.10): /app/settings is a real route now. There is no
+ *     objective "done" signal for it — unlike floor_plan/menu/staff, no
+ *     single field means "settings are configured" (every field already
+ *     has a real default from creation, per RestaurantSettings::
+ *     DEFAULT_*). Rather than fake a completion state, this step is only
+ *     ever 'available' (navigable) or 'restricted' — never 'done' — exactly
+ *     per CLAUDE.md's "no fingir conclusão" rule for this Passo.
+ *   - qr: still has no dedicated screen (it lives inside Mesas as a
+ *     per-table feature, not its own onboarding-able flow) — always
+ *     'future', never linking to a route that doesn't exist.
  * Percentage is a plain done/total ratio over these 6 fixed steps — e.g.
  * "3 of 6 steps done = 50%", never a random/estimated number.
  */
@@ -47,12 +53,14 @@ export function useRestaurantOnboarding(
   hasMenu: () => boolean,
   canManageStaff: () => boolean,
   hasStaffBeyondOwner: () => boolean,
+  canManageSettings: () => boolean,
 ) {
   const steps = computed<OnboardingStep[]>(() => {
     const hasTables = totalTables() > 0
     const floorPlanStatus: OnboardingStepStatus = hasTables ? 'done' : canManageFloorPlan() ? 'available' : 'restricted'
     const menuStatus: OnboardingStepStatus = hasMenu() ? 'done' : canManageMenu() ? 'available' : 'restricted'
     const staffStatus: OnboardingStepStatus = hasStaffBeyondOwner() ? 'done' : canManageStaff() ? 'available' : 'restricted'
+    const settingsStatus: OnboardingStepStatus = canManageSettings() ? 'available' : 'restricted'
 
     return [
       { id: 'basic_info', labelKey: 'onboarding.steps.basicInfo', status: 'done' },
@@ -75,7 +83,12 @@ export function useRestaurantOnboarding(
         action: staffStatus === 'available' ? 'navigate-staff' : undefined,
       },
       { id: 'qr', labelKey: 'onboarding.steps.qr', status: 'future' },
-      { id: 'settings', labelKey: 'onboarding.steps.settings', status: 'future' },
+      {
+        id: 'settings',
+        labelKey: 'onboarding.steps.settings',
+        status: settingsStatus,
+        action: settingsStatus === 'available' ? 'navigate-settings' : undefined,
+      },
     ]
   })
 

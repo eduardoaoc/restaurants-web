@@ -102,6 +102,42 @@ export const useRestaurantStore = defineStore('restaurant', () => {
     persistId(currentRestaurantId.value)
   }
 
+  /**
+   * Applies the backend's authoritative response after a successful PATCH
+   * (Passo 2.10 §17) — never a guess at what changed, always the exact
+   * record the API just returned. Every global element reading
+   * `currentRestaurant`/`restaurants` (RestaurantSwitcher, this store's own
+   * `currentRestaurant`) reacts immediately, with nothing left stale until
+   * a future F5.
+   *
+   * Safe to call even after the caller's restaurant is no longer the
+   * CURRENT one (a save for A resolving after the user switched to B,
+   * race-condition fix) — this only ever touches A's own entry in the
+   * list, keyed by `updated.id`, never whichever restaurant is current.
+   * `currentRestaurant`/`availableRestaurants` are both derived from
+   * `currentRestaurantId`, so B's view is untouched either way.
+   */
+  function applyRestaurantUpdate(updated: Restaurant): void {
+    restaurants.value = restaurants.value.map((restaurant) => (restaurant.id === updated.id ? updated : restaurant))
+  }
+
+  /**
+   * Same authoritative-response treatment as applyRestaurantUpdate, for the
+   * settings sub-resource — but RestaurantSettings carries no id of its own
+   * (see RestaurantSettingsResource), so unlike applyRestaurantUpdate this
+   * CANNOT tell which restaurant a response belongs to just by looking at
+   * it. The caller must pass the restaurantId it captured before firing the
+   * request; this is only ever applied to `currentSettings` if that is
+   * still the current restaurant when the response arrives — a stale
+   * response (restaurant switched mid-request) is dropped here rather than
+   * silently overwriting a different restaurant's settings (Passo 2.10
+   * race-condition fix).
+   */
+  function applySettingsUpdate(restaurantId: number, updated: RestaurantSettings): void {
+    if (currentRestaurantId.value !== restaurantId) return
+    currentSettings.value = updated
+  }
+
   async function selectRestaurant(id: number): Promise<void> {
     if (currentRestaurantId.value === id) return
     if (!availableRestaurants.value.some((r) => r.id === id)) return
@@ -166,5 +202,7 @@ export const useRestaurantStore = defineStore('restaurant', () => {
     load,
     selectRestaurant,
     clearRestaurant,
+    applyRestaurantUpdate,
+    applySettingsUpdate,
   }
 })

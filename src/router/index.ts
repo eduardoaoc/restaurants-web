@@ -67,6 +67,18 @@ const router = createRouter({
           // manage_users in the active organization — never a role name.
           meta: { permission: 'manage_users' },
         },
+        {
+          path: 'settings',
+          name: 'app-settings',
+          component: () => import('@/views/settings/SettingsView.vue'),
+          // Deliberately no single `meta.permission` here (Passo 2.10):
+          // this screen mixes an organization-scoped capability
+          // (manage_organization) with a restaurant-scoped one
+          // (manage_restaurants), and a user may legitimately hold only
+          // one of the two — same self-gating pattern as DashboardView's
+          // Operación/Análisis tabs, never a redirect-away for a partial
+          // capability.
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },

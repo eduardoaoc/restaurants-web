@@ -19,6 +19,7 @@ const { can } = usePermissions()
 
 const canManageMenu = () => can('manage_menu')
 const canManageStaff = () => can('manage_users')
+const canManageSettings = () => can('manage_restaurants')
 
 // Only fetched while this card is actually on screen (it only renders
 // before the restaurant has any table, see OperationView's `!hasAnyTables`
@@ -37,12 +38,14 @@ const { steps, completedCount, totalCount, percent } = useRestaurantOnboarding(
   // "Someone besides the owner has been added" — the same done/not-done
   // shape as floor_plan's hasTables, never an invented headcount target.
   () => orgStaff.staff.value.length > 1,
+  canManageSettings,
 )
 
-function onStepAction(action: 'open-floor-editor' | 'navigate-menu' | 'navigate-staff' | undefined): void {
+function onStepAction(action: 'open-floor-editor' | 'navigate-menu' | 'navigate-staff' | 'navigate-settings' | undefined): void {
   if (action === 'open-floor-editor') emit('open-floor-editor')
   else if (action === 'navigate-menu') void router.push({ name: 'app-menu' })
   else if (action === 'navigate-staff') void router.push({ name: 'app-staff' })
+  else if (action === 'navigate-settings') void router.push({ name: 'app-settings' })
 }
 </script>
 
