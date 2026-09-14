@@ -24,6 +24,7 @@ withDefaults(defineProps<{ label: string }>(), {})
 const emit = defineEmits<{ close: [] }>()
 
 const sheetRef = ref<HTMLElement | null>(null)
+let returnFocus: HTMLElement | null = null
 
 /**
  * `visible` decouples "the parent wants this closed" from "this DOM is
@@ -40,9 +41,21 @@ function requestClose(): void {
 
 function onKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') requestClose()
+  if (event.key !== 'Tab' || !sheetRef.value) return
+  const controls = Array.from(sheetRef.value.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]'))
+    .filter(element => element.getClientRects().length > 0)
+  const first = controls[0]
+  const last = controls[controls.length - 1]
+  if (!first || !last) { event.preventDefault(); sheetRef.value.focus(); return }
+  if (event.shiftKey && (document.activeElement === first || document.activeElement === sheetRef.value)) {
+    event.preventDefault(); last.focus()
+  } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === sheetRef.value)) {
+    event.preventDefault(); first.focus()
+  }
 }
 
 onMounted(() => {
+  returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
   document.addEventListener('keydown', onKeydown)
   // Moves keyboard focus into the sheet the moment it opens — without this
   // a screen reader / keyboard user has no signal that a dialog just took
@@ -52,6 +65,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('keydown', onKeydown)
+  if (returnFocus?.isConnected) returnFocus.focus()
 })
 </script>
 

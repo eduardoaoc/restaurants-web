@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { PhArmchair, PhBellRinging, PhBookOpen, PhGauge, PhList, PhUsersThree, PhX } from '@phosphor-icons/vue'
+import { PhArmchair, PhBellRinging, PhBookOpen, PhChefHat, PhGauge, PhList, PhUsersThree, PhX } from '@phosphor-icons/vue'
 
 import AIconButton from '@/components/ui/AIconButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
@@ -40,7 +40,8 @@ interface NavItem {
 // disappears from both rail and drawer for a user whose current restaurant
 // lacks manage_menu, never a role-name check.
 const NAV_ITEMS: NavItem[] = [
-  { routeName: 'app-dashboard', labelKey: 'common.dashboard', icon: PhGauge },
+  { routeName: 'app-dashboard', labelKey: 'common.dashboard', icon: PhGauge, permission: ['view_operations', 'view_reports'] },
+  { routeName: 'app-kitchen', labelKey: 'kitchen.title', icon: PhChefHat, permission: 'update_kitchen_status' },
   {
     routeName: 'app-service',
     labelKey: 'service.title',
@@ -153,7 +154,7 @@ onMounted(() => {
           <PhList :size="22" />
         </AIconButton>
         <div class="flex min-w-0 items-center gap-1">
-          <span class="shrink-0 truncate text-title-md font-medium text-on-surface">{{ t('common.dashboard') }}</span>
+          <span class="hidden shrink-0 text-title-md font-medium text-on-surface sm:block">{{ t(NAV_ITEMS.find(item => item.routeName === route.name)?.labelKey ?? 'common.settings') }}</span>
           <span class="hidden h-5 w-px shrink-0 bg-outline-variant sm:block" aria-hidden="true" />
           <RestaurantSwitcher />
         </div>

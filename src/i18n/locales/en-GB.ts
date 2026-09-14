@@ -1,4 +1,22 @@
 export default {
+  kitchen: {
+    title: 'Kitchen', subtitle: 'Orders in arrival order. Oldest first.',
+    columns: { all: 'All', confirmed: 'New', accepted: 'Accepted', preparing: 'Preparing', ready: 'Ready' },
+    actions: { accept: 'Accept order', preparing: 'Start preparing', ready: 'Mark ready' },
+    filter: 'Filter by status', oldest: 'Oldest awaiting preparation', minutes: '{count} min',
+    note: 'Note', created: 'Order time', details: 'View details', detailsFor: 'View details for order {number}',
+    ticket: 'View kitchen ticket', print: 'Print kitchen ticket', refresh: 'Refresh', retry: 'Try again',
+    awaitingWaiter: 'Awaiting collection by waiting staff',
+    empty: 'There are no pending kitchen orders.', columnEmpty: 'No orders in this status.',
+    noAccess: 'You do not have permission to operate this restaurant’s kitchen.',
+    conflict: 'The action could not be completed. The current status has been requested; check it before acting again.',
+    sessionExpired: 'Your session has expired. Please sign in again.',
+    printDisabled: 'Kitchen ticket printing is disabled for this restaurant.',
+    notPrintable: 'This order can no longer be printed. Refresh the queue.',
+    limit: 'Showing the 100 oldest orders. More orders may be waiting.',
+    refreshHint: 'You can refresh the queue manually.',
+    connection: { connected: 'Live', connecting: 'Connecting…', reconnecting: 'Reconnecting…', disconnected: 'Live connection offline', unavailable: 'Live updates unavailable', error: 'Could not connect to live updates' },
+  },
   common: {
     login: 'Sign in',
     logout: 'Sign out',
@@ -314,6 +332,9 @@ export default {
         served: 'Served',
         rejected: 'Rejected',
         cancelled: 'Cancelled',
+      },
+      actions: {
+        markServed: 'Mark as served',
       },
     },
   },

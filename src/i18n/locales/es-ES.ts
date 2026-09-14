@@ -1,4 +1,22 @@
 export default {
+  kitchen: {
+    title: 'Cocina', subtitle: 'Pedidos por orden de llegada. Los más antiguos primero.',
+    columns: { all: 'Todos', confirmed: 'Nuevos', accepted: 'Aceptados', preparing: 'En preparación', ready: 'Listos' },
+    actions: { accept: 'Aceptar pedido', preparing: 'Iniciar preparación', ready: 'Marcar listo' },
+    filter: 'Filtrar por estado', oldest: 'Más antiguo por preparar', minutes: '{count} min',
+    note: 'Nota', created: 'Hora del pedido', details: 'Ver detalle', detailsFor: 'Ver detalle del pedido {number}',
+    ticket: 'Ver comanda', print: 'Imprimir comanda', refresh: 'Actualizar', retry: 'Reintentar',
+    awaitingWaiter: 'Pendiente de recoger por sala',
+    empty: 'No hay pedidos pendientes en cocina.', columnEmpty: 'Sin pedidos en este estado.',
+    noAccess: 'No tienes permiso para operar la cocina de este restaurante.',
+    conflict: 'No se ha podido completar la acción. Se ha solicitado el estado actual; revísalo antes de volver a actuar.',
+    sessionExpired: 'Tu sesión ha caducado. Vuelve a iniciar sesión.',
+    printDisabled: 'La impresión de comandas está desactivada en este restaurante.',
+    notPrintable: 'Este pedido ya no se puede imprimir. Actualiza la cola.',
+    limit: 'Se muestran los 100 pedidos más antiguos. Puede haber más pedidos pendientes.',
+    refreshHint: 'Puedes actualizar la cola manualmente.',
+    connection: { connected: 'En directo', connecting: 'Conectando…', reconnecting: 'Reconectando…', disconnected: 'Sin conexión en directo', unavailable: 'Actualización en directo no disponible', error: 'No se ha podido conectar en directo' },
+  },
   common: {
     login: 'Iniciar sesión',
     logout: 'Cerrar sesión',
@@ -314,6 +332,9 @@ export default {
         served: 'Servido',
         rejected: 'Rechazado',
         cancelled: 'Cancelado',
+      },
+      actions: {
+        markServed: 'Marcar como servido',
       },
     },
   },

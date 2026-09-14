@@ -1,4 +1,22 @@
 export default {
+  kitchen: {
+    title: 'Cuina', subtitle: 'Comandes per ordre d’arribada. Les més antigues primer.',
+    columns: { all: 'Totes', confirmed: 'Noves', accepted: 'Acceptades', preparing: 'En preparació', ready: 'Llestes' },
+    actions: { accept: 'Acceptar comanda', preparing: 'Iniciar preparació', ready: 'Marcar llesta' },
+    filter: 'Filtrar per estat', oldest: 'Més antiga per preparar', minutes: '{count} min',
+    note: 'Nota', created: 'Hora de la comanda', details: 'Veure detall', detailsFor: 'Veure detall de la comanda {number}',
+    ticket: 'Veure comanda', print: 'Imprimir comanda', refresh: 'Actualitzar', retry: 'Tornar a intentar',
+    awaitingWaiter: 'Pendent de recollir per sala',
+    empty: 'No hi ha comandes pendents en cuina.', columnEmpty: 'Sense comandes en este estat.',
+    noAccess: 'No tens permís per a operar la cuina d’este restaurant.',
+    conflict: 'No s’ha pogut completar l’acció. S’ha sol·licitat l’estat actual; revisa’l abans de tornar a actuar.',
+    sessionExpired: 'La teua sessió ha caducat. Torna a iniciar sessió.',
+    printDisabled: 'La impressió de comandes està desactivada en este restaurant.',
+    notPrintable: 'Esta comanda ja no es pot imprimir. Actualitza la cua.',
+    limit: 'Es mostren les 100 comandes més antigues. Pot haver-hi més comandes pendents.',
+    refreshHint: 'Pots actualitzar la cua manualment.',
+    connection: { connected: 'En directe', connecting: 'Connectant…', reconnecting: 'Reconnectant…', disconnected: 'Sense connexió en directe', unavailable: 'Actualització en directe no disponible', error: 'No s’ha pogut connectar en directe' },
+  },
   common: {
     login: 'Iniciar sessió',
     logout: 'Tancar sessió',
@@ -314,6 +332,9 @@ export default {
         served: 'Servida',
         rejected: 'Rebutjada',
         cancelled: 'Cancel·lada',
+      },
+      actions: {
+        markServed: 'Marcar com a servida',
       },
     },
   },

@@ -155,12 +155,17 @@ export const useRestaurantStore = defineStore('restaurant', () => {
    */
   async function loadCurrentSettings(): Promise<void> {
     currentSettings.value = null
-    if (currentRestaurantId.value === null) return
+    const id = currentRestaurantId.value
+    if (id === null) return
+    const context = useAuthStore().authContext
+    const permissions = context?.organizations.flatMap(org => org.restaurants).find(r => r.id === id)?.permissions
+    if (!permissions?.includes('manage_restaurants')) return
 
     try {
-      currentSettings.value = await restaurantsService.settings(currentRestaurantId.value)
+      const settings = await restaurantsService.settings(id)
+      if (currentRestaurantId.value === id) currentSettings.value = settings
     } catch {
-      currentSettings.value = null
+      if (currentRestaurantId.value === id) currentSettings.value = null
     }
   }
 

@@ -299,7 +299,13 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
         </AButton>
 
         <div v-if="showOrders" class="mt-4 border-t border-outline-variant pt-4">
-          <TableOrdersList :table-session-id="table.session.id" :currency="currency" />
+          <TableOrdersList
+            :key="table.session.id"
+            :table-session-id="table.session.id"
+            :currency="currency"
+            :refresh-key="table"
+            @served="emit('refresh')"
+          />
         </div>
       </template>
     </aside>

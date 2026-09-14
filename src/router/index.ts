@@ -58,6 +58,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
       children: [
         {
+          path: 'kitchen',
+          name: 'app-kitchen',
+          component: () => import('@/views/kitchen/KitchenView.vue'),
+          meta: { permission: 'update_kitchen_status' },
+        },
+        {
           path: 'dashboard',
           name: 'app-dashboard',
           component: () => import('@/views/DashboardView.vue'),
@@ -133,6 +139,21 @@ router.beforeEach(async (to) => {
 
   if (to.meta.guestOnly && auth.authenticated) {
     return { name: 'app-dashboard' }
+  }
+
+  if (to.meta.requiresAuth && auth.authenticated) {
+    await useRestaurantStore().load()
+    const { can, canAny, canOrganization } = usePermissions()
+    // Operational kitchen accounts land directly in their working queue.
+    if (to.name === 'app-dashboard' && !canAny(['view_operations', 'view_reports']) && can('update_kitchen_status')) {
+      return { name: 'app-kitchen' }
+    }
+    if (to.name === 'app-settings' && !can('manage_restaurants') && !canOrganization('manage_organization')) {
+      return { name: 'app-dashboard' }
+    }
+    if (to.name === 'app-service' && !canAny(['view_operations', 'create_orders', 'approve_customer_orders', 'serve_orders'])) {
+      return { name: 'app-dashboard' }
+    }
   }
 
   if (to.meta.permission) {
