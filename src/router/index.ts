@@ -19,6 +19,15 @@ declare module 'vue-router' {
      * 403 anyway.
      */
     permission?: PermissionSlug
+    /**
+     * The public QR customer surface (Passo 3.1) — a completely anonymous
+     * flow with no concept of an AFORO account. The guard below returns
+     * immediately for these routes, before ever touching `auth`/
+     * `restaurantStore`: no GET /me, no GET /restaurants, no redirect to
+     * /login, ever. A diner's phone has zero reason to depend on the admin
+     * session stack succeeding, failing, or even existing.
+     */
+    public?: boolean
   }
 }
 
@@ -31,6 +40,16 @@ const router = createRouter({
       name: 'login',
       component: () => import('@/views/LoginView.vue'),
       meta: { guestOnly: true },
+    },
+    {
+      // Matches the exact format table-public-url.ts already builds
+      // (`${VITE_PUBLIC_APP_URL}/t/${public_token}`) and the QR panel
+      // already encodes — never change this segment without re-auditing
+      // every already-printed QR sheet.
+      path: '/t/:publicToken',
+      name: 'public-table',
+      component: () => import('@/views/public/PublicTableView.vue'),
+      meta: { public: true },
     },
     {
       path: '/app',
@@ -86,6 +105,11 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  // The public QR surface (Passo 3.1) never touches the admin auth/
+  // restaurant stack — an anonymous diner's navigation must never wait on,
+  // or be redirected by, a GET /me that has nothing to do with them.
+  if (to.meta.public) return
+
   const auth = useAuthStore()
 
   // Memoized on the store — the first navigation triggers the one and only
