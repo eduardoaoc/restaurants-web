@@ -5,19 +5,21 @@ import { PhMinus, PhPlus, PhTrash } from '@phosphor-icons/vue'
 import AButton from '@/components/ui/AButton.vue'
 import ABottomSheet from '@/components/ui/ABottomSheet.vue'
 import type { ApiError } from '@/api/errors'
-import type { CartLine } from '@/composables/usePublicCart'
+import type { StaffCartLine } from '@/composables/useStaffOrderCart'
 import { describeApiError } from '@/utils/error-message'
 import { formatMoney } from '@/utils/format'
 
 /**
- * The order review required before POST (Passo 3.1 §18) — every line,
- * quantity, modifier and price is shown here; confirming is the one
- * explicit, unambiguous action that actually sends the order.
+ * Review before POST /tables/{table}/orders (Passo 3.2 §12) — same review-
+ * before-send discipline as the public cart (Passo 3.1 §18), for the
+ * waiter's manual order instead of the customer's.
  */
 const props = defineProps<{
-  lines: CartLine[]
+  tableName: string
+  lines: StaffCartLine[]
   total: number
   locale: string
+  currency: string
   submitting: boolean
   submitError: ApiError | null
 }>()
@@ -31,13 +33,13 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-function lineUnitTotal(line: CartLine): number {
+function lineUnitTotal(line: StaffCartLine): number {
   return Number(line.unit_price) + line.modifiers.reduce((sum, m) => sum + Number(m.price_delta), 0)
 }
 </script>
 
 <template>
-  <ABottomSheet :label="t('publicMenu.cart.title')" @close="emit('close')">
+  <ABottomSheet :label="t('service.order.newOrderFor', { table: tableName })" @close="emit('close')">
     <p v-if="lines.length === 0" class="py-8 text-center text-body-md text-on-surface-variant">
       {{ t('publicMenu.cart.empty') }}
     </p>
@@ -53,7 +55,7 @@ function lineUnitTotal(line: CartLine): number {
             <p v-if="line.note" class="mt-0.5 text-label-md italic text-on-surface-variant">{{ line.note }}</p>
           </div>
           <p class="shrink-0 text-body-lg font-semibold tabular-nums text-on-surface">
-            {{ formatMoney(String(lineUnitTotal(line) * line.quantity), locale) }}
+            {{ formatMoney(String(lineUnitTotal(line) * line.quantity), locale, currency) }}
           </p>
         </div>
 
@@ -98,10 +100,10 @@ function lineUnitTotal(line: CartLine): number {
       <div class="flex flex-col gap-3">
         <div class="flex items-center justify-between text-title-md font-semibold text-on-surface">
           <span>{{ t('publicMenu.cart.total') }}</span>
-          <span class="tabular-nums">{{ formatMoney(String(total), locale) }}</span>
+          <span class="tabular-nums">{{ formatMoney(String(total), locale, currency) }}</span>
         </div>
         <AButton full-width :disabled="lines.length === 0" :loading="submitting" @click="emit('confirm')">
-          {{ submitting ? t('publicMenu.cart.confirming') : t('publicMenu.cart.confirm') }}
+          {{ submitting ? t('publicMenu.cart.confirming') : t('service.order.confirmOrder') }}
         </AButton>
       </div>
     </template>

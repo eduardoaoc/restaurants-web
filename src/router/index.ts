@@ -79,6 +79,16 @@ const router = createRouter({
           meta: { permission: 'manage_tables' },
         },
         {
+          path: 'service',
+          name: 'app-service',
+          component: () => import('@/views/service/ServiceView.vue'),
+          // Deliberately no single `meta.permission` (Passo 3.2) — same
+          // reasoning as `settings`: this screen mixes view_operations
+          // (see tables), approve_customer_orders (pending approvals) and
+          // create_orders (manual order) — a waiter may hold any subset,
+          // and the view itself gates each section independently.
+        },
+        {
           path: 'staff',
           name: 'app-staff',
           component: () => import('@/views/staff/StaffView.vue'),

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { PhCheckCircle, PhHourglassMedium } from '@phosphor-icons/vue'
 
 import AButton from '@/components/ui/AButton.vue'
-import PublicBottomSheet from './PublicBottomSheet.vue'
+import ABottomSheet from '@/components/ui/ABottomSheet.vue'
 import type { PublicOrderCreated } from '@/types/public-menu'
 import { formatMoney } from '@/utils/format'
 
@@ -30,7 +30,7 @@ const isWaitingApproval = computed(() => props.order.status === 'waiting_approva
 </script>
 
 <template>
-  <PublicBottomSheet :label="t('publicMenu.confirmation.title')" @close="emit('close')">
+  <ABottomSheet :label="t('publicMenu.confirmation.title')" @close="emit('close')">
     <div class="flex flex-col items-center gap-3 py-4 text-center">
       <span
         class="flex h-14 w-14 items-center justify-center rounded-full"
@@ -54,5 +54,5 @@ const isWaitingApproval = computed(() => props.order.status === 'waiting_approva
     <template #footer>
       <AButton full-width @click="emit('close')">{{ t('publicMenu.confirmation.newOrder') }}</AButton>
     </template>
-  </PublicBottomSheet>
+  </ABottomSheet>
 </template>

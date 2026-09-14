@@ -5,49 +5,72 @@ import { PhMinus, PhPlus } from '@phosphor-icons/vue'
 
 import AButton from '@/components/ui/AButton.vue'
 import ABottomSheet from '@/components/ui/ABottomSheet.vue'
-import type { CartModifierSelection } from '@/composables/usePublicCart'
-import type { PublicProduct } from '@/types/public-menu'
+import AProgress from '@/components/ui/AProgress.vue'
+import { useProductModifierGroups } from '@/composables/useProductModifierGroups'
+import type { StaffCartModifierSelection } from '@/composables/useStaffOrderCart'
+import type { AppLocale } from '@/i18n'
+import type { CategoryProduct } from '@/types/category-product'
+import { resolveTranslatedDescription, resolveTranslatedName } from '@/utils/translation'
 import { formatMoney } from '@/utils/format'
 
 /**
- * Product detail + modifier selection + quantity (Passo 3.1 §13/§14).
- * Every min/max/required/multiple-selection rule is read straight off the
- * real backend contract (PublicModifierGroup) — nothing here is guessed:
- * `max_select === 1` renders as single-choice (radio), anything higher as
- * multi-choice (checkboxes) capped at `max_select`. The Add button stays
- * disabled until every group's selection count is within
- * [min_select, max_select] — CLAUDE.md's "validação deve existir ANTES de
- * adicionar ao carrinho", enforced here rather than only server-side.
+ * Product detail + modifier selection + quantity for the WAITER's manual
+ * order (Passo 3.2 §12/§13/§14) — mirrors PublicProductSheet's validation
+ * rules (same real min_select/max_select/required semantics) but built
+ * against the admin domain (CategoryProduct/ModifierGroup/ModifierOption,
+ * translations[] resolved for display) instead of the Public* types, and
+ * fetches modifier groups lazily — only for the ONE product being
+ * configured, via the same useProductModifierGroups the admin Carta screen
+ * already uses (Passo 2.5), never a bundled/public-shaped response.
  */
 const props = defineProps<{
-  product: PublicProduct
-  locale: string
+  categoryProduct: CategoryProduct
+  primaryLocale: AppLocale
+  currency: string
 }>()
 
 const emit = defineEmits<{
   close: []
-  add: [payload: { quantity: number; selections: CartModifierSelection[]; note: string | null }]
+  add: [payload: { quantity: number; selections: StaffCartModifierSelection[]; note: string | null }]
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+
+const restaurantProduct = computed(() => props.categoryProduct.restaurant_product)
+const product = computed(() => restaurantProduct.value?.product ?? null)
+
+const productName = computed(() =>
+  product.value ? resolveTranslatedName(product.value.translations, [locale.value, props.primaryLocale], product.value.internal_name) : '',
+)
+const productDescription = computed(() =>
+  product.value ? resolveTranslatedDescription(product.value.translations, [locale.value, props.primaryLocale]) : null,
+)
+
+const { groups, loading, optionsByGroup, optionsLoading } = useProductModifierGroups(
+  () => props.categoryProduct.restaurant_product_id,
+)
+
+function groupName(groupId: number): string {
+  const group = groups.value.find((g) => g.id === groupId)
+  if (!group) return ''
+  return resolveTranslatedName(group.translations, [locale.value, props.primaryLocale], group.internal_name)
+}
+function optionName(groupId: number, optionId: number): string {
+  const option = (optionsByGroup[groupId] ?? []).find((o) => o.id === optionId)
+  if (!option) return ''
+  return resolveTranslatedName(option.translations, [locale.value, props.primaryLocale], option.internal_name)
+}
 
 const quantity = ref(1)
 const note = ref('')
-/** groupId -> selected optionIds, in selection order (matters for a max_select=1 radio group's single value). */
 const selected = reactive<Record<number, number[]>>({})
-
-for (const group of props.product.modifier_groups) {
-  selected[group.id] = []
-}
 
 function isSelected(groupId: number, optionId: number): boolean {
   return selected[groupId]?.includes(optionId) ?? false
 }
-
 function toggleSingle(groupId: number, optionId: number): void {
   selected[groupId] = [optionId]
 }
-
 function toggleMultiple(groupId: number, optionId: number, maxSelect: number): void {
   const current = selected[groupId] ?? []
   if (current.includes(optionId)) {
@@ -57,35 +80,41 @@ function toggleMultiple(groupId: number, optionId: number, maxSelect: number): v
   if (current.length >= maxSelect) return
   selected[groupId] = [...current, optionId]
 }
-
 function groupCount(groupId: number): number {
   return selected[groupId]?.length ?? 0
 }
-
 function groupHint(min: number, max: number): string {
   if (max === 1) return t('publicMenu.product.chooseOne')
   if (min === 0) return t('publicMenu.product.chooseUpTo', { max })
   return t('publicMenu.product.chooseBetween', { min, max })
 }
 
-const groupsValid = computed(() =>
-  props.product.modifier_groups.every((group) => {
-    const count = groupCount(group.id)
-    return count >= group.min_select && count <= group.max_select
-  }),
+// Never lets the waiter submit before every group's real min/max data has
+// actually arrived — a group that's still fetching its options can't be
+// validated yet, so it's treated as not-yet-satisfiable rather than
+// trivially valid (Passo 3.2 §14 "validação antes de adicionar").
+const allDataLoaded = computed(() => !loading.value && groups.value.every((g) => !optionsLoading[g.id]))
+
+const groupsValid = computed(
+  () =>
+    allDataLoaded.value &&
+    groups.value.every((group) => {
+      const count = groupCount(group.id)
+      return count >= group.min_select && count <= group.max_select
+    }),
 )
 
-const selectedModifiers = computed<CartModifierSelection[]>(() => {
-  const result: CartModifierSelection[] = []
-  for (const group of props.product.modifier_groups) {
+const selectedModifiers = computed<StaffCartModifierSelection[]>(() => {
+  const result: StaffCartModifierSelection[] = []
+  for (const group of groups.value) {
     for (const optionId of selected[group.id] ?? []) {
-      const option = group.options.find((o) => o.id === optionId)
+      const option = (optionsByGroup[group.id] ?? []).find((o) => o.id === optionId)
       if (!option) continue
       result.push({
         group_id: group.id,
-        group_name: group.name,
+        group_name: groupName(group.id),
         option_id: option.id,
-        option_name: option.name,
+        option_name: optionName(group.id, option.id),
         price_delta: option.price_delta,
       })
     }
@@ -93,8 +122,9 @@ const selectedModifiers = computed<CartModifierSelection[]>(() => {
   return result
 })
 
+const basePrice = computed(() => restaurantProduct.value?.price ?? '0')
 const unitPriceWithModifiers = computed(
-  () => Number(props.product.price) + selectedModifiers.value.reduce((sum, m) => sum + Number(m.price_delta), 0),
+  () => Number(basePrice.value) + selectedModifiers.value.reduce((sum, m) => sum + Number(m.price_delta), 0),
 )
 const totalPrice = computed(() => unitPriceWithModifiers.value * quantity.value)
 
@@ -112,16 +142,23 @@ function submit(): void {
 </script>
 
 <template>
-  <ABottomSheet :label="product.name" @close="emit('close')">
-    <div class="flex flex-col gap-5">
+  <ABottomSheet :label="productName" @close="emit('close')">
+    <div v-if="!restaurantProduct" class="py-6 text-center text-body-md text-on-surface-variant">
+      {{ t('service.order.productUnavailable') }}
+    </div>
+    <div v-else class="flex flex-col gap-5">
       <div>
-        <p v-if="product.description" class="text-body-md text-on-surface-variant">{{ product.description }}</p>
-        <p class="mt-1 text-title-md font-semibold text-on-surface">{{ formatMoney(product.price, locale) }}</p>
+        <p v-if="productDescription" class="text-body-md text-on-surface-variant">{{ productDescription }}</p>
+        <p class="mt-1 text-title-md font-semibold text-on-surface">{{ formatMoney(basePrice, locale, currency) }}</p>
       </div>
 
-      <fieldset v-for="group in product.modifier_groups" :key="group.id" class="flex flex-col gap-2">
+      <div v-if="loading" class="flex justify-center py-4">
+        <AProgress size="sm" />
+      </div>
+
+      <fieldset v-for="group in groups" :key="group.id" class="flex flex-col gap-2">
         <legend class="flex items-center gap-2 text-label-lg font-semibold text-on-surface">
-          {{ group.name }}
+          {{ groupName(group.id) }}
           <span
             v-if="group.required"
             class="rounded-full bg-secondary-container px-2 py-0.5 text-label-md font-medium text-on-secondary-container"
@@ -129,12 +166,12 @@ function submit(): void {
             {{ t('publicMenu.product.requiredBadge') }}
           </span>
         </legend>
-        <p v-if="group.description" class="text-label-md text-on-surface-variant">{{ group.description }}</p>
         <p class="text-label-md text-on-surface-variant">{{ groupHint(group.min_select, group.max_select) }}</p>
 
-        <div class="flex flex-col divide-y divide-outline-variant rounded-lg border border-outline-variant">
+        <AProgress v-if="optionsLoading[group.id]" size="sm" />
+        <div v-else class="flex flex-col divide-y divide-outline-variant rounded-lg border border-outline-variant">
           <label
-            v-for="option in group.options"
+            v-for="option in optionsByGroup[group.id] ?? []"
             :key="option.id"
             class="flex min-h-11 cursor-pointer items-center justify-between gap-3 px-3 py-2.5"
           >
@@ -142,7 +179,7 @@ function submit(): void {
               <input
                 v-if="group.max_select === 1"
                 type="radio"
-                :name="`group-${group.id}`"
+                :name="`service-group-${group.id}`"
                 :checked="isSelected(group.id, option.id)"
                 class="h-5 w-5 text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 @change="toggleSingle(group.id, option.id)"
@@ -155,21 +192,21 @@ function submit(): void {
                 class="h-5 w-5 rounded border-outline text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-[0.38]"
                 @change="toggleMultiple(group.id, option.id, group.max_select)"
               />
-              <span class="text-body-lg text-on-surface">{{ option.name }}</span>
+              <span class="text-body-lg text-on-surface">{{ optionName(group.id, option.id) }}</span>
             </span>
             <span v-if="Number(option.price_delta) > 0" class="shrink-0 text-label-lg text-on-surface-variant">
-              +{{ formatMoney(option.price_delta, locale) }}
+              +{{ formatMoney(option.price_delta, locale, currency) }}
             </span>
           </label>
         </div>
       </fieldset>
 
       <div class="flex flex-col gap-1.5">
-        <label :for="'product-note'" class="text-label-lg font-medium text-on-surface-variant">
+        <label for="service-product-note" class="text-label-lg font-medium text-on-surface-variant">
           {{ t('publicMenu.product.note') }}
         </label>
         <textarea
-          id="product-note"
+          id="service-product-note"
           v-model="note"
           rows="2"
           :placeholder="t('publicMenu.product.notePlaceholder')"
@@ -203,8 +240,8 @@ function submit(): void {
     </div>
 
     <template #footer>
-      <AButton full-width :disabled="!groupsValid" @click="submit">
-        {{ t('publicMenu.product.addWithPrice', { price: formatMoney(String(totalPrice), locale) }) }}
+      <AButton full-width :disabled="!restaurantProduct || !groupsValid" @click="submit">
+        {{ t('publicMenu.product.addWithPrice', { price: formatMoney(String(totalPrice), locale, currency) }) }}
       </AButton>
     </template>
   </ABottomSheet>

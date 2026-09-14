@@ -15,6 +15,7 @@ import { tablesService } from '@/services/tables.service'
 import type { OperationsStaffMember, OperationsTable } from '@/types/operations'
 import { describeApiError } from '@/utils/error-message'
 import { formatDuration, formatMoney } from '@/utils/format'
+import ServiceOrderComposer from '@/components/service/ServiceOrderComposer.vue'
 import TableOrdersList from './TableOrdersList.vue'
 import TransferTableDialog from './TransferTableDialog.vue'
 
@@ -48,10 +49,15 @@ const canTransferTables = computed(() => can('transfer_tables'))
 const canViewOrders = computed(() =>
   canAny(['create_orders', 'approve_customer_orders', 'update_kitchen_status', 'serve_orders', 'close_bill']),
 )
+// Passo 3.2: distinct from canViewOrders — a user may see a table's orders
+// (e.g. close_bill-only) without being allowed to create a new one, and
+// vice versa. Maps 1:1 to POST /tables/{table}/orders's own Policy check.
+const canCreateOrders = computed(() => can('create_orders'))
 
 const showOrders = ref(false)
 const showTransfer = ref(false)
 const showWaiterMenu = ref(false)
+const showOrderComposer = ref(false)
 const openGuestCount = ref('2')
 const submittingAction = ref<string | null>(null)
 const feedback = ref<{ kind: 'success' | 'error'; message: string } | null>(null)
@@ -62,9 +68,16 @@ watch(
     showOrders.value = false
     showTransfer.value = false
     showWaiterMenu.value = false
+    showOrderComposer.value = false
     feedback.value = null
   },
 )
+
+function onOrderCreated(): void {
+  showOrderComposer.value = false
+  feedback.value = { kind: 'success', message: t('tableDrawer.feedback.orderCreated') }
+  emit('refresh')
+}
 
 const style = computed(() => (props.table ? getTableStatusStyle(props.table.primary_status) : null))
 
@@ -246,7 +259,12 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
 
         <div class="mt-4 grid grid-cols-2 gap-2">
           <AButton v-if="canViewOrders" variant="tonal" @click="showOrders = !showOrders">{{ t('tableDrawer.actions.viewOrders') }}</AButton>
-          <AButton v-if="canViewOrders" variant="outlined" disabled>
+          <AButton
+            v-if="canCreateOrders"
+            variant="outlined"
+            :disabled="!table.session"
+            @click="showOrderComposer = true"
+          >
             {{ t('tableDrawer.actions.newOrder') }}
           </AButton>
           <AButton v-if="canAssignWaiters" variant="outlined" :loading="submittingAction === 'call'" @click="callWaiter">
@@ -255,8 +273,12 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
           <AButton v-if="canTransferTables" variant="outlined" @click="showTransfer = true">{{ t('tableDrawer.actions.transfer') }}</AButton>
         </div>
         <!-- Visible, not just a hover title — a disabled native <button> never receives focus, so a
-             title-only explanation would be unreachable by keyboard/screen-reader users (§27). -->
-        <p v-if="canViewOrders" class="mt-1.5 text-label-md text-on-surface-variant">{{ t('tableDrawer.actions.newOrderDisabledHint') }}</p>
+             title-only explanation would be unreachable by keyboard/screen-reader users (§27). Only
+             shown while the button is actually disabled (Passo 3.2 §14 — POST /tables/{table}/orders
+             409s without an active session, so this is real domain behaviour, never invented). -->
+        <p v-if="canCreateOrders && !table.session" class="mt-1.5 text-label-md text-on-surface-variant">
+          {{ t('tableDrawer.actions.newOrderDisabledHint') }}
+        </p>
 
         <p
           v-if="table.billing && Number(table.billing.outstanding) > 0"
@@ -289,6 +311,15 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
     :submitting="submittingAction === 'transfer'"
     @confirm="confirmTransfer"
     @cancel="showTransfer = false"
+  />
+
+  <ServiceOrderComposer
+    v-if="showOrderComposer && table"
+    :table-id="table.id"
+    :table-name="table.name"
+    :currency="currency"
+    @close="showOrderComposer = false"
+    @created="onOrderCreated"
   />
 </template>
 

@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { PhArmchair, PhBookOpen, PhGauge, PhList, PhUsersThree, PhX } from '@phosphor-icons/vue'
+import { PhArmchair, PhBellRinging, PhBookOpen, PhGauge, PhList, PhUsersThree, PhX } from '@phosphor-icons/vue'
 
 import AIconButton from '@/components/ui/AIconButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
@@ -25,19 +25,28 @@ interface NavItem {
    * means "always visible to an authenticated user" (Dashboard today: it
    * renders its own permission-aware content internally rather than
    * disappearing from the rail, since it's currently the app's only
-   * destination — see DashboardView). Future items (Mesas/Pedidos/Cocina/
-   * ...) can set this the moment they're added, per CLAUDE.md §17/§23.
+   * destination — see DashboardView). An array is an OR (Passo 3.2 —
+   * Servicio is reachable with any one of a few different capabilities,
+   * unlike every earlier item's single required permission). Future items
+   * (Cocina/...) can set this the moment they're added, per CLAUDE.md
+   * §17/§23.
    */
-  permission?: PermissionSlug
+  permission?: PermissionSlug | PermissionSlug[]
 }
 
-// Data-driven list (not hardcoded markup) so Mesas/Pedidos/Cocina/etc. are a
-// one-line addition later, without rebuilding the rail/drawer. See
-// CLAUDE.md §17. Carta (Passo 2.2) is the first item to actually set
-// `permission` — it disappears from both rail and drawer for a user whose
-// current restaurant lacks manage_menu, never a role-name check.
+// Data-driven list (not hardcoded markup) so Cocina/etc. are a one-line
+// addition later, without rebuilding the rail/drawer. See CLAUDE.md §17.
+// Carta (Passo 2.2) is the first item to actually set `permission` — it
+// disappears from both rail and drawer for a user whose current restaurant
+// lacks manage_menu, never a role-name check.
 const NAV_ITEMS: NavItem[] = [
   { routeName: 'app-dashboard', labelKey: 'common.dashboard', icon: PhGauge },
+  {
+    routeName: 'app-service',
+    labelKey: 'service.title',
+    icon: PhBellRinging,
+    permission: ['create_orders', 'approve_customer_orders', 'view_operations', 'serve_orders'],
+  },
   { routeName: 'app-menu', labelKey: 'common.menu', icon: PhBookOpen, permission: 'manage_menu' },
   { routeName: 'app-tables', labelKey: 'common.tables', icon: PhArmchair, permission: 'manage_tables' },
   // Labelled from the module's own namespace, not common.staff ("Personal"),
@@ -48,8 +57,10 @@ const NAV_ITEMS: NavItem[] = [
 const { t } = useI18n()
 const route = useRoute()
 const restaurantStore = useRestaurantStore()
-const { can } = usePermissions()
-const visibleNavItems = computed(() => NAV_ITEMS.filter((item) => !item.permission || can(item.permission)))
+const { can, canAny } = usePermissions()
+const visibleNavItems = computed(() =>
+  NAV_ITEMS.filter((item) => !item.permission || (Array.isArray(item.permission) ? canAny(item.permission) : can(item.permission))),
+)
 const drawerOpen = ref(false)
 
 function isActive(routeName: string): boolean {
