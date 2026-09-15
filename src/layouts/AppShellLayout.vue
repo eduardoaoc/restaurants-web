@@ -46,7 +46,20 @@ const NAV_ITEMS: NavItem[] = [
     routeName: 'app-service',
     labelKey: 'service.title',
     icon: PhBellRinging,
-    permission: ['create_orders', 'approve_customer_orders', 'view_operations', 'serve_orders'],
+    // Passo 3.4: a cashier's real permission subset is record_payments/
+    // close_bill/handle_table_requests only — this list was missed when
+    // those capabilities shipped, which left a cashier-only account with no
+    // nav link into the one screen their permissions actually let them use
+    // (found auditing the real navigation per Passo 3.4 §9, not hypothetical).
+    permission: [
+      'create_orders',
+      'approve_customer_orders',
+      'view_operations',
+      'serve_orders',
+      'record_payments',
+      'close_bill',
+      'handle_table_requests',
+    ],
   },
   { routeName: 'app-menu', labelKey: 'common.menu', icon: PhBookOpen, permission: 'manage_menu' },
   { routeName: 'app-tables', labelKey: 'common.tables', icon: PhArmchair, permission: 'manage_tables' },

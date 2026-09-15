@@ -178,3 +178,17 @@ export interface PublicApiError {
     message: string
   }
 }
+
+/**
+ * POST /public/tables/{token}/requests/bill|call-waiter response (Passo
+ * 3.4) — deliberately minimal (no restaurant/table echo, unlike the admin
+ * TableRequest resource): the public surface never needs more than "it was
+ * created" to show a confirmation. `type` is whatever the backend actually
+ * assigned (e.g. "bill_request"/"call_waiter") — read, never guessed.
+ */
+export interface PublicTableRequest {
+  id: number
+  type: string
+  status: string
+  created_at: string
+}

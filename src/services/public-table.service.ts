@@ -1,5 +1,11 @@
 import { publicHttp } from '@/api/public-http'
-import type { PublicMenu, PublicOrderCreateRequest, PublicOrderCreated, PublicTableResolution } from '@/types/public-menu'
+import type {
+  PublicMenu,
+  PublicOrderCreateRequest,
+  PublicOrderCreated,
+  PublicTableRequest,
+  PublicTableResolution,
+} from '@/types/public-menu'
 
 /**
  * Thin wrapper around the real, unauthenticated restaurants-api public
@@ -56,6 +62,35 @@ export const publicTableService = {
       `/api/v1/public/tables/${publicToken}/orders`,
       payload,
       { headers: { 'Idempotency-Key': idempotencyKey } },
+    )
+    return data.data
+  },
+
+  /**
+   * Ask for the bill (Passo 3.4). Does not create a payment or close the
+   * session by itself — purely a request the operational side (waiter/
+   * cashier) sees and acts on. 409 when there's no active session, a
+   * request is already open, or the restaurant has `bill_request` disabled
+   * (PublicRestaurant.capabilities.bill_request) — the caller must only
+   * show this action when that capability is true, and surface the 409
+   * text as-is rather than inventing a reason.
+   */
+  async requestBill(publicToken: string, note?: string): Promise<PublicTableRequest> {
+    const { data } = await publicHttp.post<{ data: PublicTableRequest }>(
+      `/api/v1/public/tables/${publicToken}/requests/bill`,
+      note ? { note } : undefined,
+    )
+    return data.data
+  },
+
+  /**
+   * Call the waiter over (Passo 3.4) — same shape/semantics as requestBill,
+   * gated by `capabilities.waiter_call`.
+   */
+  async callWaiter(publicToken: string, note?: string): Promise<PublicTableRequest> {
+    const { data } = await publicHttp.post<{ data: PublicTableRequest }>(
+      `/api/v1/public/tables/${publicToken}/requests/call-waiter`,
+      note ? { note } : undefined,
     )
     return data.data
   },

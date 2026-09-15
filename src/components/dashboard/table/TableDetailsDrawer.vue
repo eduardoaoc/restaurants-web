@@ -5,6 +5,7 @@ import { PhCaretDown, PhCheck, PhUserCircleMinus, PhX } from '@phosphor-icons/vu
 
 import { normalizeApiError } from '@/api/errors'
 import AButton from '@/components/ui/AButton.vue'
+import AConfirmDialog from '@/components/ui/AConfirmDialog.vue'
 import AIconButton from '@/components/ui/AIconButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import ATextField from '@/components/ui/ATextField.vue'
@@ -12,11 +13,16 @@ import { usePermissions } from '@/composables/usePermissions'
 import { getTableStatusStyle } from '@/composables/useTableStatusStyle'
 import { tableSessionsService } from '@/services/table-sessions.service'
 import { tablesService } from '@/services/tables.service'
+import { useRestaurantStore } from '@/stores/restaurant'
 import type { OperationsStaffMember, OperationsTable } from '@/types/operations'
+import type { SessionBill } from '@/types/table-sessions'
 import { describeApiError } from '@/utils/error-message'
 import { formatDuration, formatMoney } from '@/utils/format'
+import BillReceiptSheet from './BillReceiptSheet.vue'
 import ServiceOrderComposer from '@/components/service/ServiceOrderComposer.vue'
+import TableBillPanel from './TableBillPanel.vue'
 import TableOrdersList from './TableOrdersList.vue'
+import TableRequestsPanel from './TableRequestsPanel.vue'
 import TransferTableDialog from './TransferTableDialog.vue'
 
 const props = defineProps<{
@@ -42,6 +48,7 @@ const { t, locale } = useI18n()
  *   - view orders:      OrderPolicy::viewAny's OR set  -> create_orders/approve_customer_orders/update_kitchen_status/serve_orders/close_bill
  */
 const { can, canAny } = usePermissions()
+const restaurantStore = useRestaurantStore()
 const canOpenTable = computed(() => can('manage_tables'))
 const canCloseTable = computed(() => can('manage_tables') || can('close_bill'))
 const canAssignWaiters = computed(() => can('assign_waiters'))
@@ -53,23 +60,42 @@ const canViewOrders = computed(() =>
 // (e.g. close_bill-only) without being allowed to create a new one, and
 // vice versa. Maps 1:1 to POST /tables/{table}/orders's own Policy check.
 const canCreateOrders = computed(() => can('create_orders'))
+// Passo 3.4: the two real billing capabilities — record_payments (can
+// charge) and close_bill (can close, which needs to see what's owed first).
+// Never gated on manage_tables here: viewing/recording money is a distinct
+// grant from configuring the floor plan, even though both may close a table.
+const canViewBilling = computed(() => can('record_payments') || can('close_bill'))
+const canRecordPayments = computed(() => can('record_payments'))
+const canHandleTableRequests = computed(() => can('handle_table_requests'))
 
 const showOrders = ref(false)
+const showBill = ref(false)
+const showReceipt = ref(false)
 const showTransfer = ref(false)
 const showWaiterMenu = ref(false)
 const showOrderComposer = ref(false)
+const showCloseConfirm = ref(false)
 const openGuestCount = ref('2')
 const submittingAction = ref<string | null>(null)
 const feedback = ref<{ kind: 'success' | 'error'; message: string } | null>(null)
+// Populated by TableBillPanel's `bill-loaded` emit whenever the panel is
+// mounted (always, once there's a session + canViewBilling — see template)
+// — the ONLY signal the Close button's disabled state below reads, never a
+// locally-derived balance check (see TableBillPanel's own docblock).
+const bill = ref<SessionBill | null>(null)
 
 watch(
   () => props.table?.id,
   () => {
     showOrders.value = false
+    showBill.value = false
+    showReceipt.value = false
     showTransfer.value = false
     showWaiterMenu.value = false
     showOrderComposer.value = false
+    showCloseConfirm.value = false
     feedback.value = null
+    bill.value = null
   },
 )
 
@@ -121,9 +147,37 @@ function openTable(): void {
   void run('open', () => tablesService.open(props.table!.id, { guest_count: guestCount }), 'tableDrawer.feedback.opened')
 }
 
-function closeTable(): void {
+// Close is a sensitive action (§12/§13) — the button only opens the confirm
+// dialog; the actual POST /tables/{id}/close never fires without that
+// explicit second step. `closeDisabled` reads `bill.can_close` ONLY when a
+// bill has actually loaded (canViewBilling); a user who can close a table
+// but genuinely cannot view its bill (a real, if unusual, permission split)
+// falls back to the backend's own enforcement — verified live (Passo 3.4)
+// that POST .../close 409s with TABLE_SESSION_HAS_OPEN_ORDERS in exactly
+// this case, so nothing is silently bypassed either way.
+const closeDisabled = computed(() => bill.value !== null && !bill.value.can_close)
+
+function requestClose(): void {
+  if (!props.table || closeDisabled.value) return
+  showCloseConfirm.value = true
+}
+
+async function confirmClose(): Promise<void> {
   if (!props.table) return
-  void run('close', () => tablesService.close(props.table!.id), 'tableDrawer.feedback.closed')
+  await run('close', () => tablesService.close(props.table!.id), 'tableDrawer.feedback.closed')
+  showCloseConfirm.value = false
+}
+
+function onBillLoaded(value: SessionBill | null): void {
+  bill.value = value
+}
+
+function onBillingChanged(): void {
+  emit('refresh')
+}
+
+function onTableRequestsChanged(): void {
+  emit('refresh')
 }
 
 function callWaiter(): void {
@@ -186,6 +240,15 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
       >
         {{ feedback.message }}
       </p>
+
+      <TableRequestsPanel
+        v-if="table.session && canHandleTableRequests"
+        class="mt-3"
+        :table-id="table.id"
+        :restaurant-id="restaurantStore.currentRestaurantId"
+        :refresh-key="table"
+        @changed="onTableRequestsChanged"
+      />
 
       <!-- No active session: only real action is opening one, and only for a user who holds manage_tables -->
       <div v-if="!table.session && canOpenTable" class="mt-4 flex flex-col gap-3">
@@ -271,6 +334,21 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
             {{ t('tableDrawer.actions.callWaiter') }}
           </AButton>
           <AButton v-if="canTransferTables" variant="outlined" @click="showTransfer = true">{{ t('tableDrawer.actions.transfer') }}</AButton>
+          <AButton v-if="canViewBilling" variant="tonal" @click="showBill = !showBill">{{ t('tableDrawer.actions.viewBill') }}</AButton>
+          <AButton v-if="canViewBilling" variant="outlined" @click="showReceipt = true">{{ t('tableDrawer.actions.viewReceipt') }}</AButton>
+        </div>
+
+        <div v-show="table.session && canViewBilling && showBill" class="mt-4 border-t border-outline-variant pt-4">
+          <TableBillPanel
+            v-if="table.session && canViewBilling"
+            :key="table.session.id"
+            :table-session-id="table.session.id"
+            :currency="currency"
+            :refresh-key="table"
+            :can-record-payments="canRecordPayments"
+            @bill-loaded="onBillLoaded"
+            @changed="onBillingChanged"
+          />
         </div>
         <!-- Visible, not just a hover title — a disabled native <button> never receives focus, so a
              title-only explanation would be unreachable by keyboard/screen-reader users (§27). Only
@@ -280,8 +358,13 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
           {{ t('tableDrawer.actions.newOrderDisabledHint') }}
         </p>
 
+        <!-- bill === null means either it hasn't loaded yet or this user
+             lacks canViewBilling — table.billing (always present in the
+             Operations snapshot) is the fallback advisory in that case,
+             same as before Passo 3.4. Once the real bill loads, it alone
+             drives both this hint and the Close button below. -->
         <p
-          v-if="table.billing && Number(table.billing.outstanding) > 0"
+          v-if="!bill && table.billing && Number(table.billing.outstanding) > 0"
           class="mt-3 rounded-md bg-warning-container px-3 py-2 text-label-lg text-on-warning-container"
         >
           {{ t('tableDrawer.outstandingBalance', { amount: formatMoney(table.billing.outstanding, locale, currency) }) }}
@@ -292,11 +375,15 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
           variant="filled"
           full-width
           class="mt-3"
+          :disabled="closeDisabled"
           :loading="submittingAction === 'close'"
-          @click="closeTable"
+          @click="requestClose"
         >
           {{ t('tableDrawer.actions.close') }}
         </AButton>
+        <p v-if="canCloseTable && closeDisabled" class="mt-1.5 text-label-md text-on-surface-variant">
+          {{ t('tableDrawer.closeDisabledHint') }}
+        </p>
 
         <div v-if="showOrders" class="mt-4 border-t border-outline-variant pt-4">
           <TableOrdersList
@@ -326,6 +413,24 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
     :currency="currency"
     @close="showOrderComposer = false"
     @created="onOrderCreated"
+  />
+
+  <AConfirmDialog
+    v-if="showCloseConfirm && table"
+    :label="t('tableDrawer.closeConfirm.title')"
+    :message="t('tableDrawer.closeConfirm.message', { table: table.name })"
+    :confirm-label="t('tableDrawer.actions.close')"
+    :loading="submittingAction === 'close'"
+    @confirm="confirmClose"
+    @cancel="showCloseConfirm = false"
+  />
+
+  <BillReceiptSheet
+    v-if="showReceipt && table?.session"
+    :table-session-id="table.session.id"
+    :currency="currency"
+    :timezone="restaurantStore.currentSettings?.timezone ?? 'Europe/Madrid'"
+    @close="showReceipt = false"
   />
 </template>
 

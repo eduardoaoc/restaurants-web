@@ -144,14 +144,47 @@ router.beforeEach(async (to) => {
   if (to.meta.requiresAuth && auth.authenticated) {
     await useRestaurantStore().load()
     const { can, canAny, canOrganization } = usePermissions()
-    // Operational kitchen accounts land directly in their working queue.
-    if (to.name === 'app-dashboard' && !canAny(['view_operations', 'view_reports']) && can('update_kitchen_status')) {
-      return { name: 'app-kitchen' }
+    // Operational-only accounts (kitchen, waiter, cashier — anyone without
+    // view_operations/view_reports) land directly in their real working
+    // screen instead of a Dashboard that only tells them they can't see it
+    // (Passo 3.4 §9 — a cashier holding only record_payments/close_bill/
+    // handle_table_requests is the exact account this closes the gap for;
+    // kitchen already had this, billing-only accounts were the real miss).
+    if (to.name === 'app-dashboard' && !canAny(['view_operations', 'view_reports'])) {
+      if (can('update_kitchen_status')) return { name: 'app-kitchen' }
+      if (
+        canAny([
+          'create_orders',
+          'approve_customer_orders',
+          'serve_orders',
+          'record_payments',
+          'close_bill',
+          'handle_table_requests',
+        ])
+      ) {
+        return { name: 'app-service' }
+      }
     }
     if (to.name === 'app-settings' && !can('manage_restaurants') && !canOrganization('manage_organization')) {
       return { name: 'app-dashboard' }
     }
-    if (to.name === 'app-service' && !canAny(['view_operations', 'create_orders', 'approve_customer_orders', 'serve_orders'])) {
+    if (
+      to.name === 'app-service' &&
+      // Passo 3.4: a cashier (record_payments/close_bill/handle_table_requests
+      // only, no view_operations) is a real, valid permission subset — this
+      // guard's own reasoning (see the route's meta comment) already says a
+      // waiter may hold any subset of these; the list here was just missed
+      // when the billing/request-handling capabilities shipped.
+      !canAny([
+        'view_operations',
+        'create_orders',
+        'approve_customer_orders',
+        'serve_orders',
+        'record_payments',
+        'close_bill',
+        'handle_table_requests',
+      ])
+    ) {
       return { name: 'app-dashboard' }
     }
   }

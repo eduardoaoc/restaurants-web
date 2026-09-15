@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PhBellRinging, PhCheckCircle, PhTable } from '@phosphor-icons/vue'
 
@@ -7,14 +7,18 @@ import EmptyState from '@/components/dashboard/EmptyState.vue'
 import SectionCard from '@/components/dashboard/SectionCard.vue'
 import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
+import AttentionPanel from '@/components/dashboard/operation/AttentionPanel.vue'
 import TableDetailsDrawer from '@/components/dashboard/table/TableDetailsDrawer.vue'
 import OrderDetailSheet from '@/components/service/OrderDetailSheet.vue'
+import { normalizeApiError, type ApiError } from '@/api/errors'
 import { useOrderApprovals } from '@/composables/useOrderApprovals'
 import { usePermissions } from '@/composables/usePermissions'
 import { useRestaurantOperations } from '@/composables/useRestaurantOperations'
 import { useRestaurantRealtime } from '@/composables/useRestaurantRealtime'
 import { getTableStatusStyle } from '@/composables/useTableStatusStyle'
+import { tablesService } from '@/services/tables.service'
 import { useRestaurantStore } from '@/stores/restaurant'
+import type { FloorPlanTable } from '@/types/floor-plan'
 import type { OperationsTable } from '@/types/operations'
 import type { Order } from '@/types/orders'
 import { describeApiError } from '@/utils/error-message'
@@ -37,25 +41,70 @@ const { can } = usePermissions()
 const canApprove = computed(() => can('approve_customer_orders'))
 const canViewOperations = computed(() => can('view_operations'))
 const canCreateOrders = computed(() => can('create_orders'))
-const hasAnyAccess = computed(
-  () => canApprove.value || canViewOperations.value || canCreateOrders.value || can('serve_orders'),
+// Passo 3.4 §9 navigation audit (real finding, not hypothetical): a cashier
+// holds ONLY record_payments/close_bill/handle_table_requests — never
+// view_operations. GET /operations/live 403s for that account (verified
+// live), so `canViewTables` below must NOT widen `operations`'s own enabled
+// gate (that would just trade "no data" for "a real 403 banner"). Instead
+// this screen falls back to GET /restaurants/{id}/tables — confirmed
+// reachable by that exact permission set — as a second, lighter table
+// source (fallbackTables below), so "which table do I charge/close" still
+// has a real, backend-authorized answer.
+const canRecordPayments = computed(() => can('record_payments'))
+const canCloseBill = computed(() => can('close_bill'))
+const canHandleTableRequests = computed(() => can('handle_table_requests'))
+const canViewTables = computed(
+  () => canViewOperations.value || canRecordPayments.value || canCloseBill.value || canHandleTableRequests.value,
 )
+const usingFallbackTables = computed(() => !canViewOperations.value && canViewTables.value)
+const hasAnyAccess = computed(() => canApprove.value || canViewTables.value || canCreateOrders.value || can('serve_orders'))
 
 const approvals = useOrderApprovals(() => canApprove.value)
 const operations = useRestaurantOperations(() => canViewOperations.value)
+
+const fallbackTables = ref<FloorPlanTable[]>([])
+const fallbackLoading = ref(false)
+const fallbackError = ref<ApiError | null>(null)
+let fallbackController: AbortController | null = null
+
+async function fetchFallbackTables(): Promise<void> {
+  const restaurantId = restaurantStore.currentRestaurantId
+  if (!usingFallbackTables.value || restaurantId === null) {
+    fallbackTables.value = []
+    return
+  }
+  fallbackController?.abort()
+  const request = new AbortController()
+  fallbackController = request
+  fallbackLoading.value = true
+  fallbackError.value = null
+  try {
+    const result = await tablesService.list(restaurantId, request.signal)
+    if (request.signal.aborted) return
+    fallbackTables.value = result
+  } catch (err) {
+    if (request.signal.aborted) return
+    fallbackError.value = normalizeApiError(err)
+  } finally {
+    if (!request.signal.aborted) fallbackLoading.value = false
+  }
+}
+watch(() => [restaurantStore.currentRestaurantId, usingFallbackTables.value] as const, fetchFallbackTables, { immediate: true })
+onBeforeUnmount(() => fallbackController?.abort())
 
 // Same realtime → coalesced refetch pattern as DashboardView (Passo 1.3) —
 // order.created/order.status_changed already trigger this, so a customer's
 // QR order reaches this screen without a manual refresh.
 const realtime = useRestaurantRealtime(
   () => restaurantStore.currentRestaurantId,
-  () => canViewOperations.value || canApprove.value,
+  () => canViewTables.value || canApprove.value,
 )
 watch(
   () => realtime.refreshTick.value,
   () => {
     operations.refetch()
     approvals.refetch()
+    void fetchFallbackTables()
   },
 )
 
@@ -67,18 +116,66 @@ function orderAgeSeconds(order: Order): number {
   return Math.max(0, Math.floor((Date.now() - new Date(order.created_at).getTime()) / 1000))
 }
 
+/**
+ * The flat Tables list carries far less than Operations Live (no billing
+ * summary, no order counts, no assigned waiter, no bill/waiter-requested
+ * flag) — this only maps what it DOES have, real fields never invented
+ * ones. `primary_status` is reduced to free/occupied (the only two this
+ * source can actually distinguish); TableDetailsDrawer's own TableBillPanel
+ * (fetched separately, by session id) is what actually answers "does this
+ * table need attention", not this list.
+ */
+function toOperationsTable(table: FloorPlanTable): OperationsTable {
+  return {
+    id: table.id,
+    name: table.name,
+    number: table.number,
+    capacity: table.capacity,
+    zone_id: table.zone_id,
+    layout: table.layout,
+    primary_status: table.has_active_session ? 'occupied' : 'free',
+    flags: [],
+    session: table.active_session
+      ? {
+          id: table.active_session.id,
+          started_at: table.active_session.opened_at,
+          elapsed_seconds: Math.max(0, Math.floor((Date.now() - new Date(table.active_session.opened_at).getTime()) / 1000)),
+          guest_count: table.active_session.guest_count,
+          assigned_waiter: null,
+        }
+      : null,
+    orders: { open_count: 0, waiting_approval: 0, preparing: 0, ready: 0 },
+    billing: null,
+  }
+}
+
 const allTables = computed<OperationsTable[]>(() => {
-  if (!operations.snapshot.value) return []
-  const fromFloors = operations.snapshot.value.floors.flatMap((floor) => floor.zones.flatMap((zone) => zone.tables))
-  return [...fromFloors, ...operations.snapshot.value.unassigned_tables]
+  if (operations.snapshot.value) {
+    const fromFloors = operations.snapshot.value.floors.flatMap((floor) => floor.zones.flatMap((zone) => zone.tables))
+    return [...fromFloors, ...operations.snapshot.value.unassigned_tables]
+  }
+  if (usingFallbackTables.value) return fallbackTables.value.map(toOperationsTable)
+  return []
 })
-// Occupied/needs-attention tables first — what a waiter scans for; free
-// tables (nothing to do yet) sink to the bottom, never hidden entirely.
+const tablesLoading = computed(() => (usingFallbackTables.value ? fallbackLoading.value : operations.loading.value))
+const tablesError = computed(() => (usingFallbackTables.value ? fallbackError.value : operations.error.value))
+// Needs-attention tables first (Passo 3.4 §5 — bill/waiter requested and
+// ready orders are the ones a waiter/cashier scans for), plain occupied
+// next, free tables (nothing to do yet) sink to the bottom without ever
+// being hidden. Text label + icon already carry the same signal per-row
+// (getTableStatusStyle) — this ordering is a convenience on top, not the
+// only way the state is conveyed.
+function attentionRank(status: OperationsTable['primary_status']): number {
+  if (status === 'bill_requested' || status === 'waiter_requested') return 0
+  if (status === 'ready') return 1
+  if (status === 'waiting_approval' || status === 'preparing') return 2
+  if (status === 'free') return 4
+  return 3
+}
 const sortedTables = computed(() =>
   [...allTables.value].sort((a, b) => {
-    if (a.primary_status === 'free' && b.primary_status !== 'free') return 1
-    if (a.primary_status !== 'free' && b.primary_status === 'free') return -1
-    return a.name.localeCompare(b.name)
+    const rank = attentionRank(a.primary_status) - attentionRank(b.primary_status)
+    return rank !== 0 ? rank : a.name.localeCompare(b.name)
   }),
 )
 const freeTables = computed(() => allTables.value.filter((table) => table.primary_status === 'free'))
@@ -92,6 +189,7 @@ function openTable(tableId: number): void {
 function onDrawerRefresh(): void {
   operations.refetch()
   approvals.refetch()
+  void fetchFallbackTables()
 }
 
 const selectedOrder = ref<Order | null>(null)
@@ -173,12 +271,20 @@ async function rejectSelected(): Promise<void> {
         </ul>
       </SectionCard>
 
-      <SectionCard v-if="canViewOperations" :icon="PhTable" :title="t('service.tables.title')">
-        <div v-if="operations.loading.value" class="flex justify-center py-6">
+      <SectionCard
+        v-if="canViewTables && operations.snapshot.value && operations.snapshot.value.alerts.length > 0"
+        :icon="PhBellRinging"
+        :title="t('operations.alerts.title')"
+      >
+        <AttentionPanel :alerts="operations.snapshot.value.alerts" @open-table="openTable" />
+      </SectionCard>
+
+      <SectionCard v-if="canViewTables" :icon="PhTable" :title="t('service.tables.title')">
+        <div v-if="tablesLoading" class="flex justify-center py-6">
           <AProgress size="sm" />
         </div>
-        <p v-else-if="operations.error.value" class="text-body-md text-error" role="alert">
-          {{ operations.error.value.kind === 'forbidden' ? t('operations.errors.forbidden') : describeApiError(operations.error.value, t) }}
+        <p v-else-if="tablesError" class="text-body-md text-error" role="alert">
+          {{ tablesError.kind === 'forbidden' ? t('operations.errors.forbidden') : describeApiError(tablesError, t) }}
         </p>
         <EmptyState v-else-if="sortedTables.length === 0" :icon="PhTable" :message="t('service.tables.empty')" />
         <ul v-else class="flex flex-col divide-y divide-outline-variant">

@@ -20,6 +20,15 @@ const props = defineProps<{
   locale: string
   submitting: boolean
   submitError: ApiError | null
+  /**
+   * Revalidation (Passo 3.4): the backend now 409s new orders once a bill
+   * has been requested (TABLE_SESSION_BILL_REQUESTED). Cart lines are never
+   * cleared for this — items stay visible/editable (quantity/remove) so the
+   * customer can still see what they had — but the confirm action is
+   * replaced by an explanation instead of being merely disabled, so it's
+   * clear WHY checkout stopped working, never a silent dead button.
+   */
+  billRequested: boolean
 }>()
 
 const emit = defineEmits<{
@@ -100,7 +109,14 @@ function lineUnitTotal(line: CartLine): number {
           <span>{{ t('publicMenu.cart.total') }}</span>
           <span class="tabular-nums">{{ formatMoney(String(total), locale) }}</span>
         </div>
-        <AButton full-width :disabled="lines.length === 0" :loading="submitting" @click="emit('confirm')">
+        <p
+          v-if="billRequested"
+          class="rounded-md bg-warning-container px-3 py-2 text-label-lg text-on-warning-container"
+          role="status"
+        >
+          {{ t('publicMenu.errors.billRequested') }}
+        </p>
+        <AButton v-else full-width :disabled="lines.length === 0" :loading="submitting" @click="emit('confirm')">
           {{ submitting ? t('publicMenu.cart.confirming') : t('publicMenu.cart.confirm') }}
         </AButton>
       </div>

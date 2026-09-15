@@ -2,9 +2,10 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { PhGlobe, PhShoppingCart, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhBellRinging, PhCheckCircle, PhGlobe, PhReceipt, PhShoppingCart, PhWarningCircle } from '@phosphor-icons/vue'
 
 import { normalizeApiError, type ApiError } from '@/api/errors'
+import AButton from '@/components/ui/AButton.vue'
 import ThemeSwitcher from '@/components/shared/ThemeSwitcher.vue'
 import EmptyState from '@/components/dashboard/EmptyState.vue'
 import PublicCartSheet from '@/components/public/PublicCartSheet.vue'
@@ -102,6 +103,12 @@ function onAddToCart(payload: { quantity: number; selections: CartModifierSelect
 
 async function confirmOrder(): Promise<void> {
   if (cart.lines.value.length === 0) return
+  // Defense-in-depth: PublicCartSheet's own footer already replaces the
+  // confirm button once billRequested is true, so this only fires if that
+  // guard is ever bypassed — never a second network round-trip for a
+  // request the backend has already told us it will refuse (§5 "impedir
+  // reenvio inútil").
+  if (billRequested.value) return
   if (!idempotencyKey) idempotencyKey = crypto.randomUUID()
 
   submitting.value = true
@@ -117,7 +124,19 @@ async function confirmOrder(): Promise<void> {
     showCart.value = false
     successOrder.value = order
   } catch (err) {
-    submitError.value = normalizeApiError(err)
+    const normalized = normalizeApiError(err)
+    if (normalized.kind === 'conflict' && normalized.code === 'TABLE_SESSION_BILL_REQUESTED') {
+      // The backend remains authoritative even when THIS session never saw
+      // a successful requestBill() call — a reload after requesting, or a
+      // different device at the same table, are both real cases (§6). Never
+      // create the order; the cart's items are left exactly as they were
+      // (§5 "preservar itens, bloquear checkout") — cart.clear() is never
+      // called here. idempotencyKey is reset so a stale key never lingers.
+      billRequested.value = true
+      idempotencyKey = null
+    } else {
+      submitError.value = normalized
+    }
   } finally {
     submitting.value = false
   }
@@ -129,6 +148,74 @@ function dismissSuccess(): void {
 
 const restaurantName = computed(() => menu.value?.restaurant.name ?? '')
 const tableLabel = computed(() => menu.value?.table.name ?? '')
+
+/**
+ * "Solicitar conta" / "Llamar camarero" (Passo 3.4 §4, revalidated) — gated
+ * on the restaurant's own real capabilities (never assumed on) and on an
+ * active session (the backend 409s otherwise anyway — TABLE_SESSION_NOT_ACTIVE).
+ *
+ * Revalidation finding: the backend NOW blocks further public ordering once
+ * a bill has been requested — POST .../orders 409s with
+ * TABLE_SESSION_BILL_REQUESTED (confirmed live; the OpenAPI doc's own 409
+ * description for that endpoint still doesn't list it, same doc-lag pattern
+ * already known from Passo 3.1/3.4 — never trust the doc alone). `billRequested`
+ * below is therefore also the single source of truth `confirmOrder()` reads
+ * to block checkout (see its own handling of that exact code), not just a
+ * flag for this banner.
+ *
+ * `billRequested`/`waiterCalled` become true from either (a) this session's
+ * own successful POST, (b) a TABLE_REQUEST_ALREADY_OPEN 409 (the customer
+ * taps twice, or reopens the page after already asking — same desired end
+ * state, so treated as a confirmation, never an error banner), or (c) for
+ * `billRequested` specifically, a TABLE_SESSION_BILL_REQUESTED 409 hit while
+ * trying to order (the reload case, §6 — this session never saw its own
+ * request-bill call succeed, but the backend still knows). Every other
+ * failure (disabled capability, no active session, network, ...) surfaces
+ * as a real error via describeApiError, never silently swallowed.
+ */
+const billRequested = ref(false)
+const waiterCalled = ref(false)
+const requestingBill = ref(false)
+const requestingWaiter = ref(false)
+const requestError = ref<ApiError | null>(null)
+
+async function requestBill(): Promise<void> {
+  if (billRequested.value || requestingBill.value) return
+  requestingBill.value = true
+  requestError.value = null
+  try {
+    await publicTableService.requestBill(publicToken)
+    billRequested.value = true
+  } catch (err) {
+    const normalized = normalizeApiError(err)
+    if (normalized.kind === 'conflict' && normalized.code === 'TABLE_REQUEST_ALREADY_OPEN') {
+      billRequested.value = true
+    } else {
+      requestError.value = normalized
+    }
+  } finally {
+    requestingBill.value = false
+  }
+}
+
+async function callWaiter(): Promise<void> {
+  if (waiterCalled.value || requestingWaiter.value) return
+  requestingWaiter.value = true
+  requestError.value = null
+  try {
+    await publicTableService.callWaiter(publicToken)
+    waiterCalled.value = true
+  } catch (err) {
+    const normalized = normalizeApiError(err)
+    if (normalized.kind === 'conflict' && normalized.code === 'TABLE_REQUEST_ALREADY_OPEN') {
+      waiterCalled.value = true
+    } else {
+      requestError.value = normalized
+    }
+  } finally {
+    requestingWaiter.value = false
+  }
+}
 </script>
 
 <template>
@@ -191,6 +278,37 @@ const tableLabel = computed(() => menu.value?.table.name ?? '')
     </header>
 
     <main class="mx-auto max-w-2xl px-4 py-4">
+      <div
+        v-if="menu && menu.session.active && (menu.restaurant.capabilities.waiter_call || menu.restaurant.capabilities.bill_request)"
+        class="mb-4 flex flex-col gap-2 rounded-xl border border-outline-variant bg-surface-container-low p-3"
+      >
+        <div class="flex flex-wrap items-center gap-2">
+          <template v-if="menu.restaurant.capabilities.waiter_call">
+            <p v-if="waiterCalled" class="flex items-center gap-1.5 text-label-lg text-on-surface-variant">
+              <PhCheckCircle :size="16" class="text-primary" aria-hidden="true" />
+              {{ t('publicMenu.requests.waiterConfirmed') }}
+            </p>
+            <AButton v-else variant="outlined" :loading="requestingWaiter" @click="callWaiter">
+              <template #leading><PhBellRinging :size="16" /></template>
+              {{ t('publicMenu.requests.callWaiter') }}
+            </AButton>
+          </template>
+          <template v-if="menu.restaurant.capabilities.bill_request">
+            <p v-if="billRequested" class="flex items-center gap-1.5 text-label-lg text-on-surface-variant">
+              <PhCheckCircle :size="16" class="text-primary" aria-hidden="true" />
+              {{ t('publicMenu.requests.billConfirmed') }}
+            </p>
+            <AButton v-else variant="outlined" :loading="requestingBill" @click="requestBill">
+              <template #leading><PhReceipt :size="16" /></template>
+              {{ t('publicMenu.requests.requestBill') }}
+            </AButton>
+          </template>
+        </div>
+        <p v-if="requestError" class="rounded-md bg-error-container px-3 py-2 text-label-lg text-on-error-container" role="alert">
+          {{ describeApiError(requestError, t) }}
+        </p>
+      </div>
+
       <!-- Loading skeleton -->
       <div v-if="loading" class="flex flex-col gap-6" aria-hidden="true">
         <div class="flex gap-2">
@@ -296,6 +414,7 @@ const tableLabel = computed(() => menu.value?.table.name ?? '')
       :locale="currentLocale"
       :submitting="submitting"
       :submit-error="submitError"
+      :bill-requested="billRequested"
       @close="showCart = false"
       @set-quantity="cart.setQuantity"
       @remove="cart.removeItem"

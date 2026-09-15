@@ -83,6 +83,50 @@ export interface RecordPaymentPayload {
   note?: string
 }
 
+/** One line of a receipt order — verified live (Passo 3.4): name/quantity/unit_price/modifiers/line_total, same shape as Order.items but without the admin-only technical fields. */
+export interface BillReceiptOrderItem {
+  name: string
+  quantity: number
+  unit_price: string
+  modifiers: { name: string; price_delta: string }[]
+  line_total: string
+}
+
+export interface BillReceiptOrder {
+  id: number
+  total: string
+  items: BillReceiptOrderItem[]
+}
+
+/**
+ * GET/.print /table-sessions/{id}/receipt — an OPERATIONAL receipt, never a
+ * fiscal document (no VAT breakdown, invoice number, or legal identifiers —
+ * confirmed by the backend's own OpenAPI description). Available before
+ * payment, mid-payment, fully paid, or after the session closed — never
+ * gated by payment/session state client-side either.
+ */
+export interface BillReceipt {
+  document_type: string
+  restaurant: { id: number; name: string }
+  table: { id: number; name: string; number: number | null }
+  table_session_id: number
+  opened_at: string
+  closed_at: string | null
+  orders: BillReceiptOrder[]
+  orders_total: string
+  paid_total: string
+  balance: string
+  payment_status: BillPaymentStatus
+  payments: BillPayment[]
+  generated_at: string
+}
+
+/** POST .../receipt/print response — print_record_id is an audit-trail reference only, never a physical-printer confirmation. */
+export interface BillReceiptPrintResult {
+  print_record_id: number
+  document: BillReceipt
+}
+
 export interface WaiterCall {
   id: number
   table_session_id: number

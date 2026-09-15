@@ -15,6 +15,14 @@ const KNOWN_ERROR_CODES: Record<string, string> = {
   TABLE_SESSION_HAS_NO_BILLABLE_ORDERS: 'common.errors.codes.tableSessionHasNoBillableOrders',
   ZONE_HAS_TABLES: 'common.errors.codes.zoneHasTables',
   FLOOR_HAS_ZONES: 'common.errors.codes.floorHasZones',
+  // Passo 3.4 — verified live against the real backend (bill/payment/close/table-request conflicts).
+  TABLE_SESSION_HAS_OPEN_ORDERS: 'common.errors.codes.tableSessionHasOpenOrders',
+  TABLE_REQUEST_ALREADY_OPEN: 'common.errors.codes.tableRequestAlreadyOpen',
+  TABLE_SESSION_NOT_ACTIVE: 'common.errors.codes.tableSessionNotActive',
+  // Passo 3.4 revalidation — verified live: POST .../orders 409s with this
+  // once a bill has been requested for the session (customer QR surface
+  // only; staff order creation is a different endpoint/Policy).
+  TABLE_SESSION_BILL_REQUESTED: 'publicMenu.errors.billRequested',
 }
 
 /**
