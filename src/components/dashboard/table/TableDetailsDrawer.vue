@@ -390,6 +390,7 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
             :key="table.session.id"
             :table-session-id="table.session.id"
             :currency="currency"
+            :timezone="restaurantStore.currentSettings?.timezone ?? 'Europe/Madrid'"
             :refresh-key="table"
             @served="emit('refresh')"
           />

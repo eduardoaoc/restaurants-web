@@ -27,8 +27,8 @@ export const ordersService = {
     return data.data.orders
   },
 
-  async get(orderId: number): Promise<Order> {
-    const { data } = await http.get<OrderEnvelope>(`/api/v1/orders/${orderId}`)
+  async get(orderId: number, signal?: AbortSignal): Promise<Order> {
+    const { data } = await http.get<OrderEnvelope>(`/api/v1/orders/${orderId}`, { signal })
     return data.data.order
   },
 
