@@ -42,10 +42,31 @@ export interface PublicTable {
   number: number | null
 }
 
+/**
+ * Present for the whole lifetime of the table's active session, unpaid or
+ * paid — the feedback token is minted at session-open, not at payment,
+ * precisely so the client can persist it well before any payment happens
+ * (Passo 3.5, confirmed live against the real backend). `eligible` alone
+ * reflects whether the visit is paid yet and is backend-authoritative —
+ * holding `token` while `eligible` is false does NOT let
+ * POST /public/feedback/{token} succeed early; the backend re-checks
+ * payment status on every call, never trust a stale local copy of this
+ * flag once the session goes inactive (see usePublicFeedbackToken.ts).
+ * `token`/`already_submitted` are absent (only `eligible: false`) once the
+ * table has no active session at all — this is exactly why the token must
+ * be captured client-side the moment it appears, never re-derived later.
+ */
+export interface PublicSessionFeedback {
+  eligible: boolean
+  token?: string | null
+  already_submitted?: boolean | null
+}
+
 /** `status` is opaque/best-effort display text (e.g. "occupied") — never matched against a hardcoded value list. */
 export interface PublicSessionState {
   active: boolean
   status: string | null
+  feedback: PublicSessionFeedback
 }
 
 export interface PublicTableResolution {

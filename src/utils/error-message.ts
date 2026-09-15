@@ -23,6 +23,13 @@ const KNOWN_ERROR_CODES: Record<string, string> = {
   // once a bill has been requested for the session (customer QR surface
   // only; staff order creation is a different endpoint/Policy).
   TABLE_SESSION_BILL_REQUESTED: 'publicMenu.errors.billRequested',
+  // Passo 3.5 — public feedback conflicts. PublicFeedbackSheet handles these
+  // three with dedicated states (never lets them reach this generic path in
+  // the normal flow); mapped here too as defense-in-depth for any other
+  // caller that only calls describeApiError().
+  FEEDBACK_ALREADY_SUBMITTED: 'publicMenu.feedback.alreadySubmittedMessage',
+  TABLE_SESSION_NOT_PAID_FOR_FEEDBACK: 'publicMenu.feedback.notPaidYet',
+  FEEDBACK_TOKEN_NOT_FOUND: 'publicMenu.feedback.invalidToken',
 }
 
 /**

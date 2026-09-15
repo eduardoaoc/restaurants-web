@@ -103,6 +103,16 @@ const router = createRouter({
           meta: { permission: 'manage_users' },
         },
         {
+          path: 'feedback',
+          name: 'app-feedback',
+          component: () => import('@/views/feedback/FeedbackView.vue'),
+          // Passo 3.5: matches the real CustomerFeedbackPolicy exactly —
+          // owner/manager today, never a role check. A waiter's own
+          // aggregate (GET /me/feedback-summary, no extra permission) lives
+          // in Servicio instead, never this route.
+          meta: { permission: 'view_customer_feedback' },
+        },
+        {
           path: 'settings',
           name: 'app-settings',
           component: () => import('@/views/settings/SettingsView.vue'),

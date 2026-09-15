@@ -2,16 +2,18 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { PhBellRinging, PhCheckCircle, PhGlobe, PhReceipt, PhShoppingCart, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhBellRinging, PhCheckCircle, PhGlobe, PhReceipt, PhShoppingCart, PhStar, PhWarningCircle } from '@phosphor-icons/vue'
 
 import { normalizeApiError, type ApiError } from '@/api/errors'
 import AButton from '@/components/ui/AButton.vue'
 import ThemeSwitcher from '@/components/shared/ThemeSwitcher.vue'
 import EmptyState from '@/components/dashboard/EmptyState.vue'
 import PublicCartSheet from '@/components/public/PublicCartSheet.vue'
+import PublicFeedbackSheet from '@/components/public/PublicFeedbackSheet.vue'
 import PublicOrderSuccess from '@/components/public/PublicOrderSuccess.vue'
 import PublicProductSheet from '@/components/public/PublicProductSheet.vue'
 import { usePublicCart, type CartModifierSelection } from '@/composables/usePublicCart'
+import { clearStoredFeedback, readStoredFeedback, syncStoredFeedback } from '@/composables/usePublicFeedbackToken'
 import { usePublicMenu } from '@/composables/usePublicMenu'
 import { publicTableService } from '@/services/public-table.service'
 import { AVAILABLE_LOCALES, DEFAULT_LOCALE, i18n, LOCALE_LABEL, type AppLocale } from '@/i18n'
@@ -216,6 +218,75 @@ async function callWaiter(): Promise<void> {
     requestingWaiter.value = false
   }
 }
+
+/**
+ * Post-visit feedback (Passo 3.5 §3-6) — the CTA is driven by
+ * `feedbackToken`/`feedbackEligible`/`feedbackAlreadySubmitted`, never
+ * directly by `menu.value.session.feedback` in the template, because the
+ * live response alone cannot survive the table closing (confirmed live:
+ * once the session is inactive, the backend stops returning the token at
+ * all — see usePublicFeedbackToken.ts's own docblock for the full
+ * persistence design). This watcher is the single place that reconciles
+ * "what the live menu just said" with "what's stored for this table" into
+ * one effective context:
+ *   - Session active + a live token: that's always authoritative — synced
+ *     into storage (new token replaces any old one outright; a matching
+ *     token only ever advances `submitted` from false to true, per
+ *     syncStoredFeedback's own contract) and used directly.
+ *   - Session inactive (closed) or menu not loaded yet: falls back to
+ *     whatever is stored for this table. `eligible` is assumed true here —
+ *     there is no live signal to say otherwise once the session is gone,
+ *     and the real gate is the backend re-checking payment on every POST
+ *     regardless (never trust a stale local "yes" over what the API says
+ *     when it's actually called).
+ * This intentionally never polls (Passo 3.5 §21/§32 — "sem depender de
+ * novo polling após payment"): it only re-evaluates when `menu` itself
+ * changes (initial load, locale switch, or the existing error-state
+ * "Reintentar" button), i.e. exactly the app's one existing refetch
+ * mechanism, never a new one.
+ */
+const feedbackToken = ref<string | null>(null)
+const feedbackEligible = ref(false)
+const feedbackAlreadySubmitted = ref(false)
+const showFeedback = ref(false)
+
+watch(
+  () => menu.value?.session,
+  (session) => {
+    const live = session?.active ? session.feedback : undefined
+    if (live?.token) {
+      syncStoredFeedback(publicToken, live.token, live.already_submitted ?? false)
+      feedbackToken.value = live.token
+      feedbackEligible.value = live.eligible
+      feedbackAlreadySubmitted.value = live.already_submitted ?? false
+      return
+    }
+    const stored = readStoredFeedback(publicToken)
+    if (stored) {
+      feedbackToken.value = stored.token
+      feedbackEligible.value = true
+      feedbackAlreadySubmitted.value = stored.submitted
+    } else {
+      feedbackToken.value = null
+      feedbackEligible.value = false
+      feedbackAlreadySubmitted.value = false
+    }
+  },
+  { immediate: true },
+)
+
+function onFeedbackSubmitted(): void {
+  feedbackAlreadySubmitted.value = true
+}
+
+function onFeedbackInvalid(): void {
+  // The stored token turned out to be dead server-side (expired/invalidated)
+  // — drop it so the CTA never reopens a sheet that can only fail again.
+  clearStoredFeedback(publicToken)
+  feedbackToken.value = null
+  feedbackEligible.value = false
+  feedbackAlreadySubmitted.value = false
+}
 </script>
 
 <template>
@@ -307,6 +378,29 @@ async function callWaiter(): Promise<void> {
         <p v-if="requestError" class="rounded-md bg-error-container px-3 py-2 text-label-lg text-on-error-container" role="alert">
           {{ describeApiError(requestError, t) }}
         </p>
+      </div>
+
+      <!-- Post-visit feedback (Passo 3.5) — shown once we have a usable
+           token AND (the live session says the visit is paid, or the
+           session already closed and we're relying on the stored token —
+           see the watcher above). Nothing shown at all while eligible is
+           known-false (§4 "pode mostrar nada"), and never above a hard
+           error state. -->
+      <div
+        v-if="!error && feedbackToken && (feedbackEligible || feedbackAlreadySubmitted)"
+        class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-outline-variant bg-surface-container-low p-3"
+      >
+        <p v-if="feedbackAlreadySubmitted" class="flex items-center gap-1.5 text-label-lg text-on-surface-variant">
+          <PhCheckCircle :size="16" class="text-primary" aria-hidden="true" />
+          {{ t('publicMenu.feedback.alreadySubmitted') }}
+        </p>
+        <template v-else>
+          <p class="text-body-lg font-medium text-on-surface">{{ t('publicMenu.feedback.cta') }}</p>
+          <AButton variant="tonal" @click="showFeedback = true">
+            <template #leading><PhStar :size="16" /></template>
+            {{ t('publicMenu.feedback.open') }}
+          </AButton>
+        </template>
       </div>
 
       <!-- Loading skeleton -->
@@ -422,6 +516,15 @@ async function callWaiter(): Promise<void> {
     />
 
     <PublicOrderSuccess v-if="successOrder" :order="successOrder" :locale="currentLocale" @close="dismissSuccess" />
+
+    <PublicFeedbackSheet
+      v-if="showFeedback && feedbackToken"
+      :token="feedbackToken"
+      :table-public-token="publicToken"
+      @close="showFeedback = false"
+      @submitted="onFeedbackSubmitted"
+      @invalid="onFeedbackInvalid"
+    />
   </div>
 </template>
 

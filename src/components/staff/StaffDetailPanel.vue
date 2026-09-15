@@ -17,13 +17,15 @@ import {
 import AButton from '@/components/ui/AButton.vue'
 import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
+import { normalizeApiError, type ApiError } from '@/api/errors'
 import { usePermissions } from '@/composables/usePermissions'
+import { customerFeedbackService } from '@/services/customer-feedback.service'
 import { staffService } from '@/services/staff.service'
 import { useRestaurantStore } from '@/stores/restaurant'
+import type { CustomerFeedbackSummary } from '@/types/customer-feedback'
 import { describeApiError } from '@/utils/error-message'
 import { formatNumber } from '@/utils/format'
 import { isStaffActive, staffInitials, staffRoleLabelKey } from '@/utils/staff'
-import type { ApiError } from '@/api/errors'
 import type { StaffMember, StaffPerformance, StaffShift } from '@/types/staff'
 
 const props = defineProps<{
@@ -152,6 +154,51 @@ watch(
       if (!localController.signal.aborted) performance.value = null
     } finally {
       if (!localController.signal.aborted) performanceLoading.value = false
+    }
+  },
+  { immediate: true },
+)
+
+/**
+ * Customer feedback summary (Passo 3.5 §19) — a completely different
+ * permission and a completely different concept from the "Rendimiento"
+ * card above: that one is the internal StaffReview system
+ * (manage_staff_reviews/view_reports, a manager rating a shift).
+ * `view_customer_feedback` here is the ONLY thing that gates this, gated
+ * plus scoped exactly like performance (must also actually work at the
+ * currently-viewed restaurant).
+ */
+const canReadCustomerFeedback = computed(() => can('view_customer_feedback') && currentRestaurantAssignment.value !== null)
+
+const customerFeedback = ref<CustomerFeedbackSummary | null>(null)
+const customerFeedbackLoading = ref(false)
+const customerFeedbackError = ref<ApiError | null>(null)
+let feedbackController: AbortController | null = null
+
+watch(
+  () => [props.member.id, restaurantStore.currentRestaurantId, canReadCustomerFeedback.value] as const,
+  async ([, restaurantId, allowed]) => {
+    feedbackController?.abort()
+    customerFeedback.value = null
+    customerFeedbackError.value = null
+
+    if (!allowed || restaurantId === null) {
+      customerFeedbackLoading.value = false
+      return
+    }
+
+    const localController = new AbortController()
+    feedbackController = localController
+    customerFeedbackLoading.value = true
+
+    try {
+      const result = await customerFeedbackService.staffSummary(restaurantId, props.member.id, localController.signal)
+      if (localController.signal.aborted) return
+      customerFeedback.value = result
+    } catch (err) {
+      if (!localController.signal.aborted) customerFeedbackError.value = normalizeApiError(err)
+    } finally {
+      if (!localController.signal.aborted) customerFeedbackLoading.value = false
     }
   },
   { immediate: true },
@@ -385,6 +432,58 @@ const shiftElapsed = computed(() => {
       </template>
 
       <p v-else class="mt-2 text-body-md text-on-surface-variant">{{ t('staff.detail.performanceUnavailable') }}</p>
+    </ASurface>
+
+    <!-- Valoraciones de clientes (Passo 3.5) — deliberately its own card,
+         separate title, separate icon tone from "Rendimiento" above: that
+         one is an internal manager review, this one is the aggregate of
+         real customer post-visit feedback. Never merged into one section. -->
+    <ASurface tone="container" radius="lg" bordered class="p-4">
+      <h4 class="flex items-center gap-2 text-title-md font-medium text-on-surface">
+        <PhStar :size="18" class="text-on-surface-variant" aria-hidden="true" />
+        {{ t('staff.detail.customerFeedbackTitle') }}
+      </h4>
+
+      <p v-if="!canReadCustomerFeedback" class="mt-2 text-body-md text-on-surface-variant">
+        {{ t('staff.detail.customerFeedbackNoPermission') }}
+      </p>
+
+      <div v-else-if="customerFeedbackLoading" class="flex justify-center py-4">
+        <AProgress size="sm" />
+      </div>
+
+      <p v-else-if="customerFeedbackError" class="mt-2 text-body-md text-error" role="alert">
+        {{ describeApiError(customerFeedbackError, t) }}
+      </p>
+
+      <template v-else-if="customerFeedback">
+        <p v-if="customerFeedback.feedback_count === 0" class="mt-2 text-body-md text-on-surface-variant">
+          {{ t('staff.detail.customerFeedbackEmpty') }}
+        </p>
+        <template v-else>
+          <div class="mt-1 flex items-baseline gap-2">
+            <span class="text-display font-semibold text-on-surface">{{ customerFeedback.average_overall?.toFixed(1) }}</span>
+            <PhStar :size="20" weight="fill" class="text-primary" aria-hidden="true" />
+            <span class="text-label-lg text-on-surface-variant">
+              {{ t('staff.detail.customerFeedbackCount', customerFeedback.feedback_count) }}
+            </span>
+          </div>
+          <dl class="mt-3 grid grid-cols-3 gap-3">
+            <div v-if="customerFeedback.average_service !== null">
+              <dt class="text-label-md text-on-surface-variant">{{ t('feedback.detail.service') }}</dt>
+              <dd class="text-title-md font-semibold tabular-nums text-on-surface">{{ customerFeedback.average_service.toFixed(1) }}</dd>
+            </div>
+            <div v-if="customerFeedback.average_food !== null">
+              <dt class="text-label-md text-on-surface-variant">{{ t('feedback.detail.food') }}</dt>
+              <dd class="text-title-md font-semibold tabular-nums text-on-surface">{{ customerFeedback.average_food.toFixed(1) }}</dd>
+            </div>
+            <div v-if="customerFeedback.average_wait_time !== null">
+              <dt class="text-label-md text-on-surface-variant">{{ t('feedback.detail.waitTime') }}</dt>
+              <dd class="text-title-md font-semibold tabular-nums text-on-surface">{{ customerFeedback.average_wait_time.toFixed(1) }}</dd>
+            </div>
+          </dl>
+        </template>
+      </template>
     </ASurface>
   </div>
 </template>

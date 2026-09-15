@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { PhArmchair, PhBellRinging, PhBookOpen, PhChefHat, PhGauge, PhList, PhUsersThree, PhX } from '@phosphor-icons/vue'
+import { PhArmchair, PhBellRinging, PhBookOpen, PhChefHat, PhGauge, PhList, PhStar, PhUsersThree, PhX } from '@phosphor-icons/vue'
 
 import AIconButton from '@/components/ui/AIconButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
@@ -66,6 +66,10 @@ const NAV_ITEMS: NavItem[] = [
   // Labelled from the module's own namespace, not common.staff ("Personal"),
   // so the rail and the page agree on one name for the same place.
   { routeName: 'app-staff', labelKey: 'staff.pageTitle', icon: PhUsersThree, permission: 'manage_users' },
+  // Passo 3.5 — owner/manager only (view_customer_feedback). A waiter's own
+  // aggregate lives in Servicio instead (GET /me/feedback-summary needs no
+  // permission at all), never this nav item.
+  { routeName: 'app-feedback', labelKey: 'feedback.pageTitle', icon: PhStar, permission: 'view_customer_feedback' },
 ]
 
 const { t } = useI18n()

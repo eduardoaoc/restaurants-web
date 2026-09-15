@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhBellRinging, PhCheckCircle, PhTable } from '@phosphor-icons/vue'
+import { PhBellRinging, PhCheckCircle, PhStar, PhTable } from '@phosphor-icons/vue'
 
 import EmptyState from '@/components/dashboard/EmptyState.vue'
 import SectionCard from '@/components/dashboard/SectionCard.vue'
@@ -16,8 +16,10 @@ import { usePermissions } from '@/composables/usePermissions'
 import { useRestaurantOperations } from '@/composables/useRestaurantOperations'
 import { useRestaurantRealtime } from '@/composables/useRestaurantRealtime'
 import { getTableStatusStyle } from '@/composables/useTableStatusStyle'
+import { customerFeedbackService } from '@/services/customer-feedback.service'
 import { tablesService } from '@/services/tables.service'
 import { useRestaurantStore } from '@/stores/restaurant'
+import type { CustomerFeedbackSummary } from '@/types/customer-feedback'
 import type { FloorPlanTable } from '@/types/floor-plan'
 import type { OperationsTable } from '@/types/operations'
 import type { Order } from '@/types/orders'
@@ -57,7 +59,40 @@ const canViewTables = computed(
   () => canViewOperations.value || canRecordPayments.value || canCloseBill.value || canHandleTableRequests.value,
 )
 const usingFallbackTables = computed(() => !canViewOperations.value && canViewTables.value)
-const hasAnyAccess = computed(() => canApprove.value || canViewTables.value || canCreateOrders.value || can('serve_orders'))
+// Passo 3.5 §17/§22: a waiter's own customer-feedback aggregate — never the
+// administrative list/detail (that's /app/feedback, view_customer_feedback
+// only). serve_orders is the closest real permission to "this account can
+// be an assigned waiter, so GET /me/feedback-summary is meaningful for
+// them" — kitchen/cashier never hold it, so this card never renders for
+// them (own-data endpoint, no permission required server-side, but showing
+// an always-empty card to an account that can never be an assigned waiter
+// is pointless UI, not a privacy boundary — that boundary is enforced by
+// what the endpoint itself returns, see CustomerFeedbackSummary's docblock).
+const canSeeOwnFeedback = computed(() => can('serve_orders'))
+const hasAnyAccess = computed(
+  () => canApprove.value || canViewTables.value || canCreateOrders.value || can('serve_orders'),
+)
+
+const feedbackSummary = ref<CustomerFeedbackSummary | null>(null)
+const feedbackSummaryLoading = ref(false)
+const feedbackSummaryError = ref<ApiError | null>(null)
+
+async function fetchFeedbackSummary(): Promise<void> {
+  if (!canSeeOwnFeedback.value) {
+    feedbackSummary.value = null
+    return
+  }
+  feedbackSummaryLoading.value = true
+  feedbackSummaryError.value = null
+  try {
+    feedbackSummary.value = await customerFeedbackService.meSummary()
+  } catch (err) {
+    feedbackSummaryError.value = normalizeApiError(err)
+  } finally {
+    feedbackSummaryLoading.value = false
+  }
+}
+watch(() => [restaurantStore.currentRestaurantId, canSeeOwnFeedback.value] as const, fetchFeedbackSummary, { immediate: true })
 
 const approvals = useOrderApprovals(() => canApprove.value)
 const operations = useRestaurantOperations(() => canViewOperations.value)
@@ -312,6 +347,48 @@ async function rejectSelected(): Promise<void> {
             </button>
           </li>
         </ul>
+      </SectionCard>
+
+      <!-- "Mis valoraciones" (Passo 3.5 §17) — the waiter's own aggregate
+           only, GET /me/feedback-summary. Deliberately never the same card
+           as "Rendimiento" (internal manager review, staff.detail.* / the
+           unrelated StaffReview system) — separate section, separate label,
+           never mixed (CLAUDE.md §15/§19 for this Passo). -->
+      <SectionCard v-if="canSeeOwnFeedback" :icon="PhStar" :title="t('service.feedback.title')">
+        <div v-if="feedbackSummaryLoading" class="flex justify-center py-4">
+          <AProgress size="sm" />
+        </div>
+        <p v-else-if="feedbackSummaryError" class="text-body-md text-error" role="alert">
+          {{ describeApiError(feedbackSummaryError, t) }}
+        </p>
+        <EmptyState
+          v-else-if="feedbackSummary && feedbackSummary.feedback_count === 0"
+          :icon="PhStar"
+          :message="t('service.feedback.empty')"
+        />
+        <template v-else-if="feedbackSummary">
+          <div class="flex items-baseline gap-2">
+            <span class="text-display font-semibold text-on-surface">{{ feedbackSummary.average_overall?.toFixed(1) }}</span>
+            <PhStar :size="22" weight="fill" class="text-primary" aria-hidden="true" />
+            <span class="text-label-lg text-on-surface-variant">
+              {{ t('service.feedback.count', feedbackSummary.feedback_count) }}
+            </span>
+          </div>
+          <dl class="mt-3 grid grid-cols-3 gap-3">
+            <div v-if="feedbackSummary.average_service !== null">
+              <dt class="text-label-md text-on-surface-variant">{{ t('feedback.detail.service') }}</dt>
+              <dd class="text-title-md font-semibold tabular-nums text-on-surface">{{ feedbackSummary.average_service.toFixed(1) }}</dd>
+            </div>
+            <div v-if="feedbackSummary.average_food !== null">
+              <dt class="text-label-md text-on-surface-variant">{{ t('feedback.detail.food') }}</dt>
+              <dd class="text-title-md font-semibold tabular-nums text-on-surface">{{ feedbackSummary.average_food.toFixed(1) }}</dd>
+            </div>
+            <div v-if="feedbackSummary.average_wait_time !== null">
+              <dt class="text-label-md text-on-surface-variant">{{ t('feedback.detail.waitTime') }}</dt>
+              <dd class="text-title-md font-semibold tabular-nums text-on-surface">{{ feedbackSummary.average_wait_time.toFixed(1) }}</dd>
+            </div>
+          </dl>
+        </template>
       </SectionCard>
     </template>
 
