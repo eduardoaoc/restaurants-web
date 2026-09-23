@@ -512,6 +512,17 @@ export default {
   publicMenu: {
     loading: 'Carregant la carta…',
     languageLabel: 'Idioma',
+    entry: {
+      welcomeTo: 'Benvingut a',
+      readyTitle: 'Tot està preparat.',
+      readySubtitle: 'Descobreix la nostra carta.',
+      skip: 'Ometre l\'animació',
+      gateTitle: 'Benvingut a la nostra taula',
+      gateSubtitle: 'Descobreix la nostra carta i demana quan estigues preparat.',
+      viewMenu: 'Veure la carta',
+      waiterCalledTitle: 'Cambrer avisat',
+      waiterCalledSubtitle: 'De seguida estarem amb tu.',
+    },
     errors: {
       tableNotFound: 'No hem pogut trobar esta taula. Comprova el codi QR o avisa el personal.',
       menuUnavailable: 'La carta no està disponible en este moment.',

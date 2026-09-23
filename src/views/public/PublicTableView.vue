@@ -2,21 +2,27 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { PhBellRinging, PhCheckCircle, PhGlobe, PhReceipt, PhShoppingCart, PhStar, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhBellRinging, PhCheckCircle, PhReceipt, PhShoppingCart, PhStar, PhWarningCircle } from '@phosphor-icons/vue'
 
 import { normalizeApiError, type ApiError } from '@/api/errors'
 import AButton from '@/components/ui/AButton.vue'
+import AProgress from '@/components/ui/AProgress.vue'
 import ThemeSwitcher from '@/components/shared/ThemeSwitcher.vue'
 import EmptyState from '@/components/dashboard/EmptyState.vue'
 import PublicCartSheet from '@/components/public/PublicCartSheet.vue'
+import PublicEntryIntro from '@/components/public/PublicEntryIntro.vue'
 import PublicFeedbackSheet from '@/components/public/PublicFeedbackSheet.vue'
+import PublicLanguageSwitcher from '@/components/public/PublicLanguageSwitcher.vue'
 import PublicOrderSuccess from '@/components/public/PublicOrderSuccess.vue'
 import PublicProductSheet from '@/components/public/PublicProductSheet.vue'
+import PublicWelcomeGate from '@/components/public/PublicWelcomeGate.vue'
 import { usePublicCart, type CartModifierSelection } from '@/composables/usePublicCart'
+import { markPublicIntroSeen, markPublicMenuEntered, readPublicEntryState } from '@/composables/usePublicEntryState'
 import { clearStoredFeedback, readStoredFeedback, syncStoredFeedback } from '@/composables/usePublicFeedbackToken'
 import { usePublicMenu } from '@/composables/usePublicMenu'
+import { usePublicTableResolution } from '@/composables/usePublicTableResolution'
 import { publicTableService } from '@/services/public-table.service'
-import { AVAILABLE_LOCALES, DEFAULT_LOCALE, i18n, LOCALE_LABEL, type AppLocale } from '@/i18n'
+import { AVAILABLE_LOCALES, DEFAULT_LOCALE, i18n, type AppLocale } from '@/i18n'
 import type { PublicOrderCreated, PublicProduct } from '@/types/public-menu'
 import { describeApiError } from '@/utils/error-message'
 import { formatMoney } from '@/utils/format'
@@ -34,6 +40,15 @@ const publicToken = route.params.publicToken as string
 
 const { t } = useI18n()
 
+/**
+ * `resolveTable` (Carta Cliente 4.1 final fix) is the source of truth for
+ * the entry experience (intro/gateway) — it exists independently of the
+ * carta itself, so a table with no menu published yet still resolves fine.
+ * `usePublicMenu` keeps running in parallel exactly as before and remains
+ * authoritative for actual carta content once the visitor reaches MENU.
+ */
+const { resolution, error: resolutionError, reload: reloadResolution } = usePublicTableResolution(publicToken)
+
 // Only ever set by the customer's own manual language pick (never by the
 // admin's persisted `aforo-locale`, and never fed back from the first,
 // locale-less load) — see usePublicMenu's own docblock for why re-feeding
@@ -46,12 +61,15 @@ const { menu, loading, error, reload } = usePublicMenu(publicToken, requestedLoc
  * `AVAILABLE_LOCALES`-shaped tags (unlike `PublicMenu.locale`'s own
  * example, which uses a short "es" form) — used as the single source of
  * truth for both the switcher and interface-chrome translation, so no
- * format mapping is ever needed.
+ * format mapping is ever needed. Read from `resolution` first (available
+ * as soon as the table resolves, independent of the menu), falling back to
+ * `menu` only for the unlikely case it's already loaded and resolution
+ * somehow isn't (both come from the same `PublicRestaurant` shape).
  */
 const currentLocale = computed<AppLocale>(() => {
   const requested = requestedLocale.value
   if (requested && (AVAILABLE_LOCALES as readonly string[]).includes(requested)) return requested as AppLocale
-  const restaurantDefault = menu.value?.restaurant.default_locale
+  const restaurantDefault = resolution.value?.restaurant.default_locale ?? menu.value?.restaurant.default_locale
   if (restaurantDefault && (AVAILABLE_LOCALES as readonly string[]).includes(restaurantDefault)) {
     return restaurantDefault as AppLocale
   }
@@ -59,15 +77,12 @@ const currentLocale = computed<AppLocale>(() => {
 })
 
 const availableLocales = computed<AppLocale[]>(() => {
-  const enabled = menu.value?.restaurant.enabled_locales ?? []
+  const enabled = resolution.value?.restaurant.enabled_locales ?? menu.value?.restaurant.enabled_locales ?? []
   return AVAILABLE_LOCALES.filter((loc) => enabled.includes(loc))
 })
 
-const showLanguageMenu = ref(false)
-
 function selectLocale(loc: AppLocale): void {
   requestedLocale.value = loc
-  showLanguageMenu.value = false
 }
 
 // Drives $t()/t() for this page's own chrome without ever touching the
@@ -148,8 +163,11 @@ function dismissSuccess(): void {
   successOrder.value = null
 }
 
-const restaurantName = computed(() => menu.value?.restaurant.name ?? '')
-const tableLabel = computed(() => menu.value?.table.name ?? '')
+// `resolution` is the authoritative source for entry (arrives before, and
+// independently of, the menu) — `menu` is only a fallback for the rare case
+// it's already loaded while resolution hasn't (in practice both agree).
+const restaurantName = computed(() => resolution.value?.restaurant.name ?? menu.value?.restaurant.name ?? '')
+const tableLabel = computed(() => resolution.value?.table.name ?? menu.value?.table.name ?? '')
 
 /**
  * "Solicitar conta" / "Llamar camarero" (Passo 3.4 §4, revalidated) — gated
@@ -217,6 +235,56 @@ async function callWaiter(): Promise<void> {
   } finally {
     requestingWaiter.value = false
   }
+}
+
+// Never depends on the menu (Carta Cliente 4.1 final fix §4) — `resolution`
+// alone carries `session.active`/`capabilities`, so the waiter can be
+// called from the gateway even when the carta isn't published yet.
+const showWaiterCallOnGate = computed(() =>
+  Boolean(resolution.value?.session.active && resolution.value?.restaurant.capabilities.waiter_call),
+)
+
+/** Whether there's anything to show once "Ver la carta" is pressed — the gateway's own CTA reflects this instead of leading to a broken/empty carta. */
+const menuAvailable = computed(() => resolution.value?.menu.available ?? false)
+
+/**
+ * Entry experience state machine (Carta Cliente 4.1 §3/§10, final fix §2) —
+ * INTRO_RESTAURANT + INTRO_MESSAGE (both inside PublicEntryIntro) ->
+ * WELCOME_GATE -> MENU. Computed exactly once per real table resolution
+ * (guarded by `stageInitialized`) from sessionStorage — deliberately keyed
+ * off `resolution`, never `menu`, so a table whose carta isn't published
+ * yet (menu 404s) still gets an intro/gateway instead of being stuck behind
+ * a loading/error screen it has nothing to do with.
+ */
+type EntryStage = 'entry-intro' | 'gateway' | 'menu'
+const stage = ref<EntryStage>('entry-intro')
+let stageInitialized = false
+
+watch(
+  resolution,
+  (value) => {
+    if (!value || stageInitialized) return
+    stageInitialized = true
+    const state = readPublicEntryState(publicToken)
+    if (state.menuEntered) stage.value = 'menu'
+    else if (state.introSeen) stage.value = 'gateway'
+    else stage.value = 'entry-intro'
+  },
+  { immediate: true },
+)
+
+function onIntroDone(): void {
+  markPublicIntroSeen(publicToken)
+  stage.value = 'gateway'
+}
+
+function enterMenu(): void {
+  // Defense-in-depth: PublicWelcomeGate's own CTA is already disabled once
+  // `menuAvailable` is false, so this only matters if that guard is ever
+  // bypassed — never navigate into a carta that has nothing to show.
+  if (!menuAvailable.value) return
+  markPublicMenuEntered(publicToken)
+  stage.value = 'menu'
 }
 
 /**
@@ -290,7 +358,52 @@ function onFeedbackInvalid(): void {
 </script>
 
 <template>
-  <div class="min-h-dvh bg-background pb-24">
+  <!-- Table resolution failed outright (invalid token, rate limited, network/server) — the
+       one case where there's genuinely nothing to show, not even an intro. Same visual
+       language as the carta's own hard-error state below, just standalone (no header yet:
+       we don't have a restaurant name to show one for). -->
+  <div v-if="resolutionError" class="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center">
+    <PhWarningCircle :size="32" class="text-on-surface-variant" aria-hidden="true" />
+    <p class="max-w-xs text-body-lg text-on-surface-variant">
+      {{ resolutionError.kind === 'not_found' ? t('publicMenu.errors.tableNotFound') : describeApiError(resolutionError, t) }}
+    </p>
+    <button
+      type="button"
+      class="min-h-11 rounded-full border border-outline px-5 text-label-lg font-medium text-on-surface hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      @click="reloadResolution"
+    >
+      {{ t('publicMenu.errors.retry') }}
+    </button>
+  </div>
+
+  <!-- Still resolving the table — discreet, matches §11: never show "Bienvenido a" before we have a name. -->
+  <div v-else-if="!resolution" class="flex min-h-dvh flex-col items-center justify-center gap-3 bg-background text-on-surface-variant">
+    <AProgress size="sm" />
+    <span class="text-body-md">{{ t('publicMenu.loading') }}</span>
+  </div>
+
+  <PublicEntryIntro v-else-if="stage === 'entry-intro'" :restaurant-name="restaurantName" @done="onIntroDone" />
+
+  <PublicWelcomeGate
+    v-else-if="stage === 'gateway'"
+    :restaurant-name="restaurantName"
+    :table-name="tableLabel"
+    :show-waiter-call="showWaiterCallOnGate"
+    :waiter-called="waiterCalled"
+    :requesting-waiter="requestingWaiter"
+    :request-error="requestError"
+    :available-locales="availableLocales"
+    :current-locale="currentLocale"
+    :menu-available="menuAvailable"
+    @enter-menu="enterMenu"
+    @call-waiter="callWaiter"
+    @select-locale="selectLocale"
+  />
+
+  <!-- stage === 'menu' — the carta itself, entirely unchanged: its own loading/error/empty
+       states below are about the MENU fetch specifically, never about whether the table/QR
+       itself is valid (that's already settled above by the time this branch can render). -->
+  <div v-else class="min-h-dvh bg-background pb-24">
     <header class="sticky top-0 z-30 border-b border-outline-variant bg-surface-container-low/95 backdrop-blur">
       <div class="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-3">
         <div class="min-w-0">
@@ -299,35 +412,7 @@ function onFeedbackInvalid(): void {
           <p v-if="tableLabel" class="truncate text-label-lg text-on-surface-variant">{{ tableLabel }}</p>
         </div>
         <div class="flex shrink-0 items-center gap-1">
-          <div v-if="availableLocales.length > 1" class="relative">
-            <button
-              type="button"
-              class="inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-label-lg font-medium text-on-surface-variant hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              :aria-label="t('publicMenu.languageLabel')"
-              :aria-expanded="showLanguageMenu"
-              @click="showLanguageMenu = !showLanguageMenu"
-            >
-              <PhGlobe :size="20" />
-            </button>
-            <div
-              v-if="showLanguageMenu"
-              role="menu"
-              :aria-label="t('publicMenu.languageLabel')"
-              class="absolute right-0 z-20 mt-2 min-w-40 rounded-md border border-outline-variant bg-surface-container-high py-1 shadow-elevated"
-            >
-              <button
-                v-for="loc in availableLocales"
-                :key="loc"
-                type="button"
-                role="menuitemradio"
-                :aria-checked="currentLocale === loc"
-                class="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-body-md text-on-surface hover:bg-surface-container-highest"
-                @click="selectLocale(loc)"
-              >
-                {{ LOCALE_LABEL[loc] }}
-              </button>
-            </div>
-          </div>
+          <PublicLanguageSwitcher :available="availableLocales" :current="currentLocale" @select="selectLocale" />
           <ThemeSwitcher />
         </div>
       </div>

@@ -512,6 +512,17 @@ export default {
   publicMenu: {
     loading: 'Loading the menu…',
     languageLabel: 'Language',
+    entry: {
+      welcomeTo: 'Welcome to',
+      readyTitle: 'Everything is ready.',
+      readySubtitle: 'Discover our menu.',
+      skip: 'Skip animation',
+      gateTitle: 'Welcome to our table',
+      gateSubtitle: 'Discover our menu and order whenever you are ready.',
+      viewMenu: 'View the menu',
+      waiterCalledTitle: 'Waiter notified',
+      waiterCalledSubtitle: "We'll be with you shortly.",
+    },
     errors: {
       tableNotFound: "We couldn't find this table. Check the QR code or ask a member of staff.",
       menuUnavailable: 'The menu is not available right now.',

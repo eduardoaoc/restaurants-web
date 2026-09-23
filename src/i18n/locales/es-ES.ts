@@ -512,6 +512,17 @@ export default {
   publicMenu: {
     loading: 'Cargando la carta…',
     languageLabel: 'Idioma',
+    entry: {
+      welcomeTo: 'Bienvenido a',
+      readyTitle: 'Todo está listo.',
+      readySubtitle: 'Descubre nuestra carta.',
+      skip: 'Saltar animación',
+      gateTitle: 'Bienvenido a nuestra mesa',
+      gateSubtitle: 'Descubre nuestra carta y pide cuando estés preparado.',
+      viewMenu: 'Ver la carta',
+      waiterCalledTitle: 'Camarero avisado',
+      waiterCalledSubtitle: 'Enseguida estaremos contigo.',
+    },
     errors: {
       tableNotFound: 'No hemos podido encontrar esta mesa. Comprueba el código QR o avisa al personal.',
       menuUnavailable: 'La carta no está disponible en este momento.',
