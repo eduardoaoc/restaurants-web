@@ -10,7 +10,8 @@ import { useRestaurantProducts } from '@/composables/useRestaurantProducts'
 import { useRestaurantStore } from '@/stores/restaurant'
 import type { AppLocale } from '@/i18n'
 import { describeApiError } from '@/utils/error-message'
-import type { CreateProductPayload, RestaurantProduct, UpdateProductPayload } from '@/types/product'
+import type { CreateProductPayload, ProductSavePayload, RestaurantProduct } from '@/types/product'
+import type { ProductMediaType } from '@/types/product-media'
 import ProductAddPanel from './ProductAddPanel.vue'
 import ProductEmptyState from './ProductEmptyState.vue'
 import ProductModifiersView from './ProductModifiersView.vue'
@@ -42,6 +43,7 @@ const {
   resetAddState,
   updateProduct,
   updateRestaurantProduct,
+  applyProductMediaIntents,
 } = useRestaurantProducts(() => props.enabled)
 
 const attachedProductIds = computed(() => new Set(restaurantProducts.value.map((rp) => rp.product_id)))
@@ -73,7 +75,17 @@ function onBackFromOptions(): void {
   selectedRestaurantProduct.value = null
 }
 
-async function onCreate(payload: { product: CreateProductPayload | UpdateProductPayload; restaurantProduct: { price: number; available: boolean } }): Promise<void> {
+/**
+ * Set once, right after a create flow closes with a media failure (Carta
+ * 4.3 §14/§15) — the Product/RestaurantProduct already exist for real at
+ * that point (this is never shown for a failure that happened before
+ * either of those), so this is deliberately NOT an error banner: it's a
+ * heads-up that points at the now-real row's own "Editar" to retry,
+ * exactly like any other legacy-product gap in this list already works.
+ */
+const createMediaWarning = ref<string | null>(null)
+
+async function onCreate(payload: ProductSavePayload): Promise<void> {
   // Two independent backend calls (CLAUDE.md §10/§33) — if a Product was
   // already created by a previous attempt (pendingProduct set from a prior
   // attach failure), never create a second one, only retry the attach.
@@ -88,10 +100,25 @@ async function onCreate(payload: { product: CreateProductPayload | UpdateProduct
   if (productId === null) return
 
   const attachErr = await attachProduct(productId, payload.restaurantProduct)
-  if (!attachErr) {
-    showAddPanel.value = false
-    resetAddState()
-  }
+  if (attachErr) return
+
+  // Product + RestaurantProduct are both real now — media runs only once
+  // there's a real id to upload against (Carta 4.3 §13). The add flow
+  // closes either way: a media failure here never means the product itself
+  // failed to save, so it must never re-open/re-block the create panel.
+  const mediaErrors = await applyProductMediaIntents(productId, payload.media)
+  showAddPanel.value = false
+  resetAddState()
+
+  const failedTypes = Object.keys(mediaErrors) as ProductMediaType[]
+  createMediaWarning.value =
+    failedTypes.length === 0
+      ? null
+      : failedTypes.length === 2
+        ? t('menu.products.media.errors.createPartialBoth')
+        : failedTypes[0] === 'video'
+          ? t('menu.products.media.errors.createPartialVideo')
+          : t('menu.products.media.errors.createPartialImage')
 }
 
 async function onAttach(payload: { productId: number; price: number; available: boolean }): Promise<void> {
@@ -122,6 +149,23 @@ function onCancelAdd(): void {
   />
 
   <div v-else class="flex flex-col gap-4">
+    <ASurface
+      v-if="createMediaWarning"
+      tone="container"
+      radius="lg"
+      role="status"
+      class="flex items-start justify-between gap-3 border border-tertiary/40 bg-tertiary-container p-4 text-on-tertiary-container"
+    >
+      <p class="text-body-md">{{ createMediaWarning }}</p>
+      <button
+        type="button"
+        class="shrink-0 text-label-lg font-medium underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        @click="createMediaWarning = null"
+      >
+        {{ t('common.dismiss') }}
+      </button>
+    </ASurface>
+
     <div v-if="loading" class="flex items-center justify-center py-16">
       <AProgress />
     </div>
@@ -186,6 +230,7 @@ function onCancelAdd(): void {
           :primary-locale="primaryLocale"
           :on-save-product="(payload) => updateProduct(rp.product_id, payload)"
           :on-save-restaurant-product="(payload) => updateRestaurantProduct(rp.id, payload)"
+          :on-save-media="(media) => applyProductMediaIntents(rp.product_id, media)"
           @open-options="onOpenOptions"
         />
       </div>

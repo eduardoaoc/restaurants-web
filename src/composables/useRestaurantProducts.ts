@@ -13,6 +13,7 @@ import type {
   UpdateProductPayload,
   UpdateRestaurantProductPayload,
 } from '@/types/product'
+import type { ProductMedia, ProductMediaIntentSet, ProductMediaType } from '@/types/product-media'
 
 /**
  * Products of the current restaurant's Carta, plus (lazily) the
@@ -226,6 +227,63 @@ export function useRestaurantProducts(enabled: () => boolean = () => true) {
     }
   }
 
+  /** Patches one product's cached `media.<type>` in place — the same two lists (`restaurantProducts`/`catalog`) every other mutation above keeps in sync. */
+  function patchProductMediaCache(productId: number, type: ProductMediaType, media: ProductMedia | null): void {
+    restaurantProducts.value = restaurantProducts.value.map((rp) =>
+      rp.product_id === productId && rp.product ? { ...rp, product: { ...rp.product, media: { ...rp.product.media, [type]: media } } } : rp,
+    )
+    if (catalogLoadedForOrgId.value !== null) {
+      catalog.value = catalog.value.map((p) => (p.id === productId ? { ...p, media: { ...p.media, [type]: media } } : p))
+    }
+  }
+
+  async function uploadProductMedia(productId: number, type: ProductMediaType, file: File): Promise<ApiError | null> {
+    try {
+      const media = await productService.uploadMedia(productId, type, file)
+      patchProductMediaCache(productId, type, media)
+      return null
+    } catch (err) {
+      return normalizeApiError(err)
+    }
+  }
+
+  async function deleteProductMedia(productId: number, type: ProductMediaType): Promise<ApiError | null> {
+    try {
+      await productService.deleteMedia(productId, type)
+      patchProductMediaCache(productId, type, null)
+      return null
+    } catch (err) {
+      return normalizeApiError(err)
+    }
+  }
+
+  /**
+   * Runs whichever of `media.video`/`media.image` actually changed
+   * (Carta 4.3 §13-§15) — video first, matching the future video-over-image
+   * priority. A slot left at `null` (no change) is skipped entirely,
+   * never re-uploaded/re-deleted. Returns only the slots that failed, each
+   * with its real `ApiError` — the caller (ProductRow for edit,
+   * ProductList for create) decides how to surface that: inline per-slot
+   * in the still-open edit form, or as a "saved, but…" notice once the
+   * create panel has already closed.
+   */
+  async function applyProductMediaIntents(
+    productId: number,
+    media: ProductMediaIntentSet,
+  ): Promise<Partial<Record<ProductMediaType, ApiError>>> {
+    const errors: Partial<Record<ProductMediaType, ApiError>> = {}
+
+    for (const type of ['video', 'image'] as const) {
+      const intent = media[type]
+      if (intent === null) continue
+
+      const error = intent === 'remove' ? await deleteProductMedia(productId, type) : await uploadProductMedia(productId, type, intent)
+      if (error) errors[type] = error
+    }
+
+    return errors
+  }
+
   onBeforeUnmount(() => {
     controller?.abort()
     catalogController?.abort()
@@ -251,5 +309,6 @@ export function useRestaurantProducts(enabled: () => boolean = () => true) {
     saveError,
     updateProduct,
     updateRestaurantProduct,
+    applyProductMediaIntents,
   }
 }

@@ -15,6 +15,7 @@
  *     is NEVER the same axis as `Product.status` — see UpdateRestaurantProductPayload.
  */
 import type { AllergenCode } from './allergen'
+import type { ProductMediaIntentSet, ProductMediaSet } from './product-media'
 
 export type ProductStatus = 'active' | 'inactive'
 
@@ -67,6 +68,8 @@ export interface Product {
   translations: ProductTranslation[]
   allergens: AllergenCode[] | null
   nutrition: ProductNutrition | null
+  /** Carta 4.3 — see `types/product-media.ts`. Always both keys present, each independently nullable. */
+  media: ProductMediaSet
   created_at: string
   updated_at: string
 }
@@ -146,4 +149,19 @@ export interface AttachRestaurantProductPayload {
 export interface UpdateRestaurantProductPayload {
   price?: number
   available?: boolean
+}
+
+/**
+ * `ProductForm`'s single `save` payload — named once here instead of
+ * repeating this exact anonymous shape across `ProductForm`,
+ * `ProductAddPanel`, `ProductEmptyState`, `ProductRow` and `ProductList`
+ * (Carta 4.3). `media` is deliberately never merged into
+ * `CreateProductPayload`/`UpdateProductPayload` — a brand-new Product has
+ * no id yet to upload against (Carta 4.3 §13), so media is always applied
+ * as a separate step, by the caller, once a real `Product.id` exists.
+ */
+export interface ProductSavePayload {
+  product: CreateProductPayload | UpdateProductPayload
+  restaurantProduct: { price: number; available: boolean }
+  media: ProductMediaIntentSet
 }

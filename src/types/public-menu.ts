@@ -18,6 +18,7 @@
  */
 
 import type { AllergenCode } from './allergen'
+import type { ProductMediaSet } from './product-media'
 
 /**
  * `capabilities` never includes `customer_order_requires_approval` — the
@@ -143,6 +144,14 @@ export interface PublicProduct {
   price: string
   allergens: AllergenCode[]
   nutrition: PublicNutrition | null
+  /**
+   * Carta 4.3 — types only for now (same rule as `description`/`allergens`/
+   * `nutrition` above): no product-detail overlay, video/image rendering,
+   * or Reel anywhere in the customer surface yet. The future priority
+   * (video over image when both exist) is a Carta/Reels concern, not
+   * encoded here — this is just the raw data shape.
+   */
+  media: ProductMediaSet
   modifier_groups: PublicModifierGroup[]
 }
 

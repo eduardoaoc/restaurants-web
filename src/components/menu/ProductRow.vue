@@ -10,12 +10,8 @@ import { useRestaurantStore } from '@/stores/restaurant'
 import { formatMoney } from '@/utils/format'
 import { resolveTranslatedName } from '@/utils/translation'
 import type { AppLocale } from '@/i18n'
-import type {
-  CreateProductPayload,
-  RestaurantProduct,
-  UpdateProductPayload,
-  UpdateRestaurantProductPayload,
-} from '@/types/product'
+import type { ProductSavePayload, RestaurantProduct, UpdateProductPayload, UpdateRestaurantProductPayload } from '@/types/product'
+import type { ProductMediaIntentSet, ProductMediaType } from '@/types/product-media'
 import ProductForm from './ProductForm.vue'
 
 const props = defineProps<{
@@ -24,6 +20,8 @@ const props = defineProps<{
   primaryLocale: AppLocale
   onSaveProduct: (payload: UpdateProductPayload) => Promise<ApiError | null>
   onSaveRestaurantProduct: (payload: UpdateRestaurantProductPayload) => Promise<ApiError | null>
+  /** Product already exists by the time editing happens (Carta 4.3 §13 concerns creation only) — this always has a real id to upload/delete against immediately. */
+  onSaveMedia: (media: ProductMediaIntentSet) => Promise<Partial<Record<ProductMediaType, ApiError>>>
 }>()
 
 const emit = defineEmits<{ 'open-options': [RestaurantProduct] }>()
@@ -35,6 +33,7 @@ const editing = ref(false)
 const saving = ref(false)
 const productSaveError = ref<ApiError | null>(null)
 const restaurantProductSaveError = ref<ApiError | null>(null)
+const mediaSaveErrors = ref<Partial<Record<ProductMediaType, ApiError>>>({})
 
 const quickToggling = ref(false)
 
@@ -53,16 +52,15 @@ const isArchived = computed(() => product.value?.status === 'inactive')
 function startEditing(): void {
   productSaveError.value = null
   restaurantProductSaveError.value = null
+  mediaSaveErrors.value = {}
   editing.value = true
 }
 
-async function onFormSave(payload: {
-  product: CreateProductPayload | UpdateProductPayload
-  restaurantProduct: { price: number; available: boolean }
-}): Promise<void> {
+async function onFormSave(payload: ProductSavePayload): Promise<void> {
   saving.value = true
   productSaveError.value = null
   restaurantProductSaveError.value = null
+  mediaSaveErrors.value = {}
 
   // Both PATCH calls are idempotent (CLAUDE.md §20) — a retry after a
   // partial failure safely re-sends both, it never duplicates anything.
@@ -72,9 +70,15 @@ async function onFormSave(payload: {
   const restaurantError = await props.onSaveRestaurantProduct(payload.restaurantProduct)
   if (restaurantError) restaurantProductSaveError.value = restaurantError
 
+  // Media is independent of both PATCH calls above (it only ever needed
+  // the Product's id, which already existed before this edit even opened —
+  // Carta 4.3 §13's "no id yet" problem is a CREATE-only concern) — always
+  // attempted, never skipped just because one of the other two failed.
+  mediaSaveErrors.value = await props.onSaveMedia(payload.media)
+
   saving.value = false
 
-  if (!productError && !restaurantError) {
+  if (!productError && !restaurantError && Object.keys(mediaSaveErrors.value).length === 0) {
     editing.value = false
   }
 }
@@ -144,6 +148,7 @@ async function toggleAvailable(): Promise<void> {
       :saving="saving"
       :product-error="productSaveError"
       :restaurant-product-error="restaurantProductSaveError"
+      :media-errors="mediaSaveErrors"
       @save="onFormSave"
       @cancel="editing = false"
     />

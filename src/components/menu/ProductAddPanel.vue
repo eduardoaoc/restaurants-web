@@ -6,7 +6,7 @@ import { PhPlus, PhStorefront } from '@phosphor-icons/vue'
 import type { ApiError } from '@/api/errors'
 import AButton from '@/components/ui/AButton.vue'
 import type { AppLocale } from '@/i18n'
-import type { CreateProductPayload, Product, UpdateProductPayload } from '@/types/product'
+import type { Product, ProductSavePayload } from '@/types/product'
 import ProductForm from './ProductForm.vue'
 import ProductPicker from './ProductPicker.vue'
 
@@ -22,7 +22,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  create: [{ product: CreateProductPayload | UpdateProductPayload; restaurantProduct: { price: number; available: boolean } }]
+  create: [ProductSavePayload]
   attach: [{ productId: number; price: number; available: boolean }]
   cancel: []
   'request-catalog': []

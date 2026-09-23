@@ -15,18 +15,22 @@ import {
   type NutritionDraftErrors,
 } from '@/utils/nutrition-draft'
 import { parsePriceInput } from '@/utils/price'
+import { emptyMediaSlotDraft, resolveProductMediaIntent, type ProductMediaSlotDraft } from '@/utils/product-media'
 import { populateTranslationDraftMap, type TranslationDraftMap } from '@/utils/translation-draft'
 import type { AllergenCode } from '@/types/allergen'
 import type {
   CreateProductPayload,
   Product,
+  ProductSavePayload,
   ProductStatus,
   ProductTranslationInput,
   RestaurantProduct,
   UpdateProductPayload,
 } from '@/types/product'
+import type { ProductMediaType } from '@/types/product-media'
 import AllergenSelector from './AllergenSelector.vue'
 import NutritionFields from './NutritionFields.vue'
+import ProductMediaFields from './ProductMediaFields.vue'
 import TranslationEditor from './TranslationEditor.vue'
 
 const props = defineProps<{
@@ -39,10 +43,12 @@ const props = defineProps<{
   productError: ApiError | null
   /** Validation/business errors from the RestaurantProduct-side call (price, available). */
   restaurantProductError: ApiError | null
+  /** Per-slot errors from the LAST media upload/delete attempt (Carta 4.3 §24) — populated by the parent after `save` resolves, since the actual network call happens outside this component (§13). */
+  mediaErrors?: Partial<Record<ProductMediaType, ApiError>>
 }>()
 
 const emit = defineEmits<{
-  save: [{ product: CreateProductPayload | UpdateProductPayload; restaurantProduct: { price: number; available: boolean } }]
+  save: [ProductSavePayload]
   cancel: []
 }>()
 
@@ -184,6 +190,28 @@ const nutritionErrors = computed(() =>
   Object.keys(localNutritionErrors.value).length > 0 ? localNutritionErrors.value : serverNutritionErrors.value,
 )
 
+/**
+ * "Contenido visual" (Carta 4.3) — purely local edit intent for each slot;
+ * see `types/product-media.ts` for why this never touches the network from
+ * inside this component. Existing remote media is read straight off
+ * `product.media` (never copied into local state) so it always reflects
+ * whatever the parent's cache currently holds.
+ */
+const existingMedia = computed(() => props.product?.media ?? { image: null, video: null })
+const videoDraft = ref<ProductMediaSlotDraft>(emptyMediaSlotDraft())
+const imageDraft = ref<ProductMediaSlotDraft>(emptyMediaSlotDraft())
+
+const videoErrorMessage = computed(() => {
+  const error = props.mediaErrors?.video
+  if (!error) return null
+  return error.kind === 'validation' ? (error.fieldErrors?.file?.[0] ?? describeApiError(error, t)) : describeApiError(error, t)
+})
+const imageErrorMessage = computed(() => {
+  const error = props.mediaErrors?.image
+  if (!error) return null
+  return error.kind === 'validation' ? (error.fieldErrors?.file?.[0] ?? describeApiError(error, t)) : describeApiError(error, t)
+})
+
 watch(
   () => props.productError,
   (error) => {
@@ -282,6 +310,10 @@ function submit(): void {
   emit('save', {
     product: productPayload,
     restaurantProduct: { price: parsedPrice, available: available.value },
+    media: {
+      video: resolveProductMediaIntent(existingMedia.value.video, videoDraft.value),
+      image: resolveProductMediaIntent(existingMedia.value.image, imageDraft.value),
+    },
   })
 }
 </script>
@@ -295,6 +327,16 @@ function submit(): void {
       :primary-name-error="primaryNameError ?? undefined"
       :description-errors="descriptionErrors"
       :validation-attempt="validationAttempt"
+    />
+
+    <ProductMediaFields
+      v-model:video-draft="videoDraft"
+      v-model:image-draft="imageDraft"
+      :media="existingMedia"
+      :disabled="saving"
+      :saving="saving"
+      :video-error="videoErrorMessage"
+      :image-error="imageErrorMessage"
     />
 
     <AllergenSelector

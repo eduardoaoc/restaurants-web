@@ -7,7 +7,7 @@ import type { ApiError } from '@/api/errors'
 import AButton from '@/components/ui/AButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import type { AppLocale } from '@/i18n'
-import type { CreateProductPayload, Product, UpdateProductPayload } from '@/types/product'
+import type { Product, ProductSavePayload } from '@/types/product'
 import ProductAddPanel from './ProductAddPanel.vue'
 
 defineProps<{
@@ -23,7 +23,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  create: [{ product: CreateProductPayload | UpdateProductPayload; restaurantProduct: { price: number; available: boolean } }]
+  create: [ProductSavePayload]
   attach: [{ productId: number; price: number; available: boolean }]
   'request-catalog': []
 }>()
