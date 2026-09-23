@@ -14,12 +14,48 @@
  *     at what price, and whether it's available right now. `available`
  *     is NEVER the same axis as `Product.status` — see UpdateRestaurantProductPayload.
  */
+import type { AllergenCode } from './allergen'
+
 export type ProductStatus = 'active' | 'inactive'
 
 export interface ProductTranslation {
   locale: string
   name: string
+  /**
+   * Nullable on READ only — some existing rows predate the Carta 4.2 rule
+   * that description is mandatory (never backfilled retroactively). Never
+   * treat a null read value as "fine to leave blank" when writing: see
+   * `ProductTranslationInput.description` below, which has no such escape
+   * hatch.
+   */
   description: string | null
+}
+
+/**
+ * Contract-frozen shape (Carta 4.2) for `Product.allergens` /
+ * `Product.nutrition` — see `src/types/allergen.ts` for the full code list
+ * and the null-vs-[] semantics these two fields share:
+ *   - `allergens: null` -> never declared yet (new/legacy product, NOT the
+ *     same as "contains none" — CLAUDE.md Carta 4.2 §7/§8).
+ *   - `allergens: []` -> explicitly declared "none of the 14 listed".
+ *   - `nutrition: null` -> no nutrition info provided at all.
+ *
+ * The admin READ shape for `nutrition` was NOT shown by the frozen
+ * contract (which only documented the numeric WRITE shape below) — this
+ * was inferred from the confirmed `PublicProduct.nutrition` shape in
+ * `public-menu.ts` (same underlying DB columns) and then CONFIRMED LIVE
+ * against the real backend (Carta 4.2, `PATCH /products/{id}` response):
+ * `basis`/`calories_kcal` come back exactly as guessed (an integer column,
+ * plain number), and the other four ARE decimal-cast strings, same
+ * precedent as `RestaurantProduct.price` elsewhere in this app.
+ */
+export interface ProductNutrition {
+  basis: 'per_serving'
+  calories_kcal: number | null
+  protein_g: string | null
+  carbohydrates_g: string | null
+  fat_g: string | null
+  salt_g: string | null
 }
 
 export interface Product {
@@ -29,22 +65,47 @@ export interface Product {
   internal_name: string
   status: ProductStatus
   translations: ProductTranslation[]
+  allergens: AllergenCode[] | null
+  nutrition: ProductNutrition | null
   created_at: string
   updated_at: string
 }
 
+/** `description` is required on write (Carta 4.2 §3) — unlike the read shape above, there is no null escape hatch here; the form itself blocks submit on a blank/whitespace-only description before this is ever built. */
 export interface ProductTranslationInput {
   locale: string
   name: string
-  description?: string | null
+  description: string
 }
 
-/** POST /products body. */
+/**
+ * The frozen contract's WRITE shape for `nutrition` — plain numbers (e.g.
+ * `calories_kcal: 720`), never the decimal-as-string shape `ProductNutrition`
+ * (the read shape) uses for 4 of these 5 fields. A field left blank in the
+ * form becomes `null` here (never omitted, never `NaN`/empty string) — see
+ * `src/utils/nutrition-draft.ts` for how the draft resolves to this.
+ */
+export interface ProductNutritionInput {
+  calories_kcal?: number | null
+  protein_g?: number | null
+  carbohydrates_g?: number | null
+  fat_g?: number | null
+  salt_g?: number | null
+}
+
+/**
+ * POST /products body. `allergens` is required (never omitted, never
+ * `null`) — a brand-new product must always leave this create call with an
+ * explicit declaration, `[]` included (Carta 4.2 §7). `nutrition` stays
+ * optional/nullable since it's opt-in either way.
+ */
 export interface CreateProductPayload {
   sku?: string | null
   internal_name: string
   status?: ProductStatus
   translations: ProductTranslationInput[]
+  allergens: AllergenCode[]
+  nutrition?: ProductNutritionInput | null
 }
 
 /** PATCH /products/{product} body — only real, confirmed fields. */
@@ -53,6 +114,8 @@ export interface UpdateProductPayload {
   internal_name?: string
   status?: ProductStatus
   translations?: ProductTranslationInput[]
+  allergens?: AllergenCode[]
+  nutrition?: ProductNutritionInput | null
 }
 
 /**

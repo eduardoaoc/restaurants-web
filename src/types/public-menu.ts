@@ -17,6 +17,8 @@
  * PublicOrderCreated, OrderItem, OrderItemModifier).
  */
 
+import type { AllergenCode } from './allergen'
+
 /**
  * `capabilities` never includes `customer_order_requires_approval` — the
  * backend alone decides an order's resulting status, the frontend never
@@ -95,18 +97,52 @@ export interface PublicModifierGroup {
 }
 
 /**
+ * Contract-frozen (Carta 4.2) — always present, `basis` is the only value
+ * the backend currently sends ('per_serving'). `calories_kcal` is an
+ * integer column (plain number); the other four are DECIMAL columns cast
+ * to a string on read, same precedent as `RestaurantProduct.price`
+ * elsewhere in this app (never re-parsed to a number, formatted for
+ * display the same way money already is). Each of the 5 is independently
+ * nullable — a product can report calories without salt, etc. (Carta 4.2
+ * §12 "nutrição parcial").
+ */
+export interface PublicNutrition {
+  basis: 'per_serving'
+  calories_kcal: number | null
+  protein_g: string | null
+  carbohydrates_g: string | null
+  fat_g: string | null
+  salt_g: string | null
+}
+
+/**
  * Already filtered to what's publicly orderable — the public menu
  * serialization does not expose an `available` flag at all (unlike the
  * admin RestaurantProduct), so there is nothing to gray out here: a
  * product simply isn't in the response if it can't be ordered right now.
+ *
+ * `description`/`allergens`/`nutrition` are the Carta 4.2 additions — types
+ * only for now (CLAUDE.md Carta 4.2 §17): no product-detail overlay,
+ * nutrition table, or allergen icon renders anywhere in the customer
+ * surface yet, that's a later step. `description` is non-nullable per the
+ * frozen contract (description became mandatory on write — see
+ * `ProductTranslationInput` in `types/product.ts`); `allergens` is always a
+ * real array here (`[]` for "declared none" — a product with a null/
+ * never-declared admin-side `Product.allergens` is a data-entry gap the
+ * OWNER needs to fix, not something the public menu should ever surface as
+ * null to a customer, so it's typed as non-nullable on this side of the
+ * contract). Revisit both if the real backend turns out to send null for
+ * compatibility (see the Carta 4.2 report's "Divergências com backend").
  */
 export interface PublicProduct {
   restaurant_product_id: number
   product_id: number
   name: string
-  description: string | null
+  description: string
   /** Decimal string, e.g. "12.90". */
   price: string
+  allergens: AllergenCode[]
+  nutrition: PublicNutrition | null
   modifier_groups: PublicModifierGroup[]
 }
 

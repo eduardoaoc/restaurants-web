@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, useId } from 'vue'
+import { computed, ref, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhSparkle } from '@phosphor-icons/vue'
+import { PhSparkle, PhWarningCircle } from '@phosphor-icons/vue'
 
 import ATextField from '@/components/ui/ATextField.vue'
 import { AVAILABLE_LOCALES, LOCALE_LABEL, type AppLocale } from '@/i18n'
@@ -12,6 +12,19 @@ const props = defineProps<{
   primaryLocale: AppLocale
   disabled?: boolean
   primaryNameError?: string
+  /**
+   * One message per locale whose `name` is filled in but `description`
+   * isn't (Carta 4.2 §3/§19) — keyed by locale, not just the primary one,
+   * since any translation actually submitted (i.e. has a name) now needs a
+   * description too. Recomputed live (clears the moment the owner fixes a
+   * given locale), so the auto-jump below is driven by `validationAttempt`
+   * instead — jumping every time this map's *contents* change would yank
+   * the active tab away mid-keystroke as soon as the current locale's own
+   * error clears, not just right after a real submit click.
+   */
+  descriptionErrors?: Partial<Record<AppLocale, string>>
+  /** Bumped by the parent once per submit click (regardless of outcome) — the only thing this component actually watches to decide when to auto-jump. */
+  validationAttempt?: number
 }>()
 
 const emit = defineEmits<{ 'update:modelValue': [TranslationDraftMap] }>()
@@ -25,6 +38,16 @@ const descriptionId = useId()
 // (whatever `useI18n().locale` currently is). CLAUDE.md Passo 2.3 §4 —
 // shared as-is by Category (2.3) and Product (2.4) forms, same distinction.
 const activeLocale = ref<AppLocale>(props.primaryLocale)
+
+watch(
+  () => props.validationAttempt,
+  () => {
+    const firstOffender = props.descriptionErrors && (Object.keys(props.descriptionErrors)[0] as AppLocale | undefined)
+    if (firstOffender) activeLocale.value = firstOffender
+  },
+)
+
+const activeDescriptionError = computed(() => props.descriptionErrors?.[activeLocale.value])
 
 function setField(locale: AppLocale, field: keyof TranslationDraft, value: string): void {
   emit('update:modelValue', {
@@ -61,6 +84,12 @@ function setField(locale: AppLocale, field: keyof TranslationDraft, value: strin
           >
             {{ t('menu.translations.primaryBadge') }}
           </span>
+          <PhWarningCircle
+            v-if="descriptionErrors?.[locale]"
+            :size="14"
+            class="text-error"
+            :aria-label="t('menu.translations.translationIncomplete')"
+          />
           <span
             v-else-if="modelValue[locale]?.name"
             class="h-1.5 w-1.5 rounded-full bg-primary"
@@ -80,15 +109,24 @@ function setField(locale: AppLocale, field: keyof TranslationDraft, value: strin
     />
 
     <div class="flex flex-col gap-1.5">
-      <label :for="descriptionId" class="text-label-lg font-medium text-on-surface-variant">{{ t('menu.translations.descriptionLabel') }}</label>
+      <label :for="descriptionId" class="text-label-lg font-medium text-on-surface-variant">
+        {{ t('menu.translations.descriptionLabel') }}
+        <span v-if="activeLocale === primaryLocale || modelValue[activeLocale]?.name" aria-hidden="true" class="text-error"> *</span>
+      </label>
       <textarea
         :id="descriptionId"
         :value="modelValue[activeLocale]?.description ?? ''"
         :disabled="disabled"
         rows="2"
-        class="w-full rounded-lg border border-outline bg-surface-container-lowest px-4 py-2 text-body-lg text-on-surface placeholder:text-on-surface-variant/70 transition-colors duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-[0.38]"
+        maxlength="500"
+        :aria-invalid="Boolean(activeDescriptionError) || undefined"
+        :aria-describedby="activeDescriptionError ? `${descriptionId}-error` : `${descriptionId}-help`"
+        class="w-full rounded-lg border bg-surface-container-lowest px-4 py-2 text-body-lg text-on-surface placeholder:text-on-surface-variant/70 transition-colors duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-[0.38]"
+        :class="activeDescriptionError ? 'border-error' : 'border-outline'"
         @input="setField(activeLocale, 'description', ($event.target as HTMLTextAreaElement).value)"
       />
+      <p v-if="activeDescriptionError" :id="`${descriptionId}-error`" class="text-label-md text-error">{{ activeDescriptionError }}</p>
+      <p v-else :id="`${descriptionId}-help`" class="text-label-md text-on-surface-variant">{{ t('menu.translations.descriptionHelp') }}</p>
     </div>
 
     <!--

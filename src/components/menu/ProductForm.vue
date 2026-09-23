@@ -8,8 +8,15 @@ import AButton from '@/components/ui/AButton.vue'
 import ATextField from '@/components/ui/ATextField.vue'
 import { type AppLocale } from '@/i18n'
 import { describeApiError } from '@/utils/error-message'
+import {
+  NUTRITION_FIELDS,
+  populateNutritionDraft,
+  resolveNutritionPayload,
+  type NutritionDraftErrors,
+} from '@/utils/nutrition-draft'
 import { parsePriceInput } from '@/utils/price'
 import { populateTranslationDraftMap, type TranslationDraftMap } from '@/utils/translation-draft'
+import type { AllergenCode } from '@/types/allergen'
 import type {
   CreateProductPayload,
   Product,
@@ -18,6 +25,8 @@ import type {
   RestaurantProduct,
   UpdateProductPayload,
 } from '@/types/product'
+import AllergenSelector from './AllergenSelector.vue'
+import NutritionFields from './NutritionFields.vue'
 import TranslationEditor from './TranslationEditor.vue'
 
 const props = defineProps<{
@@ -26,7 +35,7 @@ const props = defineProps<{
   restaurantProduct?: RestaurantProduct
   primaryLocale: AppLocale
   saving: boolean
-  /** Validation/business errors from the Product-side call (internal_name, sku, translations). */
+  /** Validation/business errors from the Product-side call (internal_name, sku, translations, allergens, nutrition). */
   productError: ApiError | null
   /** Validation/business errors from the RestaurantProduct-side call (price, available). */
   restaurantProductError: ApiError | null
@@ -72,12 +81,116 @@ function onInternalNameInput(value: string): void {
 const primaryNameError = ref<string | null>(null)
 const priceError = ref<string | null>(null)
 
+// Bumped once per submit click (see `submit()`) — the one thing
+// TranslationEditor watches to decide when to auto-jump to the first
+// incomplete-description locale, instead of reacting to `descriptionErrors`
+// itself changing on every keystroke as the owner fixes one locale at a time.
+const validationAttempt = ref(0)
+
+// Locales actually destined for the payload — mirrors the exact filter
+// `submit()` uses to build `translations`, so the index this maps to a
+// locale always matches the index Laravel echoes back in a
+// `translations.<index>.description` 422 key (Carta 4.2 §19).
+const includedLocales = computed<AppLocale[]>(() =>
+  (Object.keys(translations.value) as AppLocale[]).filter((locale) => translations.value[locale].name.trim().length > 0),
+)
+
+const descriptionSubmitAttempted = ref(false)
+const localDescriptionErrors = computed<Partial<Record<AppLocale, string>>>(() => {
+  if (!descriptionSubmitAttempted.value) return {}
+  const result: Partial<Record<AppLocale, string>> = {}
+  for (const locale of includedLocales.value) {
+    if (!translations.value[locale].description.trim()) {
+      result[locale] = t('menu.products.errors.descriptionRequired')
+    }
+  }
+  return result
+})
+
+const serverDescriptionErrors = computed<Partial<Record<AppLocale, string>>>(() => {
+  const fieldErrors = props.productError?.kind === 'validation' ? props.productError.fieldErrors : undefined
+  if (!fieldErrors) return {}
+  const result: Partial<Record<AppLocale, string>> = {}
+  includedLocales.value.forEach((locale, index) => {
+    const message = fieldErrors[`translations.${index}.description`]?.[0]
+    if (message) result[locale] = message
+  })
+  return result
+})
+
+const descriptionErrors = computed(() =>
+  Object.keys(localDescriptionErrors.value).length > 0 ? localDescriptionErrors.value : serverDescriptionErrors.value,
+)
+
+/**
+ * Allergen declaration (Carta 4.2 §7/§8) — three real states, never just
+ * true/false: `selectedAllergens` non-empty is "some", `noneDeclared` is
+ * the explicit "contains none of the 14 listed" declaration, and neither
+ * set is "unset" (never declared / legacy) — the only state that blocks
+ * submit. Initial values read `product.allergens` directly: `null` ->
+ * unset, `[]` -> noneDeclared, a real array -> selected.
+ */
+const initialAllergens = props.product?.allergens ?? null
+const selectedAllergens = ref<AllergenCode[]>(initialAllergens ?? [])
+const noneAllergensDeclared = ref<boolean>(initialAllergens !== null && initialAllergens.length === 0)
+
+const allergensState = computed<'unset' | 'some' | 'none'>(() => {
+  if (noneAllergensDeclared.value) return 'none'
+  if (selectedAllergens.value.length > 0) return 'some'
+  return 'unset'
+})
+
+const showLegacyAllergenWarning = computed(
+  () => props.mode === 'edit' && initialAllergens === null && allergensState.value === 'unset',
+)
+
+const allergenSubmitAttempted = ref(false)
+const localAllergenError = computed(() =>
+  allergenSubmitAttempted.value && allergensState.value === 'unset' ? t('menu.products.allergens.errors.required') : undefined,
+)
+
+const serverAllergenError = computed<string | undefined>(() => {
+  const fieldErrors = props.productError?.kind === 'validation' ? props.productError.fieldErrors : undefined
+  if (!fieldErrors) return undefined
+  if (fieldErrors.allergens?.[0]) return fieldErrors.allergens[0]
+  const indexedKey = Object.keys(fieldErrors).find((key) => key.startsWith('allergens.'))
+  return indexedKey ? fieldErrors[indexedKey]?.[0] : undefined
+})
+
+const allergenError = computed(() => localAllergenError.value ?? serverAllergenError.value)
+
+// Nutrition — optional, partial, never negative (Carta 4.2 §9-12).
+const nutritionDraft = ref(populateNutritionDraft(props.product?.nutrition ?? null))
+const nutritionOpen = ref(Boolean(props.product?.nutrition))
+const nutritionSubmitAttempted = ref(false)
+
+const localNutritionErrors = computed<NutritionDraftErrors>(() => {
+  if (!nutritionSubmitAttempted.value) return {}
+  return resolveNutritionPayload(nutritionDraft.value, t('menu.products.nutrition.errors.invalid')).errors
+})
+
+const serverNutritionErrors = computed<NutritionDraftErrors>(() => {
+  const fieldErrors = props.productError?.kind === 'validation' ? props.productError.fieldErrors : undefined
+  if (!fieldErrors) return {}
+  const result: NutritionDraftErrors = {}
+  for (const field of NUTRITION_FIELDS) {
+    const message = fieldErrors[`nutrition.${field}`]?.[0]
+    if (message) result[field] = message
+  }
+  return result
+})
+
+const nutritionErrors = computed(() =>
+  Object.keys(localNutritionErrors.value).length > 0 ? localNutritionErrors.value : serverNutritionErrors.value,
+)
+
 watch(
   () => props.productError,
   (error) => {
-    if (error?.kind === 'validation' && error.fieldErrors?.internal_name) {
-      advancedOpen.value = true
-    }
+    if (error?.kind !== 'validation') return
+    const fieldErrors = error.fieldErrors ?? {}
+    if (fieldErrors.internal_name) advancedOpen.value = true
+    if (Object.keys(fieldErrors).some((key) => key.startsWith('nutrition.'))) nutritionOpen.value = true
   },
 )
 
@@ -92,10 +205,17 @@ watch(
 
 const submitLabel = computed(() => (props.mode === 'create' ? t('menu.products.addProduct') : t('menu.products.save')))
 
+function hasInlineHandledFieldError(fieldErrors: Record<string, string[]> | undefined): boolean {
+  if (!fieldErrors) return false
+  return Object.keys(fieldErrors).some(
+    (key) => key === 'internal_name' || key === 'price' || key === 'allergens' || key.startsWith('allergens.') || key.startsWith('nutrition.') || key.startsWith('translations.'),
+  )
+}
+
 const bannerMessage = computed(() => {
   const relevant = props.productError ?? props.restaurantProductError
   if (!relevant) return null
-  if (relevant.kind === 'validation' && (relevant.fieldErrors?.internal_name || relevant.fieldErrors?.price)) return null
+  if (relevant.kind === 'validation' && hasInlineHandledFieldError(relevant.fieldErrors)) return null
   return describeApiError(relevant, t)
 })
 
@@ -107,6 +227,23 @@ function submit(): void {
   }
   primaryNameError.value = null
 
+  descriptionSubmitAttempted.value = true
+  validationAttempt.value += 1
+  if (Object.keys(localDescriptionErrors.value).length > 0) return
+
+  allergenSubmitAttempted.value = true
+  if (allergensState.value === 'unset') return
+
+  nutritionSubmitAttempted.value = true
+  const { nutrition, errors: nutritionParseErrors } = resolveNutritionPayload(
+    nutritionDraft.value,
+    t('menu.products.nutrition.errors.invalid'),
+  )
+  if (Object.keys(nutritionParseErrors).length > 0) {
+    nutritionOpen.value = true
+    return
+  }
+
   const parsedPrice = parsePriceInput(priceRaw.value)
   if (parsedPrice === null) {
     priceError.value = t('menu.products.errors.priceInvalid')
@@ -114,22 +251,33 @@ function submit(): void {
   }
   priceError.value = null
 
-  const translationPayload: ProductTranslationInput[] = (Object.keys(translations.value) as AppLocale[])
-    .map((locale) => ({ locale, draft: translations.value[locale] }))
-    .filter(({ draft }) => draft.name.trim().length > 0)
-    .map(({ locale, draft }) => ({
-      locale,
-      name: draft.name.trim(),
-      description: draft.description.trim() ? draft.description.trim() : null,
-    }))
+  const translationPayload: ProductTranslationInput[] = includedLocales.value.map((locale) => ({
+    locale,
+    name: translations.value[locale].name.trim(),
+    description: translations.value[locale].description.trim(),
+  }))
 
   const finalInternalName = internalName.value.trim() || primaryName
   const finalSku = sku.value.trim() ? sku.value.trim() : null
+  const allergensPayload: AllergenCode[] = allergensState.value === 'none' ? [] : [...selectedAllergens.value]
 
   const productPayload: CreateProductPayload | UpdateProductPayload =
     props.mode === 'create'
-      ? { internal_name: finalInternalName, sku: finalSku, translations: translationPayload }
-      : { internal_name: finalInternalName, sku: finalSku, status: status.value, translations: translationPayload }
+      ? {
+          internal_name: finalInternalName,
+          sku: finalSku,
+          translations: translationPayload,
+          allergens: allergensPayload,
+          nutrition,
+        }
+      : {
+          internal_name: finalInternalName,
+          sku: finalSku,
+          status: status.value,
+          translations: translationPayload,
+          allergens: allergensPayload,
+          nutrition,
+        }
 
   emit('save', {
     product: productPayload,
@@ -139,13 +287,25 @@ function submit(): void {
 </script>
 
 <template>
-  <form class="flex flex-col gap-4" @submit.prevent="submit">
+  <form class="flex flex-col gap-5" @submit.prevent="submit">
     <TranslationEditor
       v-model="translations"
       :primary-locale="primaryLocale"
       :disabled="saving"
       :primary-name-error="primaryNameError ?? undefined"
+      :description-errors="descriptionErrors"
+      :validation-attempt="validationAttempt"
     />
+
+    <AllergenSelector
+      v-model:selected="selectedAllergens"
+      v-model:none-declared="noneAllergensDeclared"
+      :disabled="saving"
+      :error="allergenError"
+      :show-legacy-warning="showLegacyAllergenWarning"
+    />
+
+    <NutritionFields v-model:open="nutritionOpen" v-model="nutritionDraft" :errors="nutritionErrors" :disabled="saving" />
 
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <ATextField
