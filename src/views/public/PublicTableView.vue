@@ -2,9 +2,10 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { PhShoppingCart, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhList, PhShoppingCart, PhWarningCircle } from '@phosphor-icons/vue'
 
 import { normalizeApiError, type ApiError } from '@/api/errors'
+import AIconButton from '@/components/ui/AIconButton.vue'
 import AProgress from '@/components/ui/AProgress.vue'
 import ThemeSwitcher from '@/components/shared/ThemeSwitcher.vue'
 import EmptyState from '@/components/dashboard/EmptyState.vue'
@@ -297,9 +298,25 @@ function onSelectCategory(categoryId: number): void {
   feedRef.value?.scrollToCategory(categoryId)
 }
 
-/** Any overlay that must pause the active card's video (Carta 4.4 §10) — the product sheet, cart, order success, and feedback sheet all count. */
+/**
+ * The category menu (Carta 4.4.1) — `PublicCategoryNav` used to be a
+ * permanent row of pills always visible over the media; it's now a sheet
+ * this hamburger trigger opens on demand, same `v-if`-owns-the-sheet
+ * pattern as every other public sheet below. Picking a category still goes
+ * through the exact same `onSelectCategory` (§ above, unchanged since Carta
+ * 4.4) — this handler only adds "and close the menu" on top of it, mirroring
+ * how `onAddToCart` already closes `PublicProductSheet` by clearing its own
+ * `v-if` state directly rather than waiting on a close transition.
+ */
+const showCategoryMenu = ref(false)
+function onSelectCategoryFromMenu(categoryId: number): void {
+  onSelectCategory(categoryId)
+  showCategoryMenu.value = false
+}
+
+/** Any overlay that must pause the active card's video (Carta 4.4 §10) — the product sheet, cart, order success, feedback sheet, and now the category menu all count. */
 const anyOverlayOpen = computed(() =>
-  Boolean(selectedProduct.value || showCart.value || successOrder.value || showFeedback.value),
+  Boolean(selectedProduct.value || showCart.value || successOrder.value || showFeedback.value || showCategoryMenu.value),
 )
 
 /** Whether there's anything to show once "Ver la carta" is pressed — the gateway's own CTA reflects this instead of leading to a broken/empty carta. */
@@ -501,41 +518,56 @@ function onFeedbackInvalid(): void {
           @active-category-change="activeCategoryId = $event"
         />
 
-        <!-- Compact overlay header (§26) — floats on top of the media, never
-             reserves layout space from it. `pointer-events-none` on the wrapper
-             keeps the empty gaps tap-through (future §22 center-tap area); only
-             the actual pills are interactive. -->
+        <!-- Compact overlay header (§26, simplified Carta 4.4.1) — floats on top
+             of the media, never reserves layout space from it. The restaurant/
+             table identity pill and the permanent category pills are both gone
+             from here (never deleted from state — `restaurantName`/`tableLabel`
+             still back the intro/gateway stages above, and `categoriesWithProducts`
+             still feeds the hamburger's sheet below): the media itself is the
+             only thing competing for attention now. `pointer-events-none` on the
+             wrapper keeps the empty gaps tap-through; only the actual controls
+             are interactive. -->
         <div
-          class="pointer-events-none absolute inset-x-0 top-0 z-30 flex flex-col gap-2 pb-1"
+          class="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start gap-2 px-3 pb-1"
           style="padding-top: max(0.625rem, env(safe-area-inset-top))"
         >
-          <div class="flex items-start justify-between gap-2 px-3">
-            <div class="pointer-events-auto min-w-0 rounded-full bg-black/35 px-3 py-1.5 backdrop-blur-sm">
-              <p class="truncate text-label-lg font-semibold text-white">{{ restaurantName || ' ' }}</p>
-              <p v-if="tableLabel" class="truncate text-label-md text-white/80">{{ tableLabel }}</p>
-            </div>
-            <div class="pointer-events-auto flex shrink-0 items-center gap-0.5 rounded-full bg-black/35 px-1 backdrop-blur-sm">
-              <PublicLanguageSwitcher :available="availableLocales" :current="currentLocale" on-media @select="selectLocale" />
-              <ThemeSwitcher on-media />
-              <PublicActionsMenu
-                :show-waiter-call="showWaiterCallInMenu"
-                :waiter-called="waiterCalled"
-                :requesting-waiter="requestingWaiter"
-                :show-bill-request="showBillRequestInMenu"
-                :bill-requested="billRequested"
-                :requesting-bill="requestingBill"
-                :request-error="requestError"
-                :show-feedback="!error && Boolean(feedbackToken) && (feedbackEligible || feedbackAlreadySubmitted)"
-                :feedback-already-submitted="feedbackAlreadySubmitted"
-                @call-waiter="callWaiter"
-                @request-bill="requestBill"
-                @open-feedback="showFeedback = true"
-              />
-            </div>
-          </div>
+          <AIconButton
+            v-if="categoriesWithProducts.length > 1"
+            :label="t('publicMenu.feed.categoryNavLabel')"
+            variant="onMedia"
+            class="pointer-events-auto rounded-full bg-black/35 backdrop-blur-sm"
+            @click="showCategoryMenu = true"
+          >
+            <PhList :size="20" />
+          </AIconButton>
 
-          <PublicCategoryNav :categories="categoriesWithProducts" :active-category-id="activeCategoryId" @select="onSelectCategory" />
+          <div class="pointer-events-auto ml-auto flex shrink-0 items-center gap-0.5 rounded-full bg-black/35 px-1 backdrop-blur-sm">
+            <PublicLanguageSwitcher :available="availableLocales" :current="currentLocale" on-media @select="selectLocale" />
+            <ThemeSwitcher on-media />
+            <PublicActionsMenu
+              :show-waiter-call="showWaiterCallInMenu"
+              :waiter-called="waiterCalled"
+              :requesting-waiter="requestingWaiter"
+              :show-bill-request="showBillRequestInMenu"
+              :bill-requested="billRequested"
+              :requesting-bill="requestingBill"
+              :request-error="requestError"
+              :show-feedback="!error && Boolean(feedbackToken) && (feedbackEligible || feedbackAlreadySubmitted)"
+              :feedback-already-submitted="feedbackAlreadySubmitted"
+              @call-waiter="callWaiter"
+              @request-bill="requestBill"
+              @open-feedback="showFeedback = true"
+            />
+          </div>
         </div>
+
+        <PublicCategoryNav
+          v-if="showCategoryMenu"
+          :categories="categoriesWithProducts"
+          :active-category-id="activeCategoryId"
+          @select="onSelectCategoryFromMenu"
+          @close="showCategoryMenu = false"
+        />
 
         <!-- Persistent cart access (§27) — a floating pill, never a full-width
              bar competing with the media. Positioned clear of each card's own
