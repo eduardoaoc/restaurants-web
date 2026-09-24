@@ -603,6 +603,13 @@ export default {
         ratingRequired: 'Choose a rating from 1 to 5 for each item.',
       },
     },
+    feed: {
+      categoryNavLabel: 'Menu categories',
+      allergensNone: 'None of the listed allergens.',
+      noMediaAlt: 'No photo or video available',
+      playVideo: 'Play video',
+      actionsLabel: 'More actions',
+    },
   },
   service: {
     title: 'Service',

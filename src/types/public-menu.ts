@@ -175,6 +175,20 @@ export interface PublicMenu {
   }
 }
 
+/**
+ * One flattened (category, product) pair for the Reel feed (Carta 4.4
+ * §4) — the backend still nests `categories[].products[]`; this is purely
+ * a frontend read-model for `PublicProductFeed`'s own `v-for`, built by a
+ * single `flatMap` over `PublicMenu.menu.categories` (see
+ * `PublicTableView`'s `feedItems` computed). Never duplicates a product:
+ * exactly one `PublicFeedItem` per (category, product) pair as the
+ * backend already returns it, same order.
+ */
+export interface PublicFeedItem {
+  category: PublicCategory
+  product: PublicProduct
+}
+
 /** POST .../orders item — matches OrderItemCreateRequest exactly (quantity 1..50, enforced server-side too). */
 export interface PublicOrderItemPayload {
   restaurant_product_id: number

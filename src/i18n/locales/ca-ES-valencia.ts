@@ -603,6 +603,13 @@ export default {
         ratingRequired: 'Selecciona una valoració d\'1 a 5 en cada apartat.',
       },
     },
+    feed: {
+      categoryNavLabel: 'Categories de la carta',
+      allergensNone: 'Cap dels al·lèrgens indicats.',
+      noMediaAlt: 'Sense foto ni vídeo disponible',
+      playVideo: 'Reproduir vídeo',
+      actionsLabel: 'Més accions',
+    },
   },
   service: {
     title: 'Servei',

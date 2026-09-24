@@ -7,6 +7,8 @@ import AIconButton from '@/components/ui/AIconButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import { useThemeStore, type ThemePreference } from '@/stores/theme'
 
+withDefaults(defineProps<{ onMedia?: boolean }>(), { onMedia: false })
+
 const { t } = useI18n()
 const theme = useThemeStore()
 
@@ -33,7 +35,12 @@ function onKeydown(event: KeyboardEvent): void {
 
 <template>
   <div ref="rootRef" class="relative" @focusout="onFocusOut" @keydown="onKeydown">
-    <AIconButton :label="t('theme.label')" :pressed="open" @click="open = !open">
+    <AIconButton
+      :label="t('theme.label')"
+      :pressed="open"
+      :variant="onMedia ? 'onMedia' : 'default'"
+      @click="open = !open"
+    >
       <PhMoon v-if="theme.resolvedTheme === 'dark'" :size="20" />
       <PhSun v-else :size="20" />
     </AIconButton>

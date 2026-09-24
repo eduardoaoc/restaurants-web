@@ -11,10 +11,15 @@ import { LOCALE_LABEL, type AppLocale } from '@/i18n'
  * without duplicating the dropdown markup in two places (CLAUDE.md §17).
  * Renders nothing when there's nothing to switch between.
  */
-defineProps<{
-  available: AppLocale[]
-  current: AppLocale
-}>()
+withDefaults(
+  defineProps<{
+    available: AppLocale[]
+    current: AppLocale
+    /** Carta 4.4 — see AIconButton's own doc comment for why this exception exists. */
+    onMedia?: boolean
+  }>(),
+  { onMedia: false },
+)
 
 const emit = defineEmits<{ select: [AppLocale] }>()
 
@@ -31,7 +36,8 @@ function choose(loc: AppLocale): void {
   <div v-if="available.length > 1" class="relative">
     <button
       type="button"
-      class="inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-label-lg font-medium text-on-surface-variant hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      class="inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-label-lg font-medium transition-colors duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      :class="onMedia ? 'text-white hover:bg-white/20' : 'text-on-surface-variant hover:bg-surface-container-high'"
       :aria-label="t('publicMenu.languageLabel')"
       :aria-expanded="open"
       @click="open = !open"

@@ -2,18 +2,20 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { PhBellRinging, PhCheckCircle, PhReceipt, PhShoppingCart, PhStar, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhShoppingCart, PhWarningCircle } from '@phosphor-icons/vue'
 
 import { normalizeApiError, type ApiError } from '@/api/errors'
-import AButton from '@/components/ui/AButton.vue'
 import AProgress from '@/components/ui/AProgress.vue'
 import ThemeSwitcher from '@/components/shared/ThemeSwitcher.vue'
 import EmptyState from '@/components/dashboard/EmptyState.vue'
+import PublicActionsMenu from '@/components/public/PublicActionsMenu.vue'
 import PublicCartSheet from '@/components/public/PublicCartSheet.vue'
+import PublicCategoryNav from '@/components/public/PublicCategoryNav.vue'
 import PublicEntryIntro from '@/components/public/PublicEntryIntro.vue'
 import PublicFeedbackSheet from '@/components/public/PublicFeedbackSheet.vue'
 import PublicLanguageSwitcher from '@/components/public/PublicLanguageSwitcher.vue'
 import PublicOrderSuccess from '@/components/public/PublicOrderSuccess.vue'
+import PublicProductFeed from '@/components/public/PublicProductFeed.vue'
 import PublicProductSheet from '@/components/public/PublicProductSheet.vue'
 import PublicWelcomeGate from '@/components/public/PublicWelcomeGate.vue'
 import { usePublicCart, type CartModifierSelection } from '@/composables/usePublicCart'
@@ -23,7 +25,7 @@ import { usePublicMenu } from '@/composables/usePublicMenu'
 import { usePublicTableResolution } from '@/composables/usePublicTableResolution'
 import { publicTableService } from '@/services/public-table.service'
 import { AVAILABLE_LOCALES, DEFAULT_LOCALE, i18n, type AppLocale } from '@/i18n'
-import type { PublicOrderCreated, PublicProduct } from '@/types/public-menu'
+import type { PublicFeedItem, PublicOrderCreated, PublicProduct } from '@/types/public-menu'
 import { describeApiError } from '@/utils/error-message'
 import { formatMoney } from '@/utils/format'
 
@@ -244,6 +246,62 @@ const showWaiterCallOnGate = computed(() =>
   Boolean(resolution.value?.session.active && resolution.value?.restaurant.capabilities.waiter_call),
 )
 
+/**
+ * Same waiter/bill-request gating as the gateway above, but evaluated once
+ * inside the actual carta (Carta 4.4 §28) — kept as its own computed
+ * rather than reusing `showWaiterCallOnGate` because this one is correctly
+ * `menu`-driven (the gate's version deliberately isn't, since it must work
+ * before the menu exists at all — see that computed's own comment).
+ */
+const showWaiterCallInMenu = computed(() =>
+  Boolean(menu.value?.session.active && menu.value?.restaurant.capabilities.waiter_call),
+)
+const showBillRequestInMenu = computed(() =>
+  Boolean(menu.value?.session.active && menu.value?.restaurant.capabilities.bill_request),
+)
+
+/** Carta 4.4 §29 — the Reel still shows every product as a visual carta either way; only the "Añadir" CTA itself depends on this. */
+const orderingEnabled = computed(() => menu.value?.restaurant.capabilities.customer_ordering ?? false)
+
+/**
+ * Flattened (category, product) read-model for the Reel feed (Carta 4.4
+ * §4) — a single `flatMap`, never duplicating a product, preserving the
+ * backend's own category/product order exactly. `categoriesWithProducts`
+ * feeds the nav: a category with zero products has nothing to scroll to,
+ * so it's excluded there rather than rendered as a dead-end pill.
+ */
+const feedItems = computed<PublicFeedItem[]>(() => {
+  if (!menu.value) return []
+  return menu.value.menu.categories.flatMap((category) => category.products.map((product) => ({ category, product })))
+})
+const categoriesWithProducts = computed(() => menu.value?.menu.categories.filter((category) => category.products.length > 0) ?? [])
+
+/**
+ * Set once when the feed first has items, then left alone — the feed's own
+ * IntersectionObserver keeps this accurate as the customer scrolls
+ * (`active-category-change`), and a locale switch must never reset it back
+ * to the first category out from under someone already scrolled further
+ * in (same reasoning as `PublicProductFeed`'s own `lastItemsKey` guard).
+ */
+const activeCategoryId = ref<number | null>(null)
+watch(
+  feedItems,
+  (items) => {
+    if (activeCategoryId.value === null) activeCategoryId.value = items[0]?.category.id ?? null
+  },
+  { immediate: true },
+)
+
+const feedRef = ref<InstanceType<typeof PublicProductFeed> | null>(null)
+function onSelectCategory(categoryId: number): void {
+  feedRef.value?.scrollToCategory(categoryId)
+}
+
+/** Any overlay that must pause the active card's video (Carta 4.4 §10) — the product sheet, cart, order success, and feedback sheet all count. */
+const anyOverlayOpen = computed(() =>
+  Boolean(selectedProduct.value || showCart.value || successOrder.value || showFeedback.value),
+)
+
 /** Whether there's anything to show once "Ver la carta" is pressed — the gateway's own CTA reflects this instead of leading to a broken/empty carta. */
 const menuAvailable = computed(() => resolution.value?.menu.available ?? false)
 
@@ -400,108 +458,20 @@ function onFeedbackInvalid(): void {
     @select-locale="selectLocale"
   />
 
-  <!-- stage === 'menu' — the carta itself, entirely unchanged: its own loading/error/empty
-       states below are about the MENU fetch specifically, never about whether the table/QR
-       itself is valid (that's already settled above by the time this branch can render). -->
-  <div v-else class="min-h-dvh bg-background pb-24">
-    <header class="sticky top-0 z-30 border-b border-outline-variant bg-surface-container-low/95 backdrop-blur">
-      <div class="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-3">
-        <div class="min-w-0">
-          <p class="truncate text-title-md font-semibold text-on-surface">{{ restaurantName || ' ' }}</p>
-          <!-- Table.name already reads e.g. "Mesa 1" — never re-prefix it, that produced "Mesa Mesa 1". -->
-          <p v-if="tableLabel" class="truncate text-label-lg text-on-surface-variant">{{ tableLabel }}</p>
-        </div>
-        <div class="flex shrink-0 items-center gap-1">
-          <PublicLanguageSwitcher :available="availableLocales" :current="currentLocale" @select="selectLocale" />
-          <ThemeSwitcher />
-        </div>
-      </div>
-
-      <nav
-        v-if="menu && menu.menu.categories.length > 0"
-        class="mx-auto flex max-w-2xl gap-2 overflow-x-auto px-4 pb-3"
-        :aria-label="t('common.menu')"
-      >
-        <a
-          v-for="category in menu.menu.categories"
-          :key="category.id"
-          :href="`#public-category-${category.id}`"
-          class="shrink-0 whitespace-nowrap rounded-full bg-surface-container px-4 py-2 text-label-lg font-medium text-on-surface hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          {{ category.name }}
-        </a>
-      </nav>
-    </header>
-
-    <main class="mx-auto max-w-2xl px-4 py-4">
-      <div
-        v-if="menu && menu.session.active && (menu.restaurant.capabilities.waiter_call || menu.restaurant.capabilities.bill_request)"
-        class="mb-4 flex flex-col gap-2 rounded-xl border border-outline-variant bg-surface-container-low p-3"
-      >
-        <div class="flex flex-wrap items-center gap-2">
-          <template v-if="menu.restaurant.capabilities.waiter_call">
-            <p v-if="waiterCalled" class="flex items-center gap-1.5 text-label-lg text-on-surface-variant">
-              <PhCheckCircle :size="16" class="text-primary" aria-hidden="true" />
-              {{ t('publicMenu.requests.waiterConfirmed') }}
-            </p>
-            <AButton v-else variant="outlined" :loading="requestingWaiter" @click="callWaiter">
-              <template #leading><PhBellRinging :size="16" /></template>
-              {{ t('publicMenu.requests.callWaiter') }}
-            </AButton>
-          </template>
-          <template v-if="menu.restaurant.capabilities.bill_request">
-            <p v-if="billRequested" class="flex items-center gap-1.5 text-label-lg text-on-surface-variant">
-              <PhCheckCircle :size="16" class="text-primary" aria-hidden="true" />
-              {{ t('publicMenu.requests.billConfirmed') }}
-            </p>
-            <AButton v-else variant="outlined" :loading="requestingBill" @click="requestBill">
-              <template #leading><PhReceipt :size="16" /></template>
-              {{ t('publicMenu.requests.requestBill') }}
-            </AButton>
-          </template>
-        </div>
-        <p v-if="requestError" class="rounded-md bg-error-container px-3 py-2 text-label-lg text-on-error-container" role="alert">
-          {{ describeApiError(requestError, t) }}
-        </p>
-      </div>
-
-      <!-- Post-visit feedback (Passo 3.5) — shown once we have a usable
-           token AND (the live session says the visit is paid, or the
-           session already closed and we're relying on the stored token —
-           see the watcher above). Nothing shown at all while eligible is
-           known-false (§4 "pode mostrar nada"), and never above a hard
-           error state. -->
-      <div
-        v-if="!error && feedbackToken && (feedbackEligible || feedbackAlreadySubmitted)"
-        class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-outline-variant bg-surface-container-low p-3"
-      >
-        <p v-if="feedbackAlreadySubmitted" class="flex items-center gap-1.5 text-label-lg text-on-surface-variant">
-          <PhCheckCircle :size="16" class="text-primary" aria-hidden="true" />
-          {{ t('publicMenu.feedback.alreadySubmitted') }}
-        </p>
-        <template v-else>
-          <p class="text-body-lg font-medium text-on-surface">{{ t('publicMenu.feedback.cta') }}</p>
-          <AButton variant="tonal" @click="showFeedback = true">
-            <template #leading><PhStar :size="16" /></template>
-            {{ t('publicMenu.feedback.open') }}
-          </AButton>
-        </template>
-      </div>
-
-      <!-- Loading skeleton -->
-      <div v-if="loading" class="flex flex-col gap-6" aria-hidden="true">
-        <div class="flex gap-2">
-          <div v-for="i in 3" :key="i" class="h-9 w-24 shrink-0 rounded-full bg-surface-container-high public-skeleton" />
-        </div>
-        <div v-for="i in 3" :key="i" class="flex flex-col gap-3">
-          <div class="h-6 w-40 rounded bg-surface-container-high public-skeleton" />
-          <div class="h-20 rounded-lg bg-surface-container-high public-skeleton" />
-          <div class="h-20 rounded-lg bg-surface-container-high public-skeleton" />
-        </div>
+  <!-- stage === 'menu' — Carta 4.4: the QR carta is now a vertical Reel feed.
+       Loading/hard-error/empty-menu stay as their own simple, full-screen states
+       (never a card-shaped skeleton — §31); the feed itself only ever mounts once
+       there's at least one real product to show. Desktop/tablet centers a fixed-width
+       panel instead of stretching a vertical photo/video across the whole window (§34). -->
+  <div v-else class="flex h-dvh w-full items-center justify-center bg-surface-container-lowest sm:p-6">
+    <div class="relative h-full w-full overflow-hidden bg-background sm:max-w-[560px] sm:rounded-xl sm:shadow-elevated">
+      <div v-if="loading" class="flex h-full flex-col items-center justify-center gap-3 text-on-surface-variant">
+        <AProgress size="sm" />
+        <span class="text-body-md">{{ t('publicMenu.loading') }}</span>
       </div>
 
       <!-- Hard error: token invalid, table/menu not found, rate limited, network, server -->
-      <div v-else-if="error" class="flex flex-col items-center gap-4 py-16 text-center">
+      <div v-else-if="error" class="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
         <PhWarningCircle :size="32" class="text-on-surface-variant" aria-hidden="true" />
         <p class="max-w-xs text-body-lg text-on-surface-variant">
           {{ error.kind === 'not_found' ? t('publicMenu.errors.tableNotFound') : describeApiError(error, t) }}
@@ -515,120 +485,106 @@ function onFeedbackInvalid(): void {
         </button>
       </div>
 
-      <!-- Menu explicitly not available for this table -->
-      <div v-else-if="menu && menu.menu.categories.length === 0" class="py-10">
+      <!-- No orderable product at all (categories missing, or every category empty) -->
+      <div v-else-if="feedItems.length === 0" class="flex h-full flex-col items-center justify-center px-6">
         <EmptyState :icon="PhWarningCircle" :message="t('publicMenu.emptyMenu')" />
       </div>
 
-      <template v-else-if="menu">
-        <section
-          v-for="category in menu.menu.categories"
-          :id="`public-category-${category.id}`"
-          :key="category.id"
-          class="scroll-mt-32 py-4 first:pt-0"
+      <template v-else>
+        <PublicProductFeed
+          ref="feedRef"
+          :items="feedItems"
+          :locale="currentLocale"
+          :suspended="anyOverlayOpen"
+          :ordering-enabled="orderingEnabled"
+          @add="openProduct"
+          @active-category-change="activeCategoryId = $event"
+        />
+
+        <!-- Compact overlay header (§26) — floats on top of the media, never
+             reserves layout space from it. `pointer-events-none` on the wrapper
+             keeps the empty gaps tap-through (future §22 center-tap area); only
+             the actual pills are interactive. -->
+        <div
+          class="pointer-events-none absolute inset-x-0 top-0 z-30 flex flex-col gap-2 pb-1"
+          style="padding-top: max(0.625rem, env(safe-area-inset-top))"
         >
-          <h2 class="text-title-lg font-semibold text-on-surface">{{ category.name }}</h2>
-          <p v-if="category.description" class="mt-1 text-body-md text-on-surface-variant">{{ category.description }}</p>
+          <div class="flex items-start justify-between gap-2 px-3">
+            <div class="pointer-events-auto min-w-0 rounded-full bg-black/35 px-3 py-1.5 backdrop-blur-sm">
+              <p class="truncate text-label-lg font-semibold text-white">{{ restaurantName || ' ' }}</p>
+              <p v-if="tableLabel" class="truncate text-label-md text-white/80">{{ tableLabel }}</p>
+            </div>
+            <div class="pointer-events-auto flex shrink-0 items-center gap-0.5 rounded-full bg-black/35 px-1 backdrop-blur-sm">
+              <PublicLanguageSwitcher :available="availableLocales" :current="currentLocale" on-media @select="selectLocale" />
+              <ThemeSwitcher on-media />
+              <PublicActionsMenu
+                :show-waiter-call="showWaiterCallInMenu"
+                :waiter-called="waiterCalled"
+                :requesting-waiter="requestingWaiter"
+                :show-bill-request="showBillRequestInMenu"
+                :bill-requested="billRequested"
+                :requesting-bill="requestingBill"
+                :request-error="requestError"
+                :show-feedback="!error && Boolean(feedbackToken) && (feedbackEligible || feedbackAlreadySubmitted)"
+                :feedback-already-submitted="feedbackAlreadySubmitted"
+                @call-waiter="callWaiter"
+                @request-bill="requestBill"
+                @open-feedback="showFeedback = true"
+              />
+            </div>
+          </div>
 
-          <EmptyState
-            v-if="category.products.length === 0"
-            :icon="PhWarningCircle"
-            :message="t('publicMenu.emptyCategoryProducts')"
-          />
+          <PublicCategoryNav :categories="categoriesWithProducts" :active-category-id="activeCategoryId" @select="onSelectCategory" />
+        </div>
 
-          <ul v-else class="mt-3 flex flex-col divide-y divide-outline-variant">
-            <li v-for="product in category.products" :key="product.restaurant_product_id">
-              <button
-                type="button"
-                class="flex w-full items-start justify-between gap-3 py-3 text-left hover:bg-surface-container-low focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                @click="openProduct(product)"
-              >
-                <div class="min-w-0">
-                  <p class="text-body-lg font-medium text-on-surface">{{ product.name }}</p>
-                  <p v-if="product.description" class="mt-0.5 line-clamp-2 text-body-md text-on-surface-variant">
-                    {{ product.description }}
-                  </p>
-                </div>
-                <span class="shrink-0 text-body-lg font-semibold tabular-nums text-on-surface">
-                  {{ formatMoney(product.price, currentLocale) }}
-                </span>
-              </button>
-            </li>
-          </ul>
-        </section>
-      </template>
-    </main>
-
-    <!-- Sticky cart CTA (Passo 3.1 §17) — safe-area aware, never covers content since the page has bottom padding to match. -->
-    <div
-      v-if="cart.lines.value.length > 0 && !loading && !error"
-      class="fixed inset-x-0 bottom-0 z-30 border-t border-outline-variant bg-surface-container-low px-4 pt-3"
-      style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))"
-    >
-      <button
-        type="button"
-        class="mx-auto flex min-h-11 w-full max-w-2xl items-center justify-between gap-3 rounded-full bg-primary px-5 py-3 text-label-lg font-medium text-on-primary hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        @click="showCart = true"
-      >
-        <span class="flex items-center gap-2">
+        <!-- Persistent cart access (§27) — a floating pill, never a full-width
+             bar competing with the media. Positioned clear of each card's own
+             bottom content block (name/description/allergens/price/CTA). -->
+        <button
+          v-if="cart.lines.value.length > 0"
+          type="button"
+          class="pointer-events-auto absolute right-3 z-30 flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-label-lg font-medium text-on-primary shadow-elevated hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          style="bottom: max(7.5rem, calc(7.5rem + env(safe-area-inset-bottom)))"
+          @click="showCart = true"
+        >
           <PhShoppingCart :size="20" />
-          {{ t('publicMenu.cart.itemsCount', { count: cart.totalItems.value }) }}
-        </span>
-        <span class="tabular-nums">{{ formatMoney(String(cart.total.value), currentLocale) }}</span>
-      </button>
+          <span>{{ cart.totalItems.value }}</span>
+          <span class="tabular-nums">{{ formatMoney(String(cart.total.value), currentLocale) }}</span>
+        </button>
+      </template>
+
+      <PublicProductSheet
+        v-if="selectedProduct"
+        :product="selectedProduct"
+        :locale="currentLocale"
+        @close="selectedProduct = null"
+        @add="onAddToCart"
+      />
+
+      <PublicCartSheet
+        v-if="showCart"
+        :lines="cart.lines.value"
+        :total="cart.total.value"
+        :locale="currentLocale"
+        :submitting="submitting"
+        :submit-error="submitError"
+        :bill-requested="billRequested"
+        @close="showCart = false"
+        @set-quantity="cart.setQuantity"
+        @remove="cart.removeItem"
+        @confirm="confirmOrder"
+      />
+
+      <PublicOrderSuccess v-if="successOrder" :order="successOrder" :locale="currentLocale" @close="dismissSuccess" />
+
+      <PublicFeedbackSheet
+        v-if="showFeedback && feedbackToken"
+        :token="feedbackToken"
+        :table-public-token="publicToken"
+        @close="showFeedback = false"
+        @submitted="onFeedbackSubmitted"
+        @invalid="onFeedbackInvalid"
+      />
     </div>
-
-    <PublicProductSheet
-      v-if="selectedProduct"
-      :product="selectedProduct"
-      :locale="currentLocale"
-      @close="selectedProduct = null"
-      @add="onAddToCart"
-    />
-
-    <PublicCartSheet
-      v-if="showCart"
-      :lines="cart.lines.value"
-      :total="cart.total.value"
-      :locale="currentLocale"
-      :submitting="submitting"
-      :submit-error="submitError"
-      :bill-requested="billRequested"
-      @close="showCart = false"
-      @set-quantity="cart.setQuantity"
-      @remove="cart.removeItem"
-      @confirm="confirmOrder"
-    />
-
-    <PublicOrderSuccess v-if="successOrder" :order="successOrder" :locale="currentLocale" @close="dismissSuccess" />
-
-    <PublicFeedbackSheet
-      v-if="showFeedback && feedbackToken"
-      :token="feedbackToken"
-      :table-public-token="publicToken"
-      @close="showFeedback = false"
-      @submitted="onFeedbackSubmitted"
-      @invalid="onFeedbackInvalid"
-    />
   </div>
 </template>
-
-<style scoped>
-.public-skeleton {
-  animation: public-pulse 1.6s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .public-skeleton {
-    animation: none;
-  }
-}
-@keyframes public-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-</style>
