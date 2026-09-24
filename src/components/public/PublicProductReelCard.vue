@@ -14,8 +14,16 @@ import type { PublicProduct } from '@/types/public-menu'
  * element and plays/pauses itself purely in reaction to `active` (the
  * feed's IntersectionObserver decides who's active; this component never
  * inspects its own visibility). Discovery only: no modifiers, no
- * quantity, no full detail — that's `PublicProductSheet`'s job (§20),
- * reached only through the "Añadir" CTA, never duplicated here.
+ * quantity — that's `PublicProductSheet`'s job, reached only through the
+ * "Añadir" CTA, never duplicated here.
+ *
+ * Carta 4.5 adds a second, distinct intent: tapping the media itself (never
+ * the text/CTA block below it) opens `PublicProductInfoSheet` — pure
+ * information (full description/allergens/nutrition), not the purchase
+ * flow. The media is wrapped in its own `<button>` for this, sized to the
+ * whole card but painted BEHIND the play-control button and the bottom
+ * text block (both keep their own, later, higher-stacking elements), so
+ * neither of those ever loses its click to this one.
  */
 const props = defineProps<{
   product: PublicProduct
@@ -28,7 +36,7 @@ const props = defineProps<{
   orderingEnabled: boolean
 }>()
 
-const emit = defineEmits<{ add: [PublicProduct] }>()
+const emit = defineEmits<{ add: [PublicProduct]; 'open-product-info': [PublicProduct] }>()
 
 const { t } = useI18n()
 
@@ -129,39 +137,53 @@ onBeforeUnmount(() => {
     class="relative h-full w-full shrink-0 snap-start overflow-hidden bg-surface-container-high"
     :aria-label="product.name"
   >
-    <video
-      v-if="mountVideo"
-      ref="videoRef"
-      :src="product.media.video!.url"
-      :poster="posterUrl"
-      class="absolute inset-0 h-full w-full object-cover"
-      muted
-      playsinline
-      loop
-      preload="metadata"
-      @error="onVideoError"
-      @playing="isPlaying = true"
-      @pause="isPlaying = false"
-    />
-    <img
-      v-else-if="effectiveMedia === 'image' || showPosterInsteadOfVideo"
-      :src="effectiveMedia === 'image' ? product.media.image!.url : posterUrl!"
-      :alt="product.name"
-      class="absolute inset-0 h-full w-full object-cover"
-      loading="lazy"
-      @error="onImageError"
-    />
     <!--
-      Branded fallback for legacy/no-media products (§15) — a plain
-      surface tone + the real AFORO mark, faded. Deliberately NOT the
-      brand gradient here: that token is reserved for genuine accent
-      moments (logo areas, hero surfaces — CLAUDE.md §4), and would read
-      as decorative wallpaper if repeated across an arbitrary number of
-      feed cards.
+      Carta 4.5 §1 — the ONLY thing this button does is open the info sheet;
+      it sits behind the play-control button and the bottom text block
+      (both still their own, later-in-DOM, z-10 elements) so tapping either
+      of those never reaches this one. A real `<button>`, not a `<div
+      @click>`, so it's keyboard/AT-operable for free.
     -->
-    <div v-else class="absolute inset-0 flex items-center justify-center bg-surface-container-high" role="img" :aria-label="t('publicMenu.feed.noMediaAlt')">
-      <img :src="aforoSymbol" alt="" aria-hidden="true" class="h-16 w-16 opacity-20" />
-    </div>
+    <button
+      type="button"
+      class="absolute inset-0 block h-full w-full cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white"
+      :aria-label="t('publicMenu.product.viewDetails', { name: product.name })"
+      @click="emit('open-product-info', product)"
+    >
+      <video
+        v-if="mountVideo"
+        ref="videoRef"
+        :src="product.media.video!.url"
+        :poster="posterUrl"
+        class="absolute inset-0 h-full w-full object-cover"
+        muted
+        playsinline
+        loop
+        preload="metadata"
+        @error="onVideoError"
+        @playing="isPlaying = true"
+        @pause="isPlaying = false"
+      />
+      <img
+        v-else-if="effectiveMedia === 'image' || showPosterInsteadOfVideo"
+        :src="effectiveMedia === 'image' ? product.media.image!.url : posterUrl!"
+        :alt="product.name"
+        class="absolute inset-0 h-full w-full object-cover"
+        loading="lazy"
+        @error="onImageError"
+      />
+      <!--
+        Branded fallback for legacy/no-media products (§15) — a plain
+        surface tone + the real AFORO mark, faded. Deliberately NOT the
+        brand gradient here: that token is reserved for genuine accent
+        moments (logo areas, hero surfaces — CLAUDE.md §4), and would read
+        as decorative wallpaper if repeated across an arbitrary number of
+        feed cards.
+      -->
+      <div v-else class="absolute inset-0 flex items-center justify-center bg-surface-container-high" role="img" :aria-label="t('publicMenu.feed.noMediaAlt')">
+        <img :src="aforoSymbol" alt="" aria-hidden="true" class="h-16 w-16 opacity-20" />
+      </div>
+    </button>
 
     <button
       v-if="showPlayControl"

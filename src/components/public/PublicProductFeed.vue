@@ -21,6 +21,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   add: [PublicProduct]
+  'open-product-info': [PublicProduct]
   'active-category-change': [categoryId: number]
 }>()
 
@@ -153,6 +154,7 @@ defineExpose({ scrollToCategory })
       :suspended="suspended || !pageVisible"
       :ordering-enabled="orderingEnabled"
       @add="emit('add', $event)"
+      @open-product-info="emit('open-product-info', $event)"
     />
   </div>
 </template>

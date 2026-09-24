@@ -549,6 +549,17 @@ export default {
       chooseOne: 'Elige 1 opción',
       chooseUpTo: 'Elige hasta {max}',
       chooseBetween: 'Elige entre {min} y {max}',
+      viewDetails: 'Ver detalles de {name}',
+      allergensTitle: 'Alérgenos',
+      nutrition: {
+        title: 'Información nutricional',
+        perServing: 'Por ración',
+        calories: 'Calorías (kcal)',
+        protein: 'Proteínas (g)',
+        carbohydrates: 'Carbohidratos (g)',
+        fat: 'Grasas (g)',
+        salt: 'Sal (g)',
+      },
     },
     cart: {
       title: 'Tu pedido',

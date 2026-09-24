@@ -549,6 +549,17 @@ export default {
       chooseOne: 'Tria 1 opció',
       chooseUpTo: 'Tria fins a {max}',
       chooseBetween: 'Tria entre {min} i {max}',
+      viewDetails: 'Veure detalls de {name}',
+      allergensTitle: 'Al·lèrgens',
+      nutrition: {
+        title: 'Informació nutricional',
+        perServing: 'Per ració',
+        calories: 'Calories (kcal)',
+        protein: 'Proteïnes (g)',
+        carbohydrates: 'Carbohidrats (g)',
+        fat: 'Greixos (g)',
+        salt: 'Sal (g)',
+      },
     },
     cart: {
       title: 'La teua comanda',

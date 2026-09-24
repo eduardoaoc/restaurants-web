@@ -17,6 +17,7 @@ import PublicFeedbackSheet from '@/components/public/PublicFeedbackSheet.vue'
 import PublicLanguageSwitcher from '@/components/public/PublicLanguageSwitcher.vue'
 import PublicOrderSuccess from '@/components/public/PublicOrderSuccess.vue'
 import PublicProductFeed from '@/components/public/PublicProductFeed.vue'
+import PublicProductInfoSheet from '@/components/public/PublicProductInfoSheet.vue'
 import PublicProductSheet from '@/components/public/PublicProductSheet.vue'
 import PublicWelcomeGate from '@/components/public/PublicWelcomeGate.vue'
 import { usePublicCart, type CartModifierSelection } from '@/composables/usePublicCart'
@@ -113,6 +114,25 @@ let idempotencyKey: string | null = null
 
 function openProduct(product: PublicProduct): void {
   selectedProduct.value = product
+}
+
+/**
+ * The info sheet (Carta 4.5) — a second, distinct intent from `openProduct`
+ * above: tapping the Reel media opens this (pure information), the
+ * "Añadir" CTA still only ever calls `openProduct` (purchase). `infoProduct`
+ * is its own ref, never reusing `selectedProduct`, so the two sheets can
+ * never accidentally show for two different products or fight over the
+ * same close handler.
+ */
+const infoProduct = ref<PublicProduct | null>(null)
+function onOpenProductInfo(product: PublicProduct): void {
+  infoProduct.value = product
+}
+/** The info sheet's own optional "Añadir" (§6) — closes itself and hands off to the exact same `openProduct` the card's own CTA uses, never a second purchase path. */
+function onRequestAddFromInfo(): void {
+  const product = infoProduct.value
+  infoProduct.value = null
+  if (product) openProduct(product)
 }
 
 function onAddToCart(payload: { quantity: number; selections: CartModifierSelection[]; note: string | null }): void {
@@ -314,9 +334,11 @@ function onSelectCategoryFromMenu(categoryId: number): void {
   showCategoryMenu.value = false
 }
 
-/** Any overlay that must pause the active card's video (Carta 4.4 §10) — the product sheet, cart, order success, feedback sheet, and now the category menu all count. */
+/** Any overlay that must pause the active card's video (Carta 4.4 §10) — the product sheet, cart, order success, feedback sheet, category menu, and now the info sheet all count. Carta 4.5 §4 relies on this exact flag for its own pause/resume — no second, parallel pause mechanism. */
 const anyOverlayOpen = computed(() =>
-  Boolean(selectedProduct.value || showCart.value || successOrder.value || showFeedback.value || showCategoryMenu.value),
+  Boolean(
+    selectedProduct.value || showCart.value || successOrder.value || showFeedback.value || showCategoryMenu.value || infoProduct.value,
+  ),
 )
 
 /** Whether there's anything to show once "Ver la carta" is pressed — the gateway's own CTA reflects this instead of leading to a broken/empty carta. */
@@ -515,6 +537,7 @@ function onFeedbackInvalid(): void {
           :suspended="anyOverlayOpen"
           :ordering-enabled="orderingEnabled"
           @add="openProduct"
+          @open-product-info="onOpenProductInfo"
           @active-category-change="activeCategoryId = $event"
         />
 
@@ -591,6 +614,15 @@ function onFeedbackInvalid(): void {
         :locale="currentLocale"
         @close="selectedProduct = null"
         @add="onAddToCart"
+      />
+
+      <PublicProductInfoSheet
+        v-if="infoProduct"
+        :product="infoProduct"
+        :locale="currentLocale"
+        :ordering-enabled="orderingEnabled"
+        @close="infoProduct = null"
+        @request-add="onRequestAddFromInfo"
       />
 
       <PublicCartSheet
