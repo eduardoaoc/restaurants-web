@@ -29,6 +29,24 @@ const props = defineProps<{
    * clear WHY checkout stopped working, never a silent dead button.
    */
   billRequested: boolean
+  /**
+   * Carta 4.6 hardening — a cart can outlive `customer_ordering` being
+   * turned off (items added earlier this visit, or a stale localStorage
+   * cart from before the restaurant disabled it mid-session): same
+   * treatment as `billRequested` above, an explanation in place of the
+   * confirm button, never a request the backend already 409s
+   * (CUSTOMER_ORDERING_DISABLED) with a raw English message.
+   */
+  orderingEnabled: boolean
+  /**
+   * Carta 4.6 hardening — a QR scanned before staff opens/seats the table
+   * lets the customer browse the carta and build a cart (neither needs a
+   * session), but checkout does: the backend 409s with
+   * TABLE_SESSION_NOT_ACTIVE. Same treatment as `billRequested`/
+   * `orderingEnabled` above — block proactively instead of letting the
+   * customer hit a checkout that's already known to fail.
+   */
+  sessionActive: boolean
 }>()
 
 const emit = defineEmits<{
@@ -115,6 +133,20 @@ function lineUnitTotal(line: CartLine): number {
           role="status"
         >
           {{ t('publicMenu.errors.billRequested') }}
+        </p>
+        <p
+          v-else-if="!orderingEnabled"
+          class="rounded-md bg-warning-container px-3 py-2 text-label-lg text-on-warning-container"
+          role="status"
+        >
+          {{ t('publicMenu.errors.orderingDisabled') }}
+        </p>
+        <p
+          v-else-if="!sessionActive"
+          class="rounded-md bg-warning-container px-3 py-2 text-label-lg text-on-warning-container"
+          role="status"
+        >
+          {{ t('publicMenu.errors.noActiveSession') }}
         </p>
         <AButton v-else full-width :disabled="lines.length === 0" :loading="submitting" @click="emit('confirm')">
           {{ submitting ? t('publicMenu.cart.confirming') : t('publicMenu.cart.confirm') }}

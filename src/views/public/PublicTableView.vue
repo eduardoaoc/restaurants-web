@@ -149,6 +149,18 @@ async function confirmOrder(): Promise<void> {
   // request the backend has already told us it will refuse (§5 "impedir
   // reenvio inútil").
   if (billRequested.value) return
+  // Same defense-in-depth for a STALE cart (Carta 4.6 hardening): items
+  // added while ordering was enabled stay in localStorage/cart state even
+  // after the restaurant turns `customer_ordering` off (a later reload, or
+  // staff disabling it mid-visit) — `orderingEnabled` going false must never
+  // let that old cart become a way to still place an order. PublicCartSheet's
+  // own footer already blocks this in the common path; this only fires if
+  // that guard is ever bypassed.
+  if (!orderingEnabled.value) return
+  // Same reasoning again for a QR opened before staff seats the table
+  // (§ above on `sessionActive`) — PublicCartSheet's own footer already
+  // blocks this in the common path.
+  if (!sessionActive.value) return
   if (!idempotencyKey) idempotencyKey = crypto.randomUUID()
 
   submitting.value = true
@@ -283,6 +295,19 @@ const showBillRequestInMenu = computed(() =>
 
 /** Carta 4.4 §29 — the Reel still shows every product as a visual carta either way; only the "Añadir" CTA itself depends on this. */
 const orderingEnabled = computed(() => menu.value?.restaurant.capabilities.customer_ordering ?? false)
+
+/**
+ * Carta 4.6 hardening — the backend 409s POST .../orders with
+ * TABLE_SESSION_NOT_ACTIVE whenever the table hasn't been opened yet (a QR
+ * scanned before staff seats the table is a real, reachable path: browsing
+ * the carta and building a cart never required a session, only checkout
+ * does). That 409 was already shown as a clear, localized error — this adds
+ * the same PROACTIVE block already used for `billRequested`/`orderingEnabled`,
+ * same reasoning: the frontend already has `session.active` for the
+ * waiter/bill gating above, so checkout shouldn't invite an attempt already
+ * known to fail.
+ */
+const sessionActive = computed(() => menu.value?.session.active ?? false)
 
 /**
  * Flattened (category, product) read-model for the Reel feed (Carta 4.4
@@ -633,6 +658,8 @@ function onFeedbackInvalid(): void {
         :submitting="submitting"
         :submit-error="submitError"
         :bill-requested="billRequested"
+        :ordering-enabled="orderingEnabled"
+        :session-active="sessionActive"
         @close="showCart = false"
         @set-quantity="cart.setQuantity"
         @remove="cart.removeItem"

@@ -533,6 +533,7 @@ export default {
       orderFailed: 'No hemos podido enviar tu pedido. Avisa al personal si el problema continúa.',
       noActiveSession: 'Esta mesa todavía no está abierta. Avisa al personal antes de pedir.',
       billRequested: 'La cuenta ya ha sido solicitada. Espera a que el personal se acerque a tu mesa.',
+      orderingDisabled: 'Este restaurante no está aceptando pedidos por ahora.',
       retry: 'Reintentar',
     },
     emptyMenu: 'Todavía no hay productos disponibles en la carta.',

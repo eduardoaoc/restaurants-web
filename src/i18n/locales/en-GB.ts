@@ -533,6 +533,7 @@ export default {
       orderFailed: "We couldn't send your order. Please let a member of staff know if this keeps happening.",
       noActiveSession: "This table hasn't been opened yet. Ask a member of staff before ordering.",
       billRequested: "The bill has already been requested. Please wait for staff to come to your table.",
+      orderingDisabled: "This restaurant isn't accepting orders right now.",
       retry: 'Retry',
     },
     emptyMenu: 'There are no products available on the menu yet.',

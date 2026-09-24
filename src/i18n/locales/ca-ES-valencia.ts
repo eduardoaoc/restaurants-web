@@ -533,6 +533,7 @@ export default {
       orderFailed: 'No hem pogut enviar la teua comanda. Avisa el personal si el problema continua.',
       noActiveSession: 'Esta taula encara no està oberta. Avisa el personal abans de demanar.',
       billRequested: 'El compte ja ha sigut sol·licitat. Espera que el personal s\'acoste a la teua taula.',
+      orderingDisabled: 'Este restaurant no està acceptant comandes ara mateix.',
       retry: 'Reintentar',
     },
     emptyMenu: 'Encara no hi ha productes disponibles en la carta.',
