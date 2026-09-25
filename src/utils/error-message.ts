@@ -35,6 +35,16 @@ const KNOWN_ERROR_CODES: Record<string, string> = {
   FEEDBACK_ALREADY_SUBMITTED: 'publicMenu.feedback.alreadySubmittedMessage',
   TABLE_SESSION_NOT_PAID_FOR_FEEDBACK: 'publicMenu.feedback.notPaidYet',
   FEEDBACK_TOKEN_NOT_FOUND: 'publicMenu.feedback.invalidToken',
+  // Carta 5.1B — a fully paid TableSession 409s a new order or
+  // request_bill (TableSessionAlreadyPaidException on the backend);
+  // call_waiter was deliberately exempted from this in Carta 5.1C
+  // (CreatePublicTableRequestAction) so "Quiero algo más" on the post-visit
+  // screen can still succeed. This mapping stays as defense-in-depth for
+  // request_bill/orders, which remain blocked once paid — the post-visit
+  // CTA itself is gated purely on `visit.active`/capability (§13), never an
+  // invented "already paid" rule, so any real 409 here still needs a clear,
+  // localized reason.
+  TABLE_SESSION_ALREADY_PAID: 'publicMenu.errors.alreadyPaid',
 }
 
 /**

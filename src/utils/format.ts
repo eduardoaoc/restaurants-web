@@ -46,6 +46,23 @@ export function formatDateOnly(dateOnly: string, locale: string): string {
   }
 }
 
+/**
+ * Formats a full ISO 8601 timestamp (date + time), e.g. an order's
+ * `created_at` in the public post-visit summary (Carta 5.1B). Deliberately
+ * no `timeZone` override, unlike the admin dashboard's own datetime
+ * formatting (which always uses the restaurant's timezone) — the public
+ * contract never exposes one, and the customer's own device timezone is
+ * the correct one to show them their own visit in anyway.
+ */
+export function formatDateTime(isoDateTime: string, locale: string): string {
+  const date = new Date(isoDateTime)
+  try {
+    return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+  } catch {
+    return new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+  }
+}
+
 export function formatNumber(value: number, locale: string): string {
   try {
     return new Intl.NumberFormat(locale).format(value)

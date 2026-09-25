@@ -16,6 +16,7 @@ import PublicEntryIntro from '@/components/public/PublicEntryIntro.vue'
 import PublicFeedbackSheet from '@/components/public/PublicFeedbackSheet.vue'
 import PublicLanguageSwitcher from '@/components/public/PublicLanguageSwitcher.vue'
 import PublicOrderSuccess from '@/components/public/PublicOrderSuccess.vue'
+import PublicPostVisitView from '@/components/public/PublicPostVisitView.vue'
 import PublicProductFeed from '@/components/public/PublicProductFeed.vue'
 import PublicProductInfoSheet from '@/components/public/PublicProductInfoSheet.vue'
 import PublicProductSheet from '@/components/public/PublicProductSheet.vue'
@@ -25,6 +26,7 @@ import { markPublicIntroSeen, markPublicMenuEntered, readPublicEntryState } from
 import { clearStoredFeedback, readStoredFeedback, syncStoredFeedback } from '@/composables/usePublicFeedbackToken'
 import { usePublicMenu } from '@/composables/usePublicMenu'
 import { usePublicTableResolution } from '@/composables/usePublicTableResolution'
+import { usePublicVisit } from '@/composables/usePublicVisit'
 import { publicTableService } from '@/services/public-table.service'
 import { AVAILABLE_LOCALES, DEFAULT_LOCALE, i18n, type AppLocale } from '@/i18n'
 import type { PublicFeedItem, PublicOrderCreated, PublicProduct } from '@/types/public-menu'
@@ -377,8 +379,15 @@ const menuAvailable = computed(() => resolution.value?.menu.available ?? false)
  * off `resolution`, never `menu`, so a table whose carta isn't published
  * yet (menu 404s) still gets an intro/gateway instead of being stuck behind
  * a loading/error screen it has nothing to do with.
+ *
+ * `post-visit` (Carta 5.1B) is the one stage NOT reached through this
+ * watcher — the dedicated `resolution.session` watcher further below sets
+ * it directly, from ANY other stage, the moment a paid visit is confirmed
+ * (a returning customer whose visit already closed has nothing to "enter"
+ * anymore; a still-open, already-paid table shouldn't keep offering
+ * ordering just because the entry animation happened to be mid-flight).
  */
-type EntryStage = 'entry-intro' | 'gateway' | 'menu'
+type EntryStage = 'entry-intro' | 'gateway' | 'menu' | 'post-visit'
 const stage = ref<EntryStage>('entry-intro')
 let stageInitialized = false
 
@@ -477,6 +486,146 @@ function onFeedbackInvalid(): void {
   feedbackEligible.value = false
   feedbackAlreadySubmitted.value = false
 }
+
+/**
+ * Post-payment detection (Carta 5.1B) — `resolution.session` (not `menu`)
+ * is the trigger source on purpose, same reasoning as `showWaiterCallOnGate`
+ * above: it's the one session signal that's always available regardless of
+ * whether the carta itself ever published successfully, and it's already
+ * what the controlled poll below refetches. `GET /public/visits/{token}`
+ * itself is NEVER called from a timer (§17 — it shares its rate-limit
+ * bucket with the feedback form) — only from this watcher, which fires at
+ * most once per real state transition: eligible flips true (still active,
+ * just paid), or the session goes inactive while a stored token exists
+ * (closed — including the payment→close race, §5/§24: the very next
+ * `resolution` refresh after staff closes the table lands straight in the
+ * `!session.active` branch below, using the token already captured before
+ * any of this happened, well before close).
+ */
+const { visit, loading: visitLoading, error: visitError, resolve: resolveVisit } = usePublicVisit()
+
+/**
+ * `enterOnError` distinguishes the two callers: a session that's gone
+ * inactive has nothing else useful to show if resolving its visit fails
+ * (ordering is off regardless — §10 — so falling back to the ordinary carta
+ * would just be a confusing, non-functional-looking "browse and order"
+ * screen); a STILL-ACTIVE session just checking whether it's newly eligible
+ * must never be yanked out of the Reel for a transient blip — the next
+ * `resolution` poll simply tries again. Only the closed-session path (and
+ * the post-visit screen's own manual retry, which only ever runs from
+ * there already) ever passes `true`.
+ */
+async function enterPostVisitIfPaid(token: string, enterOnError: boolean): Promise<void> {
+  const outcome = await resolveVisit(token)
+  if (outcome === 'resolved') {
+    stage.value = 'post-visit'
+    // A cart from before payment can never look purchasable again (§11) —
+    // always through the composable's own clear(), never a direct
+    // localStorage write.
+    cart.clear()
+  } else if (outcome === 'not-found') {
+    onFeedbackInvalid()
+  } else if (outcome === 'error' && enterOnError) {
+    // Network/429/500 while resolving a CLOSED session's visit — never
+    // silently strand the customer on the ordinary carta with no
+    // indication anything went wrong (§16 "network/offline → mensagem
+    // localizada + retry"). `visit` stays null and `visitError` is set,
+    // which is exactly PublicPostVisitView's own built-in error+retry
+    // state — no separate error UI needed here.
+    stage.value = 'post-visit'
+  }
+  // 'not-paid': genuinely not paid yet — never inferred, never surfaced as
+  // an error, simply doesn't enter post-visit (§3/§5).
+}
+
+watch(
+  () => resolution.value?.session,
+  (session) => {
+    if (!session || stage.value === 'post-visit' || visitLoading.value) return
+    if (session.active && session.feedback.eligible && session.feedback.token) {
+      void enterPostVisitIfPaid(session.feedback.token, false)
+      return
+    }
+    if (!session.active) {
+      const stored = readStoredFeedback(publicToken)
+      if (stored) void enterPostVisitIfPaid(stored.token, true)
+    }
+  },
+  { immediate: true },
+)
+
+/** PublicPostVisitView's own retry button (already-dead/invalid-token cases never reach here — `enterPostVisitIfPaid` already dropped that token via `onFeedbackInvalid`). */
+function retryVisit(): void {
+  const token = readStoredFeedback(publicToken)?.token ?? feedbackToken.value
+  if (token) void enterPostVisitIfPaid(token, true)
+}
+
+/**
+ * Controlled MVP refresh while waiting for payment (§4) — there is no
+ * public realtime for payment yet. Reuses `reloadResolution`, the exact
+ * function the hard-error screen's own "Reintentar" already calls
+ * (`throttle:public-menu` on the backend, 60/min — a ~12s cadence here is a
+ * small, constant fraction of that budget, never a request racing another
+ * in-flight one: `usePublicTableResolution`'s own `load()` already aborts
+ * any previous call first). Polls ONLY while every one of these holds: the
+ * customer asked for the bill, still on the ordering stage, the session
+ * still looks active, and the tab is actually visible. Deliberately does
+ * NOT stop the instant `feedback.eligible` flips true — `enterPostVisitIfPaid`
+ * above needs at least one more tick to actually resolve the visit and
+ * flip `stage`, and continuing this same safe, cheap poll in the meantime
+ * is what lets a transient failure on THAT call retry itself automatically
+ * instead of stranding the customer mid-transition. Stops for real the
+ * moment `stage` actually changes (paid+resolved), the tab hides, or the
+ * component unmounts.
+ */
+const shouldPollForPayment = computed(
+  () =>
+    billRequested.value &&
+    stage.value === 'menu' &&
+    Boolean(resolution.value?.session.active) &&
+    typeof document !== 'undefined' &&
+    document.visibilityState === 'visible',
+)
+
+let paymentPollTimer: ReturnType<typeof setInterval> | null = null
+function stopPaymentPolling(): void {
+  if (paymentPollTimer) {
+    clearInterval(paymentPollTimer)
+    paymentPollTimer = null
+  }
+}
+function startPaymentPollingIfNeeded(): void {
+  if (paymentPollTimer || !shouldPollForPayment.value) return
+  paymentPollTimer = setInterval(() => {
+    if (!shouldPollForPayment.value) {
+      stopPaymentPolling()
+      return
+    }
+    void reloadResolution()
+  }, 12000)
+}
+
+watch(shouldPollForPayment, (should) => {
+  if (should) startPaymentPollingIfNeeded()
+  else stopPaymentPolling()
+})
+
+function onVisibilityChangeForPayment(): void {
+  if (document.visibilityState === 'visible') {
+    if (shouldPollForPayment.value) {
+      void reloadResolution()
+      startPaymentPollingIfNeeded()
+    }
+  } else {
+    stopPaymentPolling()
+  }
+}
+
+onMounted(() => document.addEventListener('visibilitychange', onVisibilityChangeForPayment))
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChangeForPayment)
+  stopPaymentPolling()
+})
 </script>
 
 <template>
@@ -527,7 +676,7 @@ function onFeedbackInvalid(): void {
        (never a card-shaped skeleton — §31); the feed itself only ever mounts once
        there's at least one real product to show. Desktop/tablet centers a fixed-width
        panel instead of stretching a vertical photo/video across the whole window (§34). -->
-  <div v-else class="flex h-dvh w-full items-center justify-center bg-surface-container-lowest sm:p-6">
+  <div v-else-if="stage === 'menu'" class="flex h-dvh w-full items-center justify-center bg-surface-container-lowest sm:p-6">
     <div class="relative h-full w-full overflow-hidden bg-background sm:max-w-[560px] sm:rounded-xl sm:shadow-elevated">
       <div v-if="loading" class="flex h-full flex-col items-center justify-center gap-3 text-on-surface-variant">
         <AProgress size="sm" />
@@ -667,6 +816,51 @@ function onFeedbackInvalid(): void {
       />
 
       <PublicOrderSuccess v-if="successOrder" :order="successOrder" :locale="currentLocale" @close="dismissSuccess" />
+
+      <PublicFeedbackSheet
+        v-if="showFeedback && feedbackToken"
+        :token="feedbackToken"
+        :table-public-token="publicToken"
+        @close="showFeedback = false"
+        @submitted="onFeedbackSubmitted"
+        @invalid="onFeedbackInvalid"
+      />
+    </div>
+  </div>
+
+  <!-- stage === 'post-visit' (Carta 5.1B) — same "centered panel on desktop,
+       full-bleed on mobile" treatment as the menu stage above, for visual
+       continuity, but a plain scrollable surface instead of the Reel's
+       fixed-media layout: there is nothing left to swipe through once a
+       visit is paid. -->
+  <div v-else class="flex h-dvh w-full items-center justify-center bg-surface-container-lowest sm:p-6">
+    <div class="relative flex h-full w-full flex-col overflow-hidden bg-background sm:max-w-[560px] sm:rounded-xl sm:shadow-elevated">
+      <!-- Same language/theme access every other stage already has (gateway,
+           menu) — the post-visit screen is a brand-new top-level stage with
+           no "back", so losing these here would strand the customer with
+           whatever locale/theme happened to be active when payment was
+           detected. -->
+      <div class="flex shrink-0 items-center justify-end gap-1 border-b border-outline-variant p-3">
+        <PublicLanguageSwitcher :available="availableLocales" :current="currentLocale" @select="selectLocale" />
+        <ThemeSwitcher />
+      </div>
+
+      <div class="min-h-0 flex-1">
+        <PublicPostVisitView
+          :visit="visit"
+          :loading="visitLoading"
+          :error="visitError"
+          :locale="currentLocale"
+          :feedback-already-submitted="feedbackAlreadySubmitted"
+          :waiter-call-capable="Boolean(resolution?.restaurant.capabilities.waiter_call)"
+          :waiter-called="waiterCalled"
+          :requesting-waiter="requestingWaiter"
+          :request-error="requestError"
+          @retry="retryVisit"
+          @open-feedback="showFeedback = true"
+          @call-waiter="callWaiter"
+        />
+      </div>
 
       <PublicFeedbackSheet
         v-if="showFeedback && feedbackToken"
