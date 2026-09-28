@@ -587,6 +587,8 @@ export default {
       waiterConfirmed: "Cambrer avisat. S'acostarà de seguida.",
       requestBill: 'Demana el compte',
       billConfirmed: "Compte sol·licitat. El personal s'acostarà a la teua taula.",
+      billBlockedOpenOrders: "Podràs demanar el compte quan s'hagen servit totes les comandes.",
+      billBlockedNoBillableOrders: 'Podràs demanar el compte després de fer i rebre una comanda.',
     },
     feedback: {
       cta: 'Què tal ha anat la teua experiència?',

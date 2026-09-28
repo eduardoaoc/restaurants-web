@@ -24,7 +24,15 @@ const props = defineProps<{
   waiterCalled: boolean
   requestingWaiter: boolean
   showBillRequest: boolean
-  billRequested: boolean
+  /** `already_requested` (server) or this session's own successful POST — see PublicTableView's `effectiveBillRequested`. */
+  billRequestConfirmed: boolean
+  /**
+   * Non-null localized explanation for `open_orders`/`no_billable_orders`
+   * (CARTA 5.1E §5) — the CTA stays visible but disabled, never hidden, so
+   * the customer understands why it doesn't work yet instead of it looking
+   * broken.
+   */
+  billRequestBlockedMessage: string | null
   requestingBill: boolean
   requestError: ApiError | null
   showFeedback: boolean
@@ -42,7 +50,7 @@ const open = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
 
 const hasAnyAction = computed(() => props.showWaiterCall || props.showBillRequest || props.showFeedback)
-const hasConfirmedState = computed(() => props.waiterCalled || props.billRequested)
+const hasConfirmedState = computed(() => props.waiterCalled || props.billRequestConfirmed)
 
 function onFocusOut(event: FocusEvent): void {
   if (!rootRef.value?.contains(event.relatedTarget as Node | null)) open.value = false
@@ -90,10 +98,19 @@ function onFeedbackClick(): void {
       </div>
 
       <div v-if="showBillRequest" class="px-3 py-1.5">
-        <p v-if="billRequested" class="flex items-center gap-1.5 text-label-lg text-on-surface-variant">
+        <p v-if="billRequestConfirmed" class="flex items-center gap-1.5 text-label-lg text-on-surface-variant">
           <PhCheckCircle :size="16" class="shrink-0 text-primary" aria-hidden="true" />
           {{ t('publicMenu.requests.billConfirmed') }}
         </p>
+        <template v-else-if="billRequestBlockedMessage">
+          <AButton variant="outlined" full-width disabled aria-describedby="public-actions-bill-blocked-reason">
+            <template #leading><PhReceipt :size="16" /></template>
+            {{ t('publicMenu.requests.requestBill') }}
+          </AButton>
+          <p id="public-actions-bill-blocked-reason" class="mt-1 text-label-md text-on-surface-variant">
+            {{ billRequestBlockedMessage }}
+          </p>
+        </template>
         <AButton v-else variant="outlined" full-width :loading="requestingBill" @click="emit('request-bill')">
           <template #leading><PhReceipt :size="16" /></template>
           {{ t('publicMenu.requests.requestBill') }}

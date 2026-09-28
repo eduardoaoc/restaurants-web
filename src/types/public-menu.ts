@@ -65,10 +65,37 @@ export interface PublicSessionFeedback {
   already_submitted?: boolean | null
 }
 
-/** `status` is opaque/best-effort display text (e.g. "occupied") — never matched against a hardcoded value list. */
+/**
+ * The backend-derived reason the visit currently cannot ask for the bill —
+ * `null` when `eligible` is true. Presentation only (CARTA 5.1E): the
+ * frontend never replicates Order::openStatuses()/billableStatuses() or any
+ * financial rule itself — POST .../requests/bill stays authoritative and can
+ * still 409 even when this read-model says `eligible: true` (a real race,
+ * handled by re-resolving rather than trusting a stale flag).
+ */
+export type PublicBillRequestReason =
+  | 'no_active_session'
+  | 'already_paid'
+  | 'already_requested'
+  | 'open_orders'
+  | 'no_billable_orders'
+
+export interface PublicBillRequestState {
+  eligible: boolean
+  reason: PublicBillRequestReason | null
+}
+
+/**
+ * `status` is opaque/best-effort display text (e.g. "occupied") — never
+ * matched against a hardcoded value list. `bill_request` (CARTA 5.1E) is
+ * shared verbatim between GET .../tables/{token} and GET .../menu — both
+ * serialize the same backend PublicSessionStateResource — so no separate
+ * type exists per endpoint.
+ */
 export interface PublicSessionState {
   active: boolean
   status: string | null
+  bill_request: PublicBillRequestState
   feedback: PublicSessionFeedback
 }
 

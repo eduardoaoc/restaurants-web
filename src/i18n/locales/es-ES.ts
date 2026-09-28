@@ -587,6 +587,8 @@ export default {
       waiterConfirmed: 'Camarero avisado. Se acercará enseguida.',
       requestBill: 'Pedir la cuenta',
       billConfirmed: 'Cuenta solicitada. El personal se acercará a tu mesa.',
+      billBlockedOpenOrders: 'Podrás pedir la cuenta cuando todos los pedidos hayan sido servidos.',
+      billBlockedNoBillableOrders: 'Podrás pedir la cuenta después de realizar y recibir un pedido.',
     },
     feedback: {
       cta: '¿Qué tal fue tu experiencia?',

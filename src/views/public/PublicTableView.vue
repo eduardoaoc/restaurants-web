@@ -146,11 +146,11 @@ function onAddToCart(payload: { quantity: number; selections: CartModifierSelect
 async function confirmOrder(): Promise<void> {
   if (cart.lines.value.length === 0) return
   // Defense-in-depth: PublicCartSheet's own footer already replaces the
-  // confirm button once billRequested is true, so this only fires if that
-  // guard is ever bypassed — never a second network round-trip for a
+  // confirm button once effectiveBillRequested is true, so this only fires
+  // if that guard is ever bypassed — never a second network round-trip for a
   // request the backend has already told us it will refuse (§5 "impedir
   // reenvio inútil").
-  if (billRequested.value) return
+  if (effectiveBillRequested.value) return
   // Same defense-in-depth for a STALE cart (Carta 4.6 hardening): items
   // added while ordering was enabled stay in localStorage/cart state even
   // after the restaurant turns `customer_ordering` off (a later reload, or
@@ -177,6 +177,11 @@ async function confirmOrder(): Promise<void> {
     idempotencyKey = null
     showCart.value = false
     successOrder.value = order
+    // CARTA 5.1E §9 — a fresh order can flip bill_request.reason from
+    // no_billable_orders to open_orders; the backend alone decides this, so
+    // refresh the read-model once rather than inferring the transition
+    // locally. A single extra GET, not a new poll.
+    void reloadResolution()
   } catch (err) {
     const normalized = normalizeApiError(err)
     if (normalized.kind === 'conflict' && normalized.code === 'TABLE_SESSION_BILL_REQUESTED') {
@@ -215,7 +220,7 @@ const tableLabel = computed(() => resolution.value?.table.name ?? menu.value?.ta
  * a bill has been requested — POST .../orders 409s with
  * TABLE_SESSION_BILL_REQUESTED (confirmed live; the OpenAPI doc's own 409
  * description for that endpoint still doesn't list it, same doc-lag pattern
- * already known from Passo 3.1/3.4 — never trust the doc alone). `billRequested`
+ * already known from Passo 3.1/3.4 — never trust the doc alone). `effectiveBillRequested`
  * below is therefore also the single source of truth `confirmOrder()` reads
  * to block checkout (see its own handling of that exact code), not just a
  * flag for this banner.
@@ -236,8 +241,60 @@ const requestingBill = ref(false)
 const requestingWaiter = ref(false)
 const requestError = ref<ApiError | null>(null)
 
+/**
+ * CARTA 5.1E — the backend-derived `session.bill_request` read-model,
+ * sourced from `resolution` specifically (never `menu`): `resolution` is
+ * what the controlled poll below refreshes, so reading the reason from
+ * anywhere else would silently go stale while polling "succeeds". Both
+ * endpoints serialize the exact same shape (see PublicSessionState's own
+ * docblock), so this is not a divergence from `menu`, just a choice of
+ * which already-loaded copy to trust.
+ */
+const billRequestCapability = computed(() => resolution.value?.restaurant.capabilities.bill_request ?? false)
+const billRequestState = computed(() => resolution.value?.session.bill_request ?? null)
+const billRequestReason = computed(() => billRequestState.value?.reason ?? null)
+const billRequestEligibleOnServer = computed(() => billRequestState.value?.eligible ?? false)
+
+/**
+ * The effective "already asked for the bill" flag `confirmOrder()` and the
+ * CTA both read — the union of this session's own local success/408-open
+ * flag and the backend's own `already_requested` reason, so a reload or a
+ * second device at the same table shows the confirmed state without ever
+ * needing another click (§6/§14 "backend sozinho deve ser suficiente").
+ */
+const effectiveBillRequested = computed(() => billRequested.value || billRequestReason.value === 'already_requested')
+
+/**
+ * Whether the bill-request area shows at all (§4 no_active_session, §4
+ * already_paid) — capability off or no active session hides it outright;
+ * `already_paid` also hides it so this never becomes a second, competing
+ * flow alongside the CARTA 5.1B post-visit screen, which already takes over
+ * the moment payment is detected (§4 "não criar fluxo paralelo").
+ */
+const showBillRequestAction = computed(() => {
+  if (!billRequestCapability.value) return false
+  if (!resolution.value?.session.active) return false
+  if (billRequestReason.value === 'no_active_session') return false
+  if (billRequestReason.value === 'already_paid') return false
+  return true
+})
+
+/** Non-null only for `open_orders`/`no_billable_orders` (§5) — never rendered once confirmed. */
+const billRequestBlockedMessage = computed<string | null>(() => {
+  if (effectiveBillRequested.value) return null
+  if (billRequestReason.value === 'open_orders') return t('publicMenu.requests.billBlockedOpenOrders')
+  if (billRequestReason.value === 'no_billable_orders') return t('publicMenu.requests.billBlockedNoBillableOrders')
+  return null
+})
+
 async function requestBill(): Promise<void> {
-  if (billRequested.value || requestingBill.value) return
+  if (requestingBill.value || effectiveBillRequested.value) return
+  // Defense-in-depth (§7) — re-check every condition the template already
+  // disables the button on, never trust the template alone.
+  if (!billRequestCapability.value) return
+  if (!resolution.value?.session.active) return
+  if (!billRequestEligibleOnServer.value) return
+
   requestingBill.value = true
   requestError.value = null
   try {
@@ -247,6 +304,19 @@ async function requestBill(): Promise<void> {
     const normalized = normalizeApiError(err)
     if (normalized.kind === 'conflict' && normalized.code === 'TABLE_REQUEST_ALREADY_OPEN') {
       billRequested.value = true
+      void reloadResolution()
+    } else if (
+      normalized.kind === 'conflict' &&
+      (normalized.code === 'TABLE_SESSION_HAS_OPEN_ORDERS' ||
+        normalized.code === 'TABLE_SESSION_HAS_NO_BILLABLE_ORDERS' ||
+        normalized.code === 'TABLE_SESSION_ALREADY_PAID')
+    ) {
+      // A real race (§8): the eligibility we saw a moment ago no longer
+      // holds. Never mark the bill as requested — refresh the read-model so
+      // the disabled CTA + localized reason (or the 5.1B post-visit
+      // redirect, for TABLE_SESSION_ALREADY_PAID) take over instead of a
+      // raw/generic error banner.
+      void reloadResolution()
     } else {
       requestError.value = normalized
     }
@@ -291,9 +361,10 @@ const showWaiterCallOnGate = computed(() =>
 const showWaiterCallInMenu = computed(() =>
   Boolean(menu.value?.session.active && menu.value?.restaurant.capabilities.waiter_call),
 )
-const showBillRequestInMenu = computed(() =>
-  Boolean(menu.value?.session.active && menu.value?.restaurant.capabilities.bill_request),
-)
+// Bill-request visibility is `showBillRequestAction` (defined alongside the
+// rest of the bill_request read-model above) — deliberately `resolution`-driven
+// rather than `menu`-driven like `showWaiterCallInMenu`, since `resolution` is
+// what the controlled eligibility poll below refreshes (CARTA 5.1E).
 
 /** Carta 4.4 §29 — the Reel still shows every product as a visual carta either way; only the "Añadir" CTA itself depends on this. */
 const orderingEnabled = computed(() => menu.value?.restaurant.capabilities.customer_ordering ?? false)
@@ -587,44 +658,74 @@ const shouldPollForPayment = computed(
     document.visibilityState === 'visible',
 )
 
-let paymentPollTimer: ReturnType<typeof setInterval> | null = null
-function stopPaymentPolling(): void {
-  if (paymentPollTimer) {
-    clearInterval(paymentPollTimer)
-    paymentPollTimer = null
+/**
+ * CARTA 5.1E §10/§11 — the second reason the SAME controlled poll below
+ * keeps running: an order is in the kitchen/approval pipeline
+ * (`reason === 'open_orders'`) and might get served without the customer
+ * ever reloading. Deliberately excludes `no_billable_orders` (§11 — that
+ * just means nothing has been ordered yet; polling for it would burn
+ * requests for the whole visit for no reason) and stops the instant
+ * `reason` becomes anything else (`eligible`, `already_requested`,
+ * `already_paid`, `no_active_session` all have their own settled UI, no
+ * transition left to watch for).
+ */
+const shouldPollForBillEligibility = computed(
+  () =>
+    billRequestCapability.value &&
+    stage.value === 'menu' &&
+    Boolean(resolution.value?.session.active) &&
+    billRequestReason.value === 'open_orders' &&
+    typeof document !== 'undefined' &&
+    document.visibilityState === 'visible',
+)
+
+/**
+ * CARTA 5.1E §12 — single decision for the ONE `resolution` poll timer:
+ * either reason above keeps it running, but there is only ever one
+ * `setInterval`, one visibility listener, and one in-flight request (the
+ * composable's own `load()` already aborts any previous call), never two
+ * timers racing each other.
+ */
+const shouldPollResolution = computed(() => shouldPollForPayment.value || shouldPollForBillEligibility.value)
+
+let resolutionPollTimer: ReturnType<typeof setInterval> | null = null
+function stopResolutionPolling(): void {
+  if (resolutionPollTimer) {
+    clearInterval(resolutionPollTimer)
+    resolutionPollTimer = null
   }
 }
-function startPaymentPollingIfNeeded(): void {
-  if (paymentPollTimer || !shouldPollForPayment.value) return
-  paymentPollTimer = setInterval(() => {
-    if (!shouldPollForPayment.value) {
-      stopPaymentPolling()
+function startResolutionPollingIfNeeded(): void {
+  if (resolutionPollTimer || !shouldPollResolution.value) return
+  resolutionPollTimer = setInterval(() => {
+    if (!shouldPollResolution.value) {
+      stopResolutionPolling()
       return
     }
     void reloadResolution()
   }, 12000)
 }
 
-watch(shouldPollForPayment, (should) => {
-  if (should) startPaymentPollingIfNeeded()
-  else stopPaymentPolling()
+watch(shouldPollResolution, (should) => {
+  if (should) startResolutionPollingIfNeeded()
+  else stopResolutionPolling()
 })
 
-function onVisibilityChangeForPayment(): void {
+function onVisibilityChangeForResolutionPolling(): void {
   if (document.visibilityState === 'visible') {
-    if (shouldPollForPayment.value) {
+    if (shouldPollResolution.value) {
       void reloadResolution()
-      startPaymentPollingIfNeeded()
+      startResolutionPollingIfNeeded()
     }
   } else {
-    stopPaymentPolling()
+    stopResolutionPolling()
   }
 }
 
-onMounted(() => document.addEventListener('visibilitychange', onVisibilityChangeForPayment))
+onMounted(() => document.addEventListener('visibilitychange', onVisibilityChangeForResolutionPolling))
 onBeforeUnmount(() => {
-  document.removeEventListener('visibilitychange', onVisibilityChangeForPayment)
-  stopPaymentPolling()
+  document.removeEventListener('visibilitychange', onVisibilityChangeForResolutionPolling)
+  stopResolutionPolling()
 })
 </script>
 
@@ -745,8 +846,9 @@ onBeforeUnmount(() => {
               :show-waiter-call="showWaiterCallInMenu"
               :waiter-called="waiterCalled"
               :requesting-waiter="requestingWaiter"
-              :show-bill-request="showBillRequestInMenu"
-              :bill-requested="billRequested"
+              :show-bill-request="showBillRequestAction"
+              :bill-request-confirmed="effectiveBillRequested"
+              :bill-request-blocked-message="billRequestBlockedMessage"
               :requesting-bill="requestingBill"
               :request-error="requestError"
               :show-feedback="!error && Boolean(feedbackToken) && (feedbackEligible || feedbackAlreadySubmitted)"
@@ -806,7 +908,7 @@ onBeforeUnmount(() => {
         :locale="currentLocale"
         :submitting="submitting"
         :submit-error="submitError"
-        :bill-requested="billRequested"
+        :bill-requested="effectiveBillRequested"
         :ordering-enabled="orderingEnabled"
         :session-active="sessionActive"
         @close="showCart = false"

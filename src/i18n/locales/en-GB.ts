@@ -587,6 +587,8 @@ export default {
       waiterConfirmed: "Waiter notified. They'll be with you shortly.",
       requestBill: 'Ask for the bill',
       billConfirmed: "Bill requested. Staff will come to your table.",
+      billBlockedOpenOrders: 'You can request the bill once all orders have been served.',
+      billBlockedNoBillableOrders: 'You can request the bill after placing and receiving an order.',
     },
     feedback: {
       cta: 'How was your experience?',
