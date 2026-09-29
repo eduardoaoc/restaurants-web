@@ -39,19 +39,30 @@ function requestClose(): void {
   visible.value = false
 }
 
+/**
+ * Corrects focus AFTER the browser's own Tab handling runs, rather than
+ * trying to preempt it by precomputing "first"/"last" — a same-name radio
+ * group (e.g. `AStarRating`) collapses to a single native tab stop that
+ * isn't necessarily the first/last element in DOM order, and a trailing
+ * disabled control (e.g. a wizard's "Continuar" before a rating is picked,
+ * Carta 5.2) is silently skipped by the browser's own tab order. Both
+ * defeated the old preemptive check, letting focus escape the sheet
+ * entirely. Letting Tab run natively and then pulling focus back in if it
+ * landed outside `sheetRef` handles every control shape uniformly.
+ */
 function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') requestClose()
+  if (event.key === 'Escape') { requestClose(); return }
   if (event.key !== 'Tab' || !sheetRef.value) return
-  const controls = Array.from(sheetRef.value.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]'))
-    .filter(element => element.getClientRects().length > 0)
-  const first = controls[0]
-  const last = controls[controls.length - 1]
-  if (!first || !last) { event.preventDefault(); sheetRef.value.focus(); return }
-  if (event.shiftKey && (document.activeElement === first || document.activeElement === sheetRef.value)) {
-    event.preventDefault(); last.focus()
-  } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === sheetRef.value)) {
-    event.preventDefault(); first.focus()
-  }
+  const sheet = sheetRef.value
+  const shiftKey = event.shiftKey
+  requestAnimationFrame(() => {
+    if (sheet.contains(document.activeElement)) return
+    const controls = Array.from(sheet.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]'))
+      .filter(element => element.getClientRects().length > 0)
+    const target = shiftKey ? controls[controls.length - 1] : controls[0]
+    if (target) target.focus()
+    else sheet.focus()
+  })
 }
 
 onMounted(() => {

@@ -601,7 +601,7 @@ export default {
       food: 'Food',
       service: 'Service',
       overall: 'Overall rating',
-      experienceComment: 'Tell us about your experience (optional)',
+      experienceComment: 'What did you like the most? (optional)',
       improvementComment: 'What could we improve? (optional)',
       contact: 'Contact (optional)',
       submit: 'Send review',
@@ -612,6 +612,24 @@ export default {
       alreadySubmittedMessage: 'You already sent your review for this visit.',
       notPaidYet: 'The review form will be available after payment.',
       invalidToken: 'This review link is no longer valid.',
+      questions: {
+        food: 'What did you think of the food?',
+        service: 'What did you think of the service?',
+        waitTime: 'What did you think of the wait time?',
+        overall: 'How would you rate your overall experience?',
+        more: 'Tell us a bit more',
+      },
+      ratingValues: {
+        r1: 'Very poor',
+        r2: 'Poor',
+        r3: 'Good',
+        r4: 'Very good',
+        r5: 'Excellent',
+      },
+      wizard: {
+        stepProgress: 'Step {current} of {total}',
+        continueLabel: 'Continue',
+      },
       errors: {
         firstNameRequired: 'Enter your first name.',
         lastNameRequired: 'Enter your last name.',

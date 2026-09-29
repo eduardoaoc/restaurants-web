@@ -601,7 +601,7 @@ export default {
       food: 'Comida',
       service: 'Servicio',
       overall: 'Valoración general',
-      experienceComment: 'Cuéntanos sobre tu experiencia (opcional)',
+      experienceComment: '¿Qué fue lo que más te gustó? (opcional)',
       improvementComment: '¿Qué podríamos mejorar? (opcional)',
       contact: 'Contacto (opcional)',
       submit: 'Enviar valoración',
@@ -612,6 +612,24 @@ export default {
       alreadySubmittedMessage: 'Ya enviaste tu valoración para esta visita.',
       notPaidYet: 'La valoración estará disponible después del pago.',
       invalidToken: 'Este enlace de valoración ya no es válido.',
+      questions: {
+        food: '¿Qué te pareció la comida?',
+        service: '¿Qué te pareció el servicio?',
+        waitTime: '¿Qué te pareció el tiempo de espera?',
+        overall: '¿Cómo valorarías tu experiencia en general?',
+        more: 'Cuéntanos un poco más',
+      },
+      ratingValues: {
+        r1: 'Muy mal',
+        r2: 'Mal',
+        r3: 'Bien',
+        r4: 'Muy bien',
+        r5: 'Excelente',
+      },
+      wizard: {
+        stepProgress: 'Paso {current} de {total}',
+        continueLabel: 'Continuar',
+      },
       errors: {
         firstNameRequired: 'Introduce tu nombre.',
         lastNameRequired: 'Introduce tus apellidos.',

@@ -601,7 +601,7 @@ export default {
       food: 'Menjar',
       service: 'Servei',
       overall: 'Valoració general',
-      experienceComment: 'Conta\'ns la teua experiència (opcional)',
+      experienceComment: 'Què és el que més t\'ha agradat? (opcional)',
       improvementComment: 'Què podríem millorar? (opcional)',
       contact: 'Contacte (opcional)',
       submit: 'Enviar valoració',
@@ -612,6 +612,24 @@ export default {
       alreadySubmittedMessage: 'Ja has enviat la teua valoració per a esta visita.',
       notPaidYet: 'La valoració estarà disponible després del pagament.',
       invalidToken: 'Este enllaç de valoració ja no és vàlid.',
+      questions: {
+        food: 'Què t\'ha paregut el menjar?',
+        service: 'Què t\'ha paregut el servei?',
+        waitTime: 'Què t\'ha paregut el temps d\'espera?',
+        overall: 'Com valoraries la teua experiència en general?',
+        more: 'Conta\'ns un poc més',
+      },
+      ratingValues: {
+        r1: 'Molt malament',
+        r2: 'Malament',
+        r3: 'Bé',
+        r4: 'Molt bé',
+        r5: 'Excel·lent',
+      },
+      wizard: {
+        stepProgress: 'Pas {current} de {total}',
+        continueLabel: 'Continua',
+      },
       errors: {
         firstNameRequired: 'Introdueix el teu nom.',
         lastNameRequired: 'Introdueix els teus cognoms.',
