@@ -1,7 +1,7 @@
 export default {
   kitchen: {
     title: 'Kitchen', subtitle: 'Orders in arrival order. Oldest first.',
-    columns: { all: 'All', confirmed: 'New', accepted: 'Accepted', preparing: 'Preparing', ready: 'Ready' },
+    columns: { dashboard: 'Dashboard', confirmed: 'New', accepted: 'Accepted', preparing: 'Preparing', ready: 'Ready' },
     actions: { accept: 'Accept order', preparing: 'Start preparing', ready: 'Mark ready' },
     filter: 'Filter by status', oldest: 'Oldest awaiting preparation', minutes: '{count} min',
     note: 'Note', created: 'Order time', details: 'View details', detailsFor: 'View details for order {number}',
@@ -16,6 +16,31 @@ export default {
     limit: 'Showing the 100 oldest orders. More orders may be waiting.',
     refreshHint: 'You can refresh the queue manually.',
     connection: { connected: 'Live', connecting: 'Connecting…', reconnecting: 'Reconnecting…', disconnected: 'Live connection offline', unavailable: 'Live updates unavailable', error: 'Could not connect to live updates' },
+    dashboard: {
+      sections: {
+        now: 'Kitchen status now', flow: 'Order flow', timings: 'Operational timings',
+        topProducts: 'Most ordered today', recentAccepted: 'Recently accepted', recentReady: 'Recently ready',
+      },
+      activeOrders: 'Active orders', oldestActive: 'Oldest active', longestReadyWait: 'Waiting for pickup',
+      timingLabels: { accept: 'Acceptance', preparation: 'Preparation', ready_to_served: 'Pickup' },
+      timingHelp: {
+        accept: 'Time from the order actually entering the kitchen until it is accepted.',
+        preparation: 'Time from the start of preparation until it is ready.',
+        ready_to_served: 'Time between the order becoming ready and being marked as served.',
+      },
+      noData: 'Not enough data yet', samples: '{count} orders',
+      noTopProducts: 'No orders yet today.',
+      waitingPickup: 'Waiting for pickup',
+      emptyRecentAccepted: 'No orders accepted yet.',
+      emptyRecentReady: 'No orders ready yet.',
+      error: 'Could not load the kitchen dashboard.',
+      viewQueue: 'View queue',
+    },
+  },
+  readyAlert: {
+    title: 'Order ready', instruction: 'Pick it up and bring it to the table.',
+    order: 'Order {reference}', dismiss: 'Dismiss notification',
+    regionLabel: 'Order-ready notifications',
   },
   common: {
     login: 'Sign in',

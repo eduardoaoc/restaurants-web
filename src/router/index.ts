@@ -16,9 +16,13 @@ declare module 'vue-router' {
      * CURRENT restaurant's permissions, redirecting to the Dashboard on
      * denial. The backend remains the real authority (CLAUDE.md §9) — this
      * only avoids rendering a screen / firing requests the backend would
-     * 403 anyway.
+     * 403 anyway. An array is an OR (Carta 7.1B — GET kitchen/orders and
+     * GET kitchen/dashboard's real Policy accepts EITHER
+     * update_kitchen_status OR serve_orders, verified live; never hide an
+     * authorized endpoint behind a single-permission check just because
+     * the nav rail only shows this item for one of them).
      */
-    permission?: PermissionSlug
+    permission?: PermissionSlug | PermissionSlug[]
     /**
      * The public QR customer surface (Passo 3.1) — a completely anonymous
      * flow with no concept of an AFORO account. The guard below returns
@@ -61,7 +65,7 @@ const router = createRouter({
           path: 'kitchen',
           name: 'app-kitchen',
           component: () => import('@/views/kitchen/KitchenView.vue'),
-          meta: { permission: 'update_kitchen_status' },
+          meta: { permission: ['update_kitchen_status', 'serve_orders'] },
         },
         {
           path: 'dashboard',
@@ -208,7 +212,9 @@ router.beforeEach(async (to) => {
     // and fail closed on a user who actually has the permission.
     await useRestaurantStore().load()
 
-    if (!usePermissions().can(to.meta.permission)) {
+    const { can, canAny } = usePermissions()
+    const hasPermission = Array.isArray(to.meta.permission) ? canAny(to.meta.permission) : can(to.meta.permission)
+    if (!hasPermission) {
       return { name: 'app-dashboard' }
     }
   }

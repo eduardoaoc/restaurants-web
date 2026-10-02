@@ -1,7 +1,7 @@
 export default {
   kitchen: {
     title: 'Cocina', subtitle: 'Pedidos por orden de llegada. Los más antiguos primero.',
-    columns: { all: 'Todos', confirmed: 'Nuevos', accepted: 'Aceptados', preparing: 'En preparación', ready: 'Listos' },
+    columns: { dashboard: 'Panel', confirmed: 'Nuevos', accepted: 'Aceptados', preparing: 'En preparación', ready: 'Listos' },
     actions: { accept: 'Aceptar pedido', preparing: 'Iniciar preparación', ready: 'Marcar listo' },
     filter: 'Filtrar por estado', oldest: 'Más antiguo por preparar', minutes: '{count} min',
     note: 'Nota', created: 'Hora del pedido', details: 'Ver detalle', detailsFor: 'Ver detalle del pedido {number}',
@@ -16,6 +16,31 @@ export default {
     limit: 'Se muestran los 100 pedidos más antiguos. Puede haber más pedidos pendientes.',
     refreshHint: 'Puedes actualizar la cola manualmente.',
     connection: { connected: 'En directo', connecting: 'Conectando…', reconnecting: 'Reconectando…', disconnected: 'Sin conexión en directo', unavailable: 'Actualización en directo no disponible', error: 'No se ha podido conectar en directo' },
+    dashboard: {
+      sections: {
+        now: 'Estado de la cocina ahora', flow: 'Flujo de pedidos', timings: 'Tiempos operativos',
+        topProducts: 'Más pedidos hoy', recentAccepted: 'Últimos aceptados', recentReady: 'Últimos listos',
+      },
+      activeOrders: 'Pedidos activos', oldestActive: 'Más antiguo activo', longestReadyWait: 'Esperando recogida',
+      timingLabels: { accept: 'Aceptación', preparation: 'Preparación', ready_to_served: 'Recogida' },
+      timingHelp: {
+        accept: 'Tiempo desde que el pedido entra en cocina hasta que se acepta.',
+        preparation: 'Tiempo desde el inicio de la preparación hasta que queda listo.',
+        ready_to_served: 'Tiempo entre que el pedido queda listo y se marca como servido.',
+      },
+      noData: 'Sin datos suficientes', samples: '{count} pedidos',
+      noTopProducts: 'Todavía no hay pedidos hoy.',
+      waitingPickup: 'Esperando recogida',
+      emptyRecentAccepted: 'Todavía no se ha aceptado ningún pedido.',
+      emptyRecentReady: 'Todavía no hay pedidos listos.',
+      error: 'No se ha podido cargar el panel de cocina.',
+      viewQueue: 'Ver cola',
+    },
+  },
+  readyAlert: {
+    title: 'Pedido listo', instruction: 'Recógelo y llévalo a la mesa.',
+    order: 'Pedido {reference}', dismiss: 'Descartar aviso',
+    regionLabel: 'Avisos de pedidos listos',
   },
   common: {
     login: 'Iniciar sesión',

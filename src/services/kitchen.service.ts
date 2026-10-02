@@ -1,5 +1,5 @@
 import { http } from '@/api/http'
-import type { KitchenAction, KitchenOrder, KitchenTicket } from '@/types/kitchen'
+import type { KitchenAction, KitchenDashboard, KitchenOrder, KitchenTicket } from '@/types/kitchen'
 
 export const kitchenService = {
   async list(restaurantId: number, signal?: AbortSignal): Promise<KitchenOrder[]> {
@@ -7,6 +7,12 @@ export const kitchenService = {
       params: { restaurant_id: restaurantId }, signal,
     })
     return data.data.orders
+  },
+  async dashboard(restaurantId: number, signal?: AbortSignal): Promise<KitchenDashboard> {
+    const { data } = await http.get<{ data: KitchenDashboard }>('/api/v1/kitchen/dashboard', {
+      params: { restaurant_id: restaurantId }, signal,
+    })
+    return data.data
   },
   async transition(orderId: number, action: KitchenAction): Promise<void> {
     // Response projection varies with permissions (Order | KitchenOrder).

@@ -1,7 +1,7 @@
 export default {
   kitchen: {
     title: 'Cuina', subtitle: 'Comandes per ordre d’arribada. Les més antigues primer.',
-    columns: { all: 'Totes', confirmed: 'Noves', accepted: 'Acceptades', preparing: 'En preparació', ready: 'Llestes' },
+    columns: { dashboard: 'Panell', confirmed: 'Noves', accepted: 'Acceptades', preparing: 'En preparació', ready: 'Llestes' },
     actions: { accept: 'Acceptar comanda', preparing: 'Iniciar preparació', ready: 'Marcar llesta' },
     filter: 'Filtrar per estat', oldest: 'Més antiga per preparar', minutes: '{count} min',
     note: 'Nota', created: 'Hora de la comanda', details: 'Veure detall', detailsFor: 'Veure detall de la comanda {number}',
@@ -16,6 +16,31 @@ export default {
     limit: 'Es mostren les 100 comandes més antigues. Pot haver-hi més comandes pendents.',
     refreshHint: 'Pots actualitzar la cua manualment.',
     connection: { connected: 'En directe', connecting: 'Connectant…', reconnecting: 'Reconnectant…', disconnected: 'Sense connexió en directe', unavailable: 'Actualització en directe no disponible', error: 'No s’ha pogut connectar en directe' },
+    dashboard: {
+      sections: {
+        now: 'Estat de la cuina ara', flow: 'Flux de comandes', timings: 'Temps operatius',
+        topProducts: 'Més demanats hui', recentAccepted: 'Últimes acceptades', recentReady: 'Últimes llestes',
+      },
+      activeOrders: 'Comandes actives', oldestActive: 'Més antiga activa', longestReadyWait: 'Esperant recollida',
+      timingLabels: { accept: 'Acceptació', preparation: 'Preparació', ready_to_served: 'Recollida' },
+      timingHelp: {
+        accept: 'Temps des que la comanda entra en cuina fins que s’accepta.',
+        preparation: 'Temps des de l’inici de la preparació fins que queda llesta.',
+        ready_to_served: 'Temps entre que la comanda queda llesta i es marca com a servida.',
+      },
+      noData: 'Sense dades suficients', samples: '{count} comandes',
+      noTopProducts: 'Encara no hi ha comandes hui.',
+      waitingPickup: 'Esperant recollida',
+      emptyRecentAccepted: 'Encara no s’ha acceptat cap comanda.',
+      emptyRecentReady: 'Encara no hi ha comandes llestes.',
+      error: 'No s’ha pogut carregar el panell de cuina.',
+      viewQueue: 'Veure cua',
+    },
+  },
+  readyAlert: {
+    title: 'Comanda llesta', instruction: 'Arreplega-la i porta-la a la taula.',
+    order: 'Comanda {reference}', dismiss: 'Descartar avís',
+    regionLabel: 'Avisos de comandes llestes',
   },
   common: {
     login: 'Iniciar sessió',

@@ -8,12 +8,15 @@ import AIconButton from '@/components/ui/AIconButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import ActivityBell from '@/components/shared/ActivityBell.vue'
 import LanguageSwitcher from '@/components/shared/LanguageSwitcher.vue'
+import ReadyOrderNotificationStack from '@/components/shared/ReadyOrderNotificationStack.vue'
 import RestaurantSwitcher from '@/components/shared/RestaurantSwitcher.vue'
 import ThemeSwitcher from '@/components/shared/ThemeSwitcher.vue'
 import UserMenu from '@/components/shared/UserMenu.vue'
 import { usePermissions } from '@/composables/usePermissions'
+import { useReadyOrderNotifications } from '@/composables/useReadyOrderNotifications'
 import { useRestaurantStore } from '@/stores/restaurant'
 import type { PermissionSlug } from '@/types/auth-context'
+import { unlockNotificationSound } from '@/utils/notification-sound'
 import aforoSymbol from '@/assets/brand/aforo-symbol.png'
 import aforoWordmark from '@/assets/brand/aforo-wordmark.png'
 
@@ -90,8 +93,22 @@ function closeDrawer(): void {
   drawerOpen.value = false
 }
 
+// Carta 7.1B §15 — global, outside KitchenView, so a waiter sees the alert
+// regardless of which screen they're on. §20 — sound needs a prior user
+// gesture to unlock (browser autoplay policy); this listens for the
+// FIRST pointerdown/keydown of the session and then gets out of the way,
+// long before any real order.ready.attention can plausibly arrive.
+const readyOrderNotifications = useReadyOrderNotifications()
+function unlockSoundOnce(): void {
+  unlockNotificationSound()
+  document.removeEventListener('pointerdown', unlockSoundOnce)
+  document.removeEventListener('keydown', unlockSoundOnce)
+}
+
 onMounted(() => {
   void restaurantStore.load()
+  document.addEventListener('pointerdown', unlockSoundOnce, { once: true })
+  document.addEventListener('keydown', unlockSoundOnce, { once: true })
 })
 </script>
 
@@ -188,6 +205,11 @@ onMounted(() => {
         <RouterView />
       </main>
     </div>
+
+    <ReadyOrderNotificationStack
+      :notifications="readyOrderNotifications.notifications.value"
+      @dismiss="readyOrderNotifications.dismiss"
+    />
   </div>
 </template>
 
