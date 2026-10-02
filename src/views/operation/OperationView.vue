@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhBellRinging, PhCookingPot, PhTable, PhUsersThree } from '@phosphor-icons/vue'
+import { PhBellRinging, PhClockCounterClockwise, PhCookingPot, PhTable, PhUsersThree } from '@phosphor-icons/vue'
 
 import EmptyState from '@/components/dashboard/EmptyState.vue'
 import RestaurantOnboarding from '@/components/dashboard/RestaurantOnboarding.vue'
@@ -17,6 +17,7 @@ import QuickMetrics from '@/components/dashboard/operation/QuickMetrics.vue'
 import RestaurantFloorMap from '@/components/dashboard/operation/RestaurantFloorMap.vue'
 import StaffLivePanel from '@/components/dashboard/operation/StaffLivePanel.vue'
 import TableDetailsDrawer from '@/components/dashboard/table/TableDetailsDrawer.vue'
+import { useActivityPanelToggle } from '@/composables/useActivityPanelToggle'
 import { usePermissions } from '@/composables/usePermissions'
 import type { OperationsLiveSnapshot, OperationsTable } from '@/types/operations'
 import type { ReceivedRealtimeEvent } from '@/composables/useRestaurantRealtime'
@@ -35,8 +36,12 @@ const emit = defineEmits<{ refresh: [] }>()
 
 const { t } = useI18n()
 const { can } = usePermissions()
+const activityPanelToggle = useActivityPanelToggle()
 
 const canManageFloorPlan = computed(() => can('manage_floor_plan'))
+// §9: a discreet link into the existing Carta 6.1B Activity Center, never a
+// second timeline — hidden for a role that can't open it anyway.
+const canViewActivity = computed(() => can('view_activity'))
 
 const selectedTableId = ref<number | null>(null)
 const showEditor = ref(false)
@@ -121,7 +126,13 @@ function onEditorClose(): void {
       />
 
       <template v-else>
+      <!-- §20 mobile priority (Carta 6.2): estado geral → alertas → mesas →
+           indicadores → equipe. `order-*` only reflows mobile/tablet (<lg);
+           `lg:order-none` restores the original DOM order (indicadores
+           first) once there's room for Attention+Map to sit side-by-side —
+           desktop layout is unchanged. -->
       <QuickMetrics
+        class="order-2 lg:order-none"
         :summary="snapshot.summary"
         :currency="snapshot.restaurant.currency"
         :pending-attention-count="snapshot.alerts.length"
@@ -132,8 +143,18 @@ function onEditorClose(): void {
            above the Floor Map, and it's also what a screen reader reaches
            first. `lg:order-*` only re-flows the VISUAL position once there's
            room for the map to stay wide and prominent side-by-side. -->
-      <div class="grid grid-cols-1 gap-4 lg:grid-cols-[1.75fr_1fr]">
+      <div class="order-1 grid grid-cols-1 gap-4 lg:order-none lg:grid-cols-[1.75fr_1fr]">
         <SectionCard :icon="PhBellRinging" :title="t('operations.alerts.title')" class="lg:order-2">
+          <template v-if="canViewActivity" #actions>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-label-md font-medium text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              @click="activityPanelToggle.open()"
+            >
+              <PhClockCounterClockwise :size="16" aria-hidden="true" />
+              {{ t('operations.alerts.viewActivity') }}
+            </button>
+          </template>
           <AttentionPanel :alerts="snapshot.alerts" @open-table="openTableById" />
         </SectionCard>
 
@@ -162,7 +183,7 @@ function onEditorClose(): void {
         </SectionCard>
       </div>
 
-      <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div class="order-3 grid grid-cols-1 gap-4 lg:order-none lg:grid-cols-3">
         <SectionCard :icon="PhCookingPot" :title="t('operations.kitchen.title')">
           <KitchenLivePanel :kitchen="snapshot.kitchen" />
         </SectionCard>

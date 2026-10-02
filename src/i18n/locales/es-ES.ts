@@ -226,6 +226,15 @@ export default {
       },
       attentionCount: 'Sin situaciones pendientes | 1 situación necesita atención | {count} situaciones necesitan atención',
       noAttention: 'Ninguna situación pendiente ahora mismo.',
+      bottleneckPrefix: 'Causa principal',
+      bottleneckCount: '1 caso | {count} casos',
+      howCalculated: '¿Cómo se calcula?',
+      legendTitle: 'Cómo se calcula la salud operativa',
+      legend: {
+        healthy: 'No hay incidencias activas que requieran tu atención.',
+        attention: 'Hay situaciones que conviene seguir de cerca, como pedidos esperando aprobación o solicitudes pendientes.',
+        critical: 'Hay incidencias que necesitan actuación inmediata.',
+      },
     },
     quick: {
       occupancy: 'Ocupación',
@@ -278,6 +287,7 @@ export default {
       },
       age: 'Hace {age}',
       viewTable: 'Ver mesa',
+      viewActivity: 'Ver actividad',
       types: {
         active_table_unassigned: 'Mesa activa sin camarero asignado',
         assigned_waiter_off_shift: 'El camarero asignado no está en turno',

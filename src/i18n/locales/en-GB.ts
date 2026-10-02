@@ -226,6 +226,15 @@ export default {
       },
       attentionCount: 'No situations pending | 1 situation needs attention | {count} situations need attention',
       noAttention: 'Nothing needs attention right now.',
+      bottleneckPrefix: 'Main cause',
+      bottleneckCount: '1 case | {count} cases',
+      howCalculated: 'How is this calculated?',
+      legendTitle: 'How operational health is calculated',
+      legend: {
+        healthy: 'There are no active incidents that need your attention.',
+        attention: 'There are situations worth keeping an eye on, like orders waiting for approval or pending requests.',
+        critical: 'There are incidents that need immediate action.',
+      },
     },
     quick: {
       occupancy: 'Occupancy',
@@ -278,6 +287,7 @@ export default {
       },
       age: '{age} ago',
       viewTable: 'View table',
+      viewActivity: 'View activity',
       types: {
         active_table_unassigned: 'Active table with no waiter assigned',
         assigned_waiter_off_shift: 'Assigned waiter is off shift',

@@ -226,6 +226,15 @@ export default {
       },
       attentionCount: 'Sense situacions pendents | 1 situació necessita atenció | {count} situacions necessiten atenció',
       noAttention: 'Cap situació pendent ara mateix.',
+      bottleneckPrefix: 'Causa principal',
+      bottleneckCount: '1 cas | {count} casos',
+      howCalculated: 'Com es calcula?',
+      legendTitle: 'Com es calcula la salut operativa',
+      legend: {
+        healthy: 'No hi ha incidències actives que requerisquen la teua atenció.',
+        attention: 'Hi ha situacions que convé seguir de prop, com comandes esperant aprovació o sol·licituds pendents.',
+        critical: 'Hi ha incidències que necessiten actuació immediata.',
+      },
     },
     quick: {
       occupancy: 'Ocupació',
@@ -278,6 +287,7 @@ export default {
       },
       age: 'Fa {age}',
       viewTable: 'Veure taula',
+      viewActivity: 'Veure activitat',
       types: {
         active_table_unassigned: 'Taula activa sense cambrer assignat',
         assigned_waiter_off_shift: 'El cambrer assignat no està en torn',

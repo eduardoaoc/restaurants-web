@@ -57,9 +57,7 @@ watch(tab, (value) => {
   }
 })
 
-const health = computed(() =>
-  operations.snapshot.value ? { score: operations.snapshot.value.operation.health_score, level: operations.snapshot.value.operation.health_level } : null,
-)
+const health = computed(() => operations.snapshot.value?.operation ?? null)
 const attentionCount = computed(() => operations.snapshot.value?.alerts.length ?? 0)
 </script>
 

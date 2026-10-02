@@ -6,6 +6,7 @@ import { PhCheckCircle, PhInfo, PhWarning, PhWarningCircle } from '@phosphor-ico
 import EmptyState from '@/components/dashboard/EmptyState.vue'
 import type { OperationsAlert, OperationsAlertSeverity } from '@/types/operations'
 import { formatDuration } from '@/utils/format'
+import { operationsAlertTypeLabelKey } from '@/utils/operations-alerts'
 
 const props = defineProps<{ alerts: OperationsAlert[] }>()
 defineEmits<{ 'open-table': [number] }>()
@@ -19,21 +20,8 @@ const SEVERITY_STYLE: Record<OperationsAlertSeverity, { icon: typeof PhWarning; 
   info: { icon: PhInfo, tone: 'bg-surface-container-high text-on-surface-variant' },
 }
 
-// Every alert `type` the backend can send today — an unknown future type
-// falls back to a generic label rather than being hidden.
-const TYPE_LABEL_KEYS: Record<string, string> = {
-  active_table_unassigned: 'operations.alerts.types.active_table_unassigned',
-  assigned_waiter_off_shift: 'operations.alerts.types.assigned_waiter_off_shift',
-  assigned_waiter_suspended: 'operations.alerts.types.assigned_waiter_suspended',
-  customer_waiter_request_pending: 'operations.alerts.types.customer_waiter_request_pending',
-  bill_request_pending: 'operations.alerts.types.bill_request_pending',
-  responsible_waiter_call_pending: 'operations.alerts.types.responsible_waiter_call_pending',
-  order_waiting_approval: 'operations.alerts.types.order_waiting_approval',
-  order_ready: 'operations.alerts.types.order_ready',
-}
-
 function typeLabel(type: string): string {
-  const key = TYPE_LABEL_KEYS[type]
+  const key = operationsAlertTypeLabelKey(type)
   return key ? t(key) : type
 }
 
