@@ -6,6 +6,7 @@ import { PhArmchair, PhBellRinging, PhBookOpen, PhChefHat, PhGauge, PhList, PhSt
 
 import AIconButton from '@/components/ui/AIconButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
+import ActivityBell from '@/components/shared/ActivityBell.vue'
 import LanguageSwitcher from '@/components/shared/LanguageSwitcher.vue'
 import RestaurantSwitcher from '@/components/shared/RestaurantSwitcher.vue'
 import ThemeSwitcher from '@/components/shared/ThemeSwitcher.vue'
@@ -178,6 +179,7 @@ onMounted(() => {
         <div class="ml-auto flex items-center gap-1">
           <LanguageSwitcher class="hidden md:inline-flex" />
           <ThemeSwitcher />
+          <ActivityBell />
           <UserMenu />
         </div>
       </header>

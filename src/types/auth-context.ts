@@ -49,6 +49,7 @@ export type PermissionSlug =
   | 'view_audit'
   | 'manage_staff_reviews'
   | 'view_customer_feedback'
+  | 'view_activity'
   | (string & {})
 
 /**
