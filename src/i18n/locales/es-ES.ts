@@ -513,6 +513,28 @@ export default {
       waiterTableManagementEnabledHelp:
         'Cuando está activado, los camareros pueden crear y modificar la configuración de las mesas. Desactívalo si quieres que únicamente el equipo de administración pueda cambiar la distribución.',
     },
+    googleReview: {
+      title: 'Reseñas de Google',
+      subtitle: 'Permite que tus clientes accedan directamente al perfil del restaurante para dejar una reseña después de su visita.',
+      configured: 'Configurado',
+      notConfigured: 'No configurado',
+      urlLabel: 'Enlace para solicitar reseñas',
+      urlPlaceholder: 'https://g.page/r/.../review',
+      urlHelp: 'Deja el campo vacío para desactivar las reseñas de Google en AFORO.',
+      invalidUrl: 'Este enlace no tiene un formato de reseñas de Google admitido por AFORO. Copia el enlace completo desde "Consigue más reseñas" en tu Perfil de Empresa de Google.',
+      testLink: 'Probar enlace',
+      testLinkUnsavedHint: 'Guarda los cambios para probar este enlace.',
+      effectNote: 'Después de configurar este enlace, los clientes podrán acceder a Google desde la experiencia posterior a su visita.',
+      tutorial: {
+        trigger: '¿Cómo encuentro mi enlace de reseñas?',
+        step1: 'Abre el Perfil de Empresa de Google de tu restaurante.',
+        step2: 'Selecciona "Leer reseñas".',
+        step3: 'Selecciona "Consigue más reseñas".',
+        step4: 'Pulsa "Copiar" para copiar el enlace.',
+        step5: 'Vuelve a AFORO, pega el enlace arriba y guarda los cambios.',
+        recommendation: 'Te recomendamos usar el enlace que Google muestra en "Consigue más reseñas".',
+      },
+    },
   },
   publicMenu: {
     loading: 'Cargando la carta…',
@@ -660,6 +682,11 @@ export default {
       wantMoreConfirmed: 'Ya hemos avisado al personal.',
       loadFailed: 'No pudimos cargar tu visita.',
       notFound: 'No hemos podido encontrar esa visita.',
+      googleReview: {
+        title: 'Comparte tu experiencia en Google',
+        description: 'Si quieres, también puedes dejar una reseña en el perfil de Google del restaurante.',
+        cta: 'Escribir una reseña en Google',
+      },
     },
   },
   service: {

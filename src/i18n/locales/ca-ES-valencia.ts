@@ -513,6 +513,28 @@ export default {
       waiterTableManagementEnabledHelp:
         'Quan està activat, els cambrers poden crear i modificar la configuració de les taules. Desactiva-ho si vols que només l\'equip d\'administració puga canviar la distribució.',
     },
+    googleReview: {
+      title: 'Ressenyes de Google',
+      subtitle: "Permet que els teus clients accedisquen directament al perfil del restaurant per a deixar una ressenya després de la seua visita.",
+      configured: 'Configurat',
+      notConfigured: 'No configurat',
+      urlLabel: "Enllaç per a sol·licitar ressenyes",
+      urlPlaceholder: 'https://g.page/r/.../review',
+      urlHelp: "Deixa el camp buit per a desactivar les ressenyes de Google en AFORO.",
+      invalidUrl: 'Este enllaç no té un format de ressenyes de Google admés per AFORO. Copia l\'enllaç complet des de "Aconsegueix més ressenyes" al teu Perfil d\'Empresa de Google.',
+      testLink: "Prova l'enllaç",
+      testLinkUnsavedHint: 'Guarda els canvis per a provar este enllaç.',
+      effectNote: "Després de configurar este enllaç, els clients podran accedir a Google des de l'experiència posterior a la seua visita.",
+      tutorial: {
+        trigger: 'Com trobe el meu enllaç de ressenyes?',
+        step1: "Obri el Perfil d'Empresa de Google del restaurant.",
+        step2: 'Selecciona "Llegir ressenyes".',
+        step3: 'Selecciona "Aconsegueix més ressenyes".',
+        step4: 'Prem "Copiar" per a copiar l\'enllaç.',
+        step5: "Torna a AFORO, apega l'enllaç ací dalt i guarda els canvis.",
+        recommendation: 'Et recomanem utilitzar l\'enllaç que Google mostra en "Aconsegueix més ressenyes".',
+      },
+    },
   },
   publicMenu: {
     loading: 'Carregant la carta…',
@@ -660,6 +682,11 @@ export default {
       wantMoreConfirmed: 'Ja hem avisat el personal.',
       loadFailed: 'No hem pogut carregar la teua visita.',
       notFound: 'No hem pogut trobar eixa visita.',
+      googleReview: {
+        title: 'Compartix la teua experiència a Google',
+        description: 'Si vols, també pots deixar una ressenya al perfil de Google del restaurant.',
+        cta: 'Escriure una ressenya a Google',
+      },
     },
   },
   service: {

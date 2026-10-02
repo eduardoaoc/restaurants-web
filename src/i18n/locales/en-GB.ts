@@ -513,6 +513,28 @@ export default {
       waiterTableManagementEnabledHelp:
         'When enabled, waiters can create and edit table configuration. Turn it off if only the management team should be able to change the layout.',
     },
+    googleReview: {
+      title: 'Google reviews',
+      subtitle: 'Let your customers go straight to the restaurant profile to leave a review after their visit.',
+      configured: 'Configured',
+      notConfigured: 'Not configured',
+      urlLabel: 'Review link',
+      urlPlaceholder: 'https://g.page/r/.../review',
+      urlHelp: 'Leave the field empty to turn off Google reviews in AFORO.',
+      invalidUrl: 'This link isn\'t in a Google review format AFORO currently supports. Copy the full link from "Get more reviews" in your Google Business Profile.',
+      testLink: 'Test link',
+      testLinkUnsavedHint: 'Save your changes to test this link.',
+      effectNote: 'Once this link is set up, customers will be able to reach Google from the post-visit experience.',
+      tutorial: {
+        trigger: 'How do I find my review link?',
+        step1: "Open your restaurant's Google Business Profile.",
+        step2: 'Select "Read reviews".',
+        step3: 'Select "Get more reviews".',
+        step4: 'Choose "Copy".',
+        step5: 'Return to AFORO, paste the link above and save.',
+        recommendation: 'We recommend using the link Google shows under "Get more reviews".',
+      },
+    },
   },
   publicMenu: {
     loading: 'Loading the menu…',
@@ -660,6 +682,11 @@ export default {
       wantMoreConfirmed: 'Staff have been notified.',
       loadFailed: "We couldn't load your visit.",
       notFound: "We couldn't find that visit.",
+      googleReview: {
+        title: 'Share your experience on Google',
+        description: "If you'd like, you can also leave a review on the restaurant's Google profile.",
+        cta: 'Write a Google review',
+      },
     },
   },
   service: {

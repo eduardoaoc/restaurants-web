@@ -38,6 +38,23 @@ export interface PublicVisitOrder {
   items: PublicVisitOrderItem[]
 }
 
+/**
+ * Carta 5.3C — derived ONLY from the restaurant's own
+ * `settings.google_review_url` (see Settings' own Carta 5.3B), NEVER from
+ * any feedback rating or from whether feedback was submitted: the backend
+ * performs no review gating, and the frontend must not invent any either
+ * (§3/§4 — 1 star and 5 stars produce the exact same CTA). `available` is
+ * just `url !== null`, kept as its own boolean so the UI never has to
+ * treat `url` as a truthiness proxy for "configured". Deliberately no
+ * `clicked`/`opened`/`submitted` field exists — AFORO has no way to know
+ * whether the customer actually left a review on Google, and must never
+ * pretend otherwise.
+ */
+export interface PublicVisitGoogleReview {
+  available: boolean
+  url: string | null
+}
+
 export interface PublicVisit {
   restaurant: { name: string }
   table: { name: string }
@@ -53,4 +70,5 @@ export interface PublicVisit {
     /** The one authoritative total for the visit (SessionBillCalculator on the backend) — never re-summed client-side to establish the official total. */
     total: string
   }
+  google_review: PublicVisitGoogleReview
 }

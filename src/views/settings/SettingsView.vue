@@ -1,8 +1,20 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhBuildings, PhFloppyDisk, PhGear, PhStorefront } from '@phosphor-icons/vue'
+import {
+  PhArrowSquareOut,
+  PhBuildings,
+  PhCaretDown,
+  PhCaretRight,
+  PhCheckCircle,
+  PhCircleDashed,
+  PhFloppyDisk,
+  PhGear,
+  PhStar,
+  PhStorefront,
+} from '@phosphor-icons/vue'
 
+import type { ApiError } from '@/api/errors'
 import AButton from '@/components/ui/AButton.vue'
 import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
@@ -134,11 +146,14 @@ function emptyOperationalForm(): OperationalForm {
 const operationalForm = ref<OperationalForm>(emptyOperationalForm())
 const operationalOriginal = ref<OperationalForm | null>(null)
 const settingsSaved = ref(false)
+/** Own-call-only error ref — see its full docblock further down, by `saveOperational`. */
+const operationalSaveError = ref<ApiError | null>(null)
 
 watch(
   () => restaurantSettings.settings.value,
   (value) => {
     settingsSaved.value = false
+    operationalSaveError.value = null
     if (!value) {
       operationalOriginal.value = null
       operationalForm.value = emptyOperationalForm()
@@ -203,12 +218,27 @@ function setDefaultLocale(loc: string): void {
   }
 }
 
+/**
+ * `operationalSaveError` (declared above, next to `settingsSaved`) is
+ * deliberately local, own-call-only — NOT `restaurantSettings.
+ * settingsSaveError` — because Carta 5.3B added a second, independent
+ * caller of the same `updateSettings()`/"settings" domain (Google Reviews
+ * below), and that shared ref is written by BOTH callers regardless of
+ * which one is currently reading it. Reading it directly here would leak
+ * a Google Reviews validation error into this card's banner (and vice
+ * versa) any time the two happened to be used back to back. Capturing
+ * each save's own `{error, applied}` result into a section-local ref is
+ * what actually isolates them; `restaurantSettings.savingSettings`
+ * (shared) is still fine to read for the loading/disabled state, since
+ * blocking a second concurrent PATCH for the same restaurant+"settings"
+ * key is the correct, intentional behaviour, not a leak.
+ */
 function settingsFieldError(key: string): string | undefined {
-  return restaurantSettings.settingsSaveError.value?.fieldErrors?.[key]?.[0]
+  return operationalSaveError.value?.fieldErrors?.[key]?.[0]
 }
 
 const settingsBannerError = computed(() => {
-  const err = restaurantSettings.settingsSaveError.value
+  const err = operationalSaveError.value
   if (!err) return null
   const handled = new Set(['default_locale', 'enabled_locales', 'currency', 'timezone'])
   if (err.kind === 'validation') {
@@ -221,6 +251,7 @@ const settingsBannerError = computed(() => {
 async function saveOperational(): Promise<void> {
   if (!settingsDirty.value) return
   settingsSaved.value = false
+  operationalSaveError.value = null
   // Captured BEFORE the PATCH — the toggle's own CURRENT (pre-save) state is
   // what every other open session's auth context still reflects; comparing
   // against it after the fact is what decides whether this save is one that
@@ -231,15 +262,95 @@ async function saveOperational(): Promise<void> {
   // Same race-condition guard as saveProfile: only celebrate a save that
   // was actually applied to the restaurant currently on screen.
   const { error, applied } = await restaurantSettings.updateSettings(payload)
-  if (!error && applied) {
-    settingsSaved.value = true
-    // §9: the admin's OWN session keeps can_manage_table_structure true
-    // regardless (manage_floor_plan already makes it unconditional) — this
-    // refresh is for THIS tab's own permission-derived UI to stay consistent
-    // with the setting it just changed, never a realtime push to anyone
-    // else's session (§9 "não inventar realtime para setting").
-    if (tableManagementChanged) void refreshAuthContext()
+  if (!applied) return
+  if (error) {
+    operationalSaveError.value = error
+    return
   }
+  settingsSaved.value = true
+  // §9: the admin's OWN session keeps can_manage_table_structure true
+  // regardless (manage_floor_plan already makes it unconditional) — this
+  // refresh is for THIS tab's own permission-derived UI to stay consistent
+  // with the setting it just changed, never a realtime push to anyone
+  // else's session (§9 "não inventar realtime para setting").
+  if (tableManagementChanged) void refreshAuthContext()
+}
+
+/* ----------------------------------------------------------------- Google Reviews ----------------------------------------------------------------- */
+
+/**
+ * Independently-saved (Carta 5.3B), same one-card-per-domain philosophy as
+ * Organization/Restaurant profile above — deliberately NOT folded into
+ * `operationalForm`, even though it shares the same PATCH endpoint and the
+ * same `restaurantSettings.settings` source, so saving the link never
+ * requires (or risks) resending unrelated operational fields, and vice
+ * versa.
+ *
+ * `googleReviewSaveError` is its OWN local ref, populated only from this
+ * section's own `updateSettings()` call result — never read from the
+ * shared `restaurantSettings.settingsSaveError` the operational form
+ * writes to, which would otherwise leak an unrelated (e.g. timezone)
+ * validation error into this card or vice versa. The shared
+ * `restaurantSettings.savingSettings` IS still consulted (see
+ * `saveGoogleReview`/the Save button's `:disabled`) purely to block a
+ * concurrent PATCH — the composable's single-flight lock is per
+ * restaurant+"settings" domain, not per field, so a click here while the
+ * operational form is mid-save would otherwise be silently dropped.
+ */
+const googleReviewUrlDraft = ref('')
+const googleReviewSaved = ref(false)
+const savingGoogleReview = ref(false)
+const googleReviewSaveError = ref<ApiError | null>(null)
+const googleReviewTutorialOpen = ref(false)
+
+watch(
+  () => restaurantSettings.settings.value,
+  (value) => {
+    googleReviewSaved.value = false
+    googleReviewSaveError.value = null
+    googleReviewUrlDraft.value = value?.google_review_url ?? ''
+  },
+)
+
+/** The last value the BACKEND confirmed — never the draft (§9 "Testar link" must never open an unvalidated draft). */
+const savedGoogleReviewUrl = computed(() => restaurantSettings.settings.value?.google_review_url ?? null)
+const googleReviewConfigured = computed(() => savedGoogleReviewUrl.value !== null)
+const googleReviewDirty = computed(() => googleReviewUrlDraft.value !== (savedGoogleReviewUrl.value ?? ''))
+const canTestGoogleReviewLink = computed(
+  () => savedGoogleReviewUrl.value !== null && !googleReviewDirty.value && !restaurantSettings.savingSettings.value,
+)
+
+/**
+ * Never the backend's raw field message (always English, see
+ * `GoogleReviewUrl` validation rule) — the allowlist itself is NOT
+ * duplicated here (§8), only a generic, localized "not a supported
+ * format" text, shown whenever this field failed validation regardless
+ * of the backend's exact wording.
+ */
+const googleReviewFieldError = computed(() =>
+  googleReviewSaveError.value?.fieldErrors?.google_review_url ? t('settings.googleReview.invalidUrl') : undefined,
+)
+const googleReviewBannerError = computed(() => {
+  const err = googleReviewSaveError.value
+  if (!err) return null
+  if (err.kind === 'validation' && err.fieldErrors?.google_review_url) return null
+  return describeApiError(err, t)
+})
+
+async function saveGoogleReview(): Promise<void> {
+  if (!googleReviewDirty.value || restaurantSettings.savingSettings.value) return
+  googleReviewSaved.value = false
+  googleReviewSaveError.value = null
+  savingGoogleReview.value = true
+  // Sent exactly as typed (trimmed only by the AText field's own browser
+  // behaviour, never here) — the backend owns trim/blank-to-null/scheme
+  // normalization AND the allowlist itself (§7/§8); the form is
+  // resynchronized from its authoritative response via the watcher above.
+  const { error, applied } = await restaurantSettings.updateSettings({ google_review_url: googleReviewUrlDraft.value })
+  savingGoogleReview.value = false
+  if (!applied) return
+  if (error) googleReviewSaveError.value = error
+  else googleReviewSaved.value = true
 }
 </script>
 
@@ -481,6 +592,104 @@ async function saveOperational(): Promise<void> {
             <p v-if="settingsSaved && !settingsDirty" class="text-label-lg text-on-surface-variant">{{ t('settings.saved') }}</p>
           </div>
         </form>
+      </ASurface>
+
+      <!-- Google Reviews -->
+      <ASurface
+        v-if="canManageRestaurant && !restaurantSettings.loading.value && !restaurantSettings.error.value"
+        tone="container"
+        radius="lg"
+        bordered
+        elevated
+        class="p-6"
+      >
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-2 text-on-surface">
+            <PhStar :size="20" class="text-on-surface-variant" />
+            <h3 class="text-title-lg font-semibold">{{ t('settings.googleReview.title') }}</h3>
+          </div>
+          <span class="inline-flex items-center gap-1.5 text-body-md text-on-surface">
+            <PhCheckCircle v-if="googleReviewConfigured" :size="16" class="shrink-0 text-primary" aria-hidden="true" />
+            <PhCircleDashed v-else :size="16" class="shrink-0 text-on-surface-variant" aria-hidden="true" />
+            {{ googleReviewConfigured ? t('settings.googleReview.configured') : t('settings.googleReview.notConfigured') }}
+          </span>
+        </div>
+        <p class="mt-1 text-body-md text-on-surface-variant">{{ t('settings.googleReview.subtitle') }}</p>
+
+        <form class="mt-5 flex flex-col gap-4" @submit.prevent="saveGoogleReview">
+          <ATextField
+            v-model="googleReviewUrlDraft"
+            class="max-w-lg"
+            type="url"
+            autocomplete="off"
+            :label="t('settings.googleReview.urlLabel')"
+            :placeholder="t('settings.googleReview.urlPlaceholder')"
+            :help-text="!googleReviewFieldError ? t('settings.googleReview.urlHelp') : undefined"
+            :error="googleReviewFieldError"
+            :disabled="savingGoogleReview"
+          />
+
+          <p v-if="googleReviewBannerError" class="text-label-md text-error" role="alert">{{ googleReviewBannerError }}</p>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <AButton type="submit" :loading="savingGoogleReview" :disabled="!googleReviewDirty || restaurantSettings.savingSettings.value">
+              <template #leading><PhFloppyDisk :size="16" /></template>
+              {{ t('settings.saveChanges') }}
+            </AButton>
+
+            <a
+              v-if="canTestGoogleReviewLink"
+              :href="savedGoogleReviewUrl ?? undefined"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex min-h-11 items-center gap-2 rounded-lg border border-outline px-6 text-label-lg font-medium text-on-surface hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              {{ t('settings.googleReview.testLink') }}
+              <PhArrowSquareOut :size="16" aria-hidden="true" />
+            </a>
+            <button
+              v-else
+              type="button"
+              disabled
+              class="inline-flex min-h-11 cursor-not-allowed items-center gap-2 rounded-lg border border-outline px-6 text-label-lg font-medium text-on-surface opacity-[0.38]"
+            >
+              {{ t('settings.googleReview.testLink') }}
+              <PhArrowSquareOut :size="16" aria-hidden="true" />
+            </button>
+
+            <p v-if="googleReviewSaved && !googleReviewDirty" class="text-label-lg text-on-surface-variant">{{ t('settings.saved') }}</p>
+          </div>
+
+          <p v-if="googleReviewDirty && savedGoogleReviewUrl !== null" class="text-label-md text-on-surface-variant">
+            {{ t('settings.googleReview.testLinkUnsavedHint') }}
+          </p>
+
+          <p class="text-label-md text-on-surface-variant">{{ t('settings.googleReview.effectNote') }}</p>
+        </form>
+
+        <div class="mt-5 border-t border-outline-variant pt-4">
+          <button
+            type="button"
+            class="flex min-h-11 w-full items-center justify-between gap-3 text-left text-label-lg font-medium text-on-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            :aria-expanded="googleReviewTutorialOpen"
+            aria-controls="google-review-tutorial"
+            @click="googleReviewTutorialOpen = !googleReviewTutorialOpen"
+          >
+            {{ t('settings.googleReview.tutorial.trigger') }}
+            <PhCaretDown v-if="googleReviewTutorialOpen" :size="18" class="shrink-0 text-on-surface-variant" aria-hidden="true" />
+            <PhCaretRight v-else :size="18" class="shrink-0 text-on-surface-variant" aria-hidden="true" />
+          </button>
+          <div v-if="googleReviewTutorialOpen" id="google-review-tutorial" class="mt-3 flex flex-col gap-2 text-body-md text-on-surface-variant">
+            <ol class="list-decimal space-y-1.5 pl-5">
+              <li>{{ t('settings.googleReview.tutorial.step1') }}</li>
+              <li>{{ t('settings.googleReview.tutorial.step2') }}</li>
+              <li>{{ t('settings.googleReview.tutorial.step3') }}</li>
+              <li>{{ t('settings.googleReview.tutorial.step4') }}</li>
+              <li>{{ t('settings.googleReview.tutorial.step5') }}</li>
+            </ol>
+            <p class="text-label-md">{{ t('settings.googleReview.tutorial.recommendation') }}</p>
+          </div>
+        </div>
       </ASurface>
     </div>
   </div>

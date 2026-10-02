@@ -36,6 +36,15 @@ export interface RestaurantSettings {
   kitchen_ticket_printing_enabled: boolean
   bill_receipt_printing_enabled: boolean
   /**
+   * The restaurant's Google Business Profile review/share link (Carta
+   * 5.3B) — `null` means not configured. The backend is the sole
+   * authority on what counts as a valid link (`App\Support\Restaurants\
+   * GoogleReviewUrl`, an allowlist of Google review/share URL shapes) and
+   * on write-side normalization (trim, blank -> null, lowercase scheme
+   * only) — the frontend never re-implements either.
+   */
+  google_review_url: string | null
+  /**
    * CARTA 8.2A/8.2B — whether staff holding `manage_tables` but NOT
    * `manage_floor_plan` (typically waiters) may create tables or change
    * name/number/capacity/zone/layout. `false` => 403 for them; an
@@ -81,6 +90,8 @@ export interface UpdateRestaurantSettingsPayload {
   bill_request_enabled?: boolean
   kitchen_ticket_printing_enabled?: boolean
   bill_receipt_printing_enabled?: boolean
+  /** String as typed — the backend trims, maps blank to `null`, and lowercases only the scheme; never pre-normalized here (Carta 5.3B §7/§8). */
+  google_review_url?: string | null
   /** See RestaurantSettings.waiter_table_management_enabled. Only changeable by `manage_restaurants` (same as every other field here). */
   waiter_table_management_enabled?: boolean
 }

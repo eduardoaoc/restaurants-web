@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PhBellRinging, PhCheckCircle, PhWarningCircle } from '@phosphor-icons/vue'
 
 import AButton from '@/components/ui/AButton.vue'
 import AProgress from '@/components/ui/AProgress.vue'
+import PublicGoogleReviewCta from './PublicGoogleReviewCta.vue'
 import PublicVisitSummary from './PublicVisitSummary.vue'
 import type { ApiError } from '@/api/errors'
 import type { PublicVisit } from '@/types/public-visit'
@@ -60,6 +61,21 @@ watch(
   },
   { immediate: true },
 )
+
+/**
+ * Carta 5.3C — the Google review CTA appears once the AFORO feedback is
+ * submitted AND the restaurant has a configured link, never before and
+ * never conditioned on any rating (§3/§4). `feedbackAlreadySubmitted`
+ * already flips true the moment `PublicFeedbackSheet` emits `submitted`
+ * (see PublicTableView's `onFeedbackSubmitted`), independent of whether
+ * that sheet is still open — so this stays visible after closing it, and
+ * after a reload (the caller re-derives `feedbackAlreadySubmitted` from
+ * the backend/stored context either way, never from this component's own
+ * state) without ever needing to reopen the feedback sheet.
+ */
+const googleReviewUrl = computed(() =>
+  props.feedbackAlreadySubmitted && props.visit?.google_review.available ? props.visit.google_review.url : null,
+)
 </script>
 
 <template>
@@ -99,6 +115,8 @@ watch(
         <AButton v-else full-width variant="outlined" @click="emit('open-feedback')">
           {{ t('publicMenu.postVisit.evaluateExperience') }}
         </AButton>
+
+        <PublicGoogleReviewCta v-if="googleReviewUrl" :url="googleReviewUrl" />
 
         <template v-if="visit.visit.active && waiterCallCapable">
           <p v-if="waiterCalled" class="flex items-center justify-center gap-2 rounded-lg bg-surface-container-low px-3 py-2.5 text-label-lg text-on-surface-variant">
