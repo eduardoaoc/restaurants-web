@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PhBellRinging, PhClockCounterClockwise, PhCookingPot, PhTable, PhUsersThree } from '@phosphor-icons/vue'
 
@@ -30,9 +30,11 @@ const props = defineProps<{
   error: import('@/api/errors').ApiError | null
   /** Passo 1.3: raw, non-debounced — only the Floor Map Editor cares about one specific event name here (§20). */
   lastRealtimeEvent: ReceivedRealtimeEvent | null
+  /** Carta 8.1B — a table to auto-open once `snapshot` actually has it (deep-link from a QR scan or a bookmarked URL). Null/undefined the rest of the time. */
+  pendingTableId?: number | null
 }>()
 
-const emit = defineEmits<{ refresh: [] }>()
+const emit = defineEmits<{ refresh: []; 'pending-table-consumed': [] }>()
 
 const { t } = useI18n()
 const { can } = usePermissions()
@@ -73,6 +75,29 @@ const hasAnyTables = computed(() => allTables.value.length > 0)
 function openTableById(tableId: number): void {
   selectedTableId.value = tableId
 }
+
+/**
+ * Carta 8.1B §16/§17/§18 — fires whenever either side changes, so it works
+ * regardless of which arrives first: a `pendingTableId` for a restaurant
+ * whose snapshot is already on screen opens immediately; one that arrives
+ * before the (possibly just-switched-to) restaurant's snapshot waits for it
+ * — DashboardView already nulls `snapshot` out during a restaurant switch
+ * (see useRestaurantOperations), so this can never match the WRONG
+ * restaurant's stale table list (§18 "evitar race"). Always emits once
+ * settled, found or not, so the caller clears the query either way (§17
+ * "limpar query/state inválido de forma segura") — never a dangling
+ * `?table=` that silently does nothing on every future visit.
+ */
+watch(
+  () => [props.snapshot, props.pendingTableId] as const,
+  ([snapshot, pendingId]) => {
+    if (pendingId == null || !snapshot) return
+    const match = allTables.value.find((table) => table.id === pendingId)
+    if (match) selectedTableId.value = match.id
+    emit('pending-table-consumed')
+  },
+  { immediate: true },
+)
 
 function onDrawerRefresh(): void {
   emit('refresh')

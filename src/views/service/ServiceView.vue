@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import { PhBellRinging, PhCheckCircle, PhStar, PhTable } from '@phosphor-icons/vue'
 
 import EmptyState from '@/components/dashboard/EmptyState.vue'
@@ -11,6 +12,7 @@ import AttentionPanel from '@/components/dashboard/operation/AttentionPanel.vue'
 import TableDetailsDrawer from '@/components/dashboard/table/TableDetailsDrawer.vue'
 import OrderDetailSheet from '@/components/service/OrderDetailSheet.vue'
 import { normalizeApiError, type ApiError } from '@/api/errors'
+import { useOperationalTableDeepLink } from '@/composables/useOperationalTableDeepLink'
 import { useOrderApprovals } from '@/composables/useOrderApprovals'
 import { usePermissions } from '@/composables/usePermissions'
 import { useRestaurantOperations } from '@/composables/useRestaurantOperations'
@@ -37,6 +39,8 @@ import { DEFAULT_CURRENCY, formatDuration, formatMoney } from '@/utils/format'
  * is no single `meta.permission` for this whole screen (see router).
  */
 const { t, locale } = useI18n()
+const route = useRoute()
+const router = useRouter()
 const restaurantStore = useRestaurantStore()
 const { can } = usePermissions()
 
@@ -221,6 +225,35 @@ const selectedTable = computed(() => allTables.value.find((table) => table.id ==
 function openTable(tableId: number): void {
   selectedTableId.value = tableId
 }
+
+/**
+ * Carta 8.1B revision — the `?restaurant=&table=` deep-link a waiter/
+ * cashier's QR scan lands here with (useStaffTableEntry now routes
+ * Servicio-eligible staff straight to app-service instead of losing the
+ * query to the router guard's app-dashboard→app-service redirect). Shared
+ * plumbing with DashboardView via useOperationalTableDeepLink; only the
+ * gate differs — `canViewTables` here, covering both the operations-backed
+ * source and the cashier's fallback table list, exactly what
+ * `usingFallbackTables` above already decides between for `allTables`.
+ *
+ * Waits for `!tablesLoading` (never just a truthy snapshot — this screen's
+ * table source can be either `operations.snapshot` or the fallback list,
+ * and either can still be mid-fetch) before searching `allTables`, so a
+ * same-restaurant table that simply hasn't arrived yet is never treated as
+ * "not found". Always consumes once loading settles, found or not, so the
+ * query never dangles.
+ */
+const { pendingTableId, onPendingTableConsumed } = useOperationalTableDeepLink(route, router, () => canViewTables.value)
+watch(
+  () => [pendingTableId.value, tablesLoading.value, allTables.value] as const,
+  ([pendingId, loading, tables]) => {
+    if (pendingId === null || loading) return
+    const match = tables.find((table) => table.id === pendingId)
+    if (match) selectedTableId.value = match.id
+    onPendingTableConsumed()
+  },
+  { immediate: true },
+)
 function onDrawerRefresh(): void {
   operations.refetch()
   approvals.refetch()

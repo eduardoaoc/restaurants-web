@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhCheck, PhCopy, PhPrinter, PhQrCode } from '@phosphor-icons/vue'
+import { PhArrowSquareOut, PhCheck, PhCopy, PhPrinter, PhQrCode } from '@phosphor-icons/vue'
 
 import AButton from '@/components/ui/AButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
@@ -81,6 +81,23 @@ function print(): void {
               <template #leading><PhPrinter :size="16" /></template>
               {{ t('tables.qr.print') }}
             </AButton>
+            <!--
+              Carta 8.1B §9 — opens the REAL customer URL, even for staff: this
+              is how a waiter/owner checks the actual guest experience, never a
+              preview route. target="_blank" + rel="noopener noreferrer" exactly
+              as specified — noopener so the new tab can't reach back into this
+              session via window.opener, noreferrer so the public page never
+              receives this admin page as a referrer.
+            -->
+            <a
+              :href="publicUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-outline bg-transparent px-6 text-label-lg font-medium text-primary transition-colors duration-200 ease-out hover:bg-primary-container/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <PhArrowSquareOut :size="16" aria-hidden="true" />
+              {{ t('tables.qr.openMenu') }}
+            </a>
           </div>
         </div>
       </div>

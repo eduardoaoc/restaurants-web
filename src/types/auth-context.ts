@@ -119,3 +119,21 @@ export interface AuthContext {
   platform: PlatformContext
   organizations: OrganizationContext[]
 }
+
+/**
+ * Carta 8.1B — the exact permission set that grants access to `/app/service`
+ * (a waiter/cashier's own operational subset — anyone who can act on a
+ * table without full `view_operations`). This is the single source both
+ * router/index.ts's guard and useStaffTableEntry's QR-scan destination
+ * read, so the two can never diverge into a staff member who reaches the
+ * route one way but not the other.
+ */
+export const SERVICE_ACCESS_PERMISSIONS: PermissionSlug[] = [
+  'view_operations',
+  'create_orders',
+  'approve_customer_orders',
+  'serve_orders',
+  'record_payments',
+  'close_bill',
+  'handle_table_requests',
+]

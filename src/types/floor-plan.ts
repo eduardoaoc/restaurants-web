@@ -172,3 +172,20 @@ export interface LayoutTableUpdate {
 
 /** 409 conflict codes returned by DELETE /floors/{floor} and DELETE /zones/{zone}. */
 export type FloorPlanConflictCode = 'FLOOR_HAS_ZONES' | 'ZONE_HAS_TABLES'
+
+/**
+ * GET /api/v1/tables/resolve/{publicToken} (Carta 8.1B) — verified live
+ * against the running backend: 401 with no session (anonymous customer —
+ * the overwhelming common case), 403 for an authenticated user without
+ * sufficient capability on this table's restaurant (e.g. kitchen), 200 with
+ * exactly this shape for a user with real operational access (verified with
+ * a real waiter account). `restaurant` deliberately carries only `id` — the
+ * backend does not send a name here, never invent one. This is the ONLY
+ * signal ever trusted to distinguish a staff member scanning their own
+ * table's QR from an anonymous diner (CLAUDE.md §9 — never infer this from
+ * the token itself, a role string, or anything client-side).
+ */
+export interface TableResolveResult {
+  restaurant: { id: number }
+  table: { id: number; name: string; number: number | null }
+}

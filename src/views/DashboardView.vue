@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 
 import DashboardPageHead from '@/components/dashboard/DashboardPageHead.vue'
 import type { DashboardTab } from '@/components/dashboard/DashboardTabs.vue'
 import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
+import { useOperationalTableDeepLink } from '@/composables/useOperationalTableDeepLink'
 import { usePermissions } from '@/composables/usePermissions'
 import { useRestaurantAnalytics } from '@/composables/useRestaurantAnalytics'
 import { useRestaurantOperations } from '@/composables/useRestaurantOperations'
@@ -15,6 +17,8 @@ import AnalyticsView from './analytics/AnalyticsView.vue'
 import OperationView from './operation/OperationView.vue'
 
 const { t } = useI18n()
+const route = useRoute()
+const router = useRouter()
 const restaurantStore = useRestaurantStore()
 const { can, isPlatformAdmin } = usePermissions()
 
@@ -24,6 +28,22 @@ const tab = ref<DashboardTab>('operation')
 // missing — useRestaurantOperations() simply never fetches while this is false.
 const canViewOperations = computed(() => can('view_operations'))
 const operations = useRestaurantOperations(() => canViewOperations.value)
+
+/**
+ * Carta 8.1B §16/§17/§18 — the one place `?table=`/`?restaurant=` query
+ * params are ever consumed for the Dashboard, regardless of how they got
+ * there: a staff member's QR scan (useStaffTableEntry's redirect) or a
+ * manually typed/bookmarked URL. Shared with ServiceView via
+ * useOperationalTableDeepLink (Carta 8.1B revision) — only the gate
+ * (`canViewOperations` here) differs per screen. `pendingTableId` is only
+ * ever handed to OperationView once any requested restaurant switch has
+ * actually resolved, so it never races a stale snapshot from the PREVIOUS
+ * restaurant (§18 "evitar race").
+ */
+const { pendingTableId, onPendingTableConsumed } = useOperationalTableDeepLink(route, router, () => canViewOperations.value)
+watch(pendingTableId, (id) => {
+  if (id !== null) tab.value = 'operation'
+})
 
 // Passo 1.3: same reactive gate as `operations` above — subscribes to
 // `restaurant.{id}` only while there's a snapshot on screen worth keeping
@@ -117,7 +137,9 @@ const attentionCount = computed(() => operations.snapshot.value?.alerts.length ?
         :refreshing="operations.refreshing.value"
         :error="operations.error.value"
         :last-realtime-event="realtime.lastEvent.value"
+        :pending-table-id="pendingTableId"
         @refresh="operations.refetch"
+        @pending-table-consumed="onPendingTableConsumed"
       />
       <!-- view_reports missing for the current restaurant: never call
            GET /analytics and wait for a 403 — same treatment as Operations

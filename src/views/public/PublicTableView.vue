@@ -27,6 +27,7 @@ import { clearStoredFeedback, readStoredFeedback, syncStoredFeedback } from '@/c
 import { usePublicMenu } from '@/composables/usePublicMenu'
 import { usePublicTableResolution } from '@/composables/usePublicTableResolution'
 import { usePublicVisit } from '@/composables/usePublicVisit'
+import { useStaffTableEntry } from '@/composables/useStaffTableEntry'
 import { publicTableService } from '@/services/public-table.service'
 import { AVAILABLE_LOCALES, DEFAULT_LOCALE, i18n, type AppLocale } from '@/i18n'
 import type { PublicFeedItem, PublicOrderCreated, PublicProduct } from '@/types/public-menu'
@@ -54,6 +55,12 @@ const { t } = useI18n()
  * authoritative for actual carta content once the visitor reaches MENU.
  */
 const { resolution, error: resolutionError, reload: reloadResolution } = usePublicTableResolution(publicToken)
+
+// Carta 8.1B §11-§14 — runs in parallel, never gates or delays anything
+// above/below: a genuine staff member gets redirected into the operational
+// table once (and only once) the authenticated resolver actually confirms
+// it; every other visitor (the overwhelming majority) sees zero difference.
+useStaffTableEntry(publicToken)
 
 // Only ever set by the customer's own manual language pick (never by the
 // admin's persisted `aforo-locale`, and never fed back from the first,

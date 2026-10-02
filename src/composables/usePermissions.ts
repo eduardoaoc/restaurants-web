@@ -55,6 +55,29 @@ export function usePermissions() {
   }
 
   /**
+   * Same check as `can()`, but for an EXPLICIT restaurant id rather than
+   * the current one — needed when a decision has to be made for a
+   * restaurant the user hasn't switched to (yet), e.g. useStaffTableEntry
+   * picking a QR scan's destination before restaurantStore has selected
+   * that restaurant (Carta 8.1B). Reads the auth context directly, never
+   * `currentRestaurantContext`.
+   */
+  function canOnRestaurant(restaurantId: number, permission: PermissionSlug): boolean {
+    const ctx = authStore.authContext
+    if (!ctx) return false
+    for (const organization of ctx.organizations) {
+      const restaurant = organization.restaurants.find((r) => r.id === restaurantId)
+      if (restaurant) return restaurant.permissions.includes(permission)
+    }
+    return false
+  }
+
+  /** Same as `canOnRestaurant`, for any of several slugs. */
+  function canAnyOnRestaurant(restaurantId: number, permissions: PermissionSlug[]): boolean {
+    return permissions.some((permission) => canOnRestaurant(restaurantId, permission))
+  }
+
+  /**
    * Organization-level capability — the org-wide bucket only (see
    * AuthContextBuilder's docblock), for actions that are never
    * restaurant-scoped (e.g. manage_organization, manage_users). Never
@@ -87,6 +110,8 @@ export function usePermissions() {
   return {
     can,
     canAny,
+    canOnRestaurant,
+    canAnyOnRestaurant,
     canManageTableStructure,
     canOrganization,
     canPlatform,

@@ -20,6 +20,7 @@ import { describeApiError } from '@/utils/error-message'
 import { formatDuration, formatMoney } from '@/utils/format'
 import BillReceiptSheet from './BillReceiptSheet.vue'
 import ServiceOrderComposer from '@/components/service/ServiceOrderComposer.vue'
+import TableAccessPanel from './TableAccessPanel.vue'
 import TableBillPanel from './TableBillPanel.vue'
 import TableOrdersList from './TableOrdersList.vue'
 import TableRequestsPanel from './TableRequestsPanel.vue'
@@ -49,6 +50,10 @@ const { t, locale } = useI18n()
  */
 const { can, canAny } = usePermissions()
 const restaurantStore = useRestaurantStore()
+// Reused as-is for the "Acceso a la mesa" section below (Carta 8.1B §10):
+// GET /tables/{table} — the only endpoint carrying `public_token` — is
+// manage_tables-only on the real backend (verified live: 403 otherwise),
+// the exact same capability that already gates opening a table here.
 const canOpenTable = computed(() => can('manage_tables'))
 const canCloseTable = computed(() => can('manage_tables') || can('close_bill'))
 const canAssignWaiters = computed(() => can('assign_waiters'))
@@ -69,6 +74,7 @@ const canRecordPayments = computed(() => can('record_payments'))
 const canHandleTableRequests = computed(() => can('handle_table_requests'))
 
 const showOrders = ref(false)
+const showAccess = ref(false)
 const showBill = ref(false)
 const showReceipt = ref(false)
 const showTransfer = ref(false)
@@ -87,7 +93,14 @@ const bill = ref<SessionBill | null>(null)
 watch(
   () => props.table?.id,
   () => {
-    showOrders.value = false
+    // Carta 8.1B §2: a session's orders are no longer an extra click away —
+    // they're visible the moment a table with an active session opens, same
+    // as every other piece of its context. A free table (no session) simply
+    // has none to show; TableOrdersList itself only ever renders inside the
+    // `table.session` branch below, so this never fires a request for a free
+    // table (§3).
+    showOrders.value = !!(props.table?.session && canViewOrders.value)
+    showAccess.value = false
     showBill.value = false
     showReceipt.value = false
     showTransfer.value = false
@@ -97,6 +110,7 @@ watch(
     feedback.value = null
     bill.value = null
   },
+  { immediate: true },
 )
 
 function onOrderCreated(): void {
@@ -321,7 +335,9 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
         </div>
 
         <div class="mt-4 grid grid-cols-2 gap-2">
-          <AButton v-if="canViewOrders" variant="tonal" @click="showOrders = !showOrders">{{ t('tableDrawer.actions.viewOrders') }}</AButton>
+          <AButton v-if="canViewOrders" variant="tonal" @click="showOrders = !showOrders">
+            {{ showOrders ? t('tableDrawer.actions.hideOrders') : t('tableDrawer.actions.viewOrders') }}
+          </AButton>
           <AButton
             v-if="canCreateOrders"
             variant="outlined"
@@ -396,6 +412,28 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
           />
         </div>
       </template>
+
+      <!--
+        Carta 8.1B §6 — deliberately discreet (collapsed by default, plain
+        text toggle, placed last) and independent of session state: a free
+        table's QR/link is just as real as an occupied one's. Only
+        manage_tables sees this at all (canOpenTable, §10) — never a role
+        check, and TableAccessPanel itself fetches nothing until expanded.
+      -->
+      <div v-if="canOpenTable" class="mt-4 border-t border-outline-variant pt-3">
+        <button
+          type="button"
+          class="-mx-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-label-lg font-medium text-on-surface-variant hover:text-on-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          :aria-expanded="showAccess"
+          @click="showAccess = !showAccess"
+        >
+          <PhCaretDown :size="14" :class="showAccess ? 'rotate-180' : ''" class="transition-transform duration-200 ease-out" aria-hidden="true" />
+          {{ showAccess ? t('tableDrawer.access.hide') : t('tableDrawer.access.show') }}
+        </button>
+        <div v-if="showAccess" class="mt-2">
+          <TableAccessPanel :key="table.id" :table-id="table.id" />
+        </div>
+      </div>
     </aside>
   </Transition>
 

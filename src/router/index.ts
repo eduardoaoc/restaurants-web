@@ -3,7 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { usePermissions } from '@/composables/usePermissions'
 import { useAuthStore } from '@/stores/auth'
 import { useRestaurantStore } from '@/stores/restaurant'
-import type { PermissionSlug } from '@/types/auth-context'
+import { SERVICE_ACCESS_PERMISSIONS, type PermissionSlug } from '@/types/auth-context'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -166,16 +166,11 @@ router.beforeEach(async (to) => {
     // kitchen already had this, billing-only accounts were the real miss).
     if (to.name === 'app-dashboard' && !canAny(['view_operations', 'view_reports'])) {
       if (can('update_kitchen_status')) return { name: 'app-kitchen' }
-      if (
-        canAny([
-          'create_orders',
-          'approve_customer_orders',
-          'serve_orders',
-          'record_payments',
-          'close_bill',
-          'handle_table_requests',
-        ])
-      ) {
+      // SERVICE_ACCESS_PERMISSIONS includes view_operations too, but this
+      // branch only runs once that's already known false above — harmless,
+      // and keeps this check reading the exact same list app-service's own
+      // guard below does (Carta 8.1B — never a parallel, divergent list).
+      if (canAny(SERVICE_ACCESS_PERMISSIONS)) {
         return { name: 'app-service' }
       }
     }
@@ -188,16 +183,10 @@ router.beforeEach(async (to) => {
       // only, no view_operations) is a real, valid permission subset — this
       // guard's own reasoning (see the route's meta comment) already says a
       // waiter may hold any subset of these; the list here was just missed
-      // when the billing/request-handling capabilities shipped.
-      !canAny([
-        'view_operations',
-        'create_orders',
-        'approve_customer_orders',
-        'serve_orders',
-        'record_payments',
-        'close_bill',
-        'handle_table_requests',
-      ])
+      // when the billing/request-handling capabilities shipped. Carta 8.1B:
+      // this is the SAME SERVICE_ACCESS_PERMISSIONS list useStaffTableEntry
+      // reads to pick a QR scan's destination — one definition, never two.
+      !canAny(SERVICE_ACCESS_PERMISSIONS)
     ) {
       return { name: 'app-dashboard' }
     }
