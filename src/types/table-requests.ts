@@ -44,4 +44,6 @@ export interface TableRequestsQuery {
   restaurant_id?: number
   status?: TableRequestStatus
   type?: TableRequestType
+  /** CARTA 8.2A/8.2B — server-side scope to one table, instead of fetching every request for the restaurant and filtering client-side. 422 if the table isn't accessible, or isn't of `restaurant_id` when both are sent. */
+  table_id?: number
 }

@@ -88,6 +88,19 @@ export interface RestaurantContext {
   status: string
   roles: string[]
   permissions: PermissionSlug[]
+  /**
+   * Derived capability (CARTA 8.2A/8.2B), computed by the backend's
+   * `TablePolicy::manageStructure` for THIS restaurant: true with
+   * `manage_floor_plan`; otherwise `manage_tables` AND
+   * `RestaurantSettings.waiter_table_management_enabled`. Governs creating
+   * a table and changing name/number/capacity/zone/layout — never
+   * `status` alone, which stays gated by plain `manage_tables` regardless
+   * of this value (confirmed against the live OpenAPI contract). A UX
+   * projection only: the API still answers 403 if it changed since this
+   * context was fetched — never replicate the backend rule, only read
+   * this field (CLAUDE.md §9/§19).
+   */
+  can_manage_table_structure: boolean
 }
 
 export interface OrganizationContext {

@@ -508,6 +508,10 @@ export default {
       printingGroup: 'Impressió',
       kitchenTicketPrintingEnabled: 'Imprimir comandes de cuina',
       billReceiptPrintingEnabled: 'Imprimir rebuts de compte',
+      tablesGroup: 'Taules',
+      waiterTableManagementEnabled: 'Permetre que els cambrers gestionen les taules',
+      waiterTableManagementEnabledHelp:
+        'Quan està activat, els cambrers poden crear i modificar la configuració de les taules. Desactiva-ho si vols que només l\'equip d\'administració puga canviar la distribució.',
     },
   },
   publicMenu: {
@@ -841,7 +845,9 @@ export default {
     },
     create: {
       title: 'Afig taula',
+      zoneHint: 'Es crearà en «{zone}».',
       nameLabel: 'Nom de la taula',
+      numberLabel: 'Número (opcional)',
       cta: 'Afig taula',
     },
     unassigned: {
@@ -857,16 +863,20 @@ export default {
       title: 'Configuració de la taula',
       subtitle: 'Estes dades definixen la taula de manera permanent.',
       activeSessionNotice: 'Hi ha clients asseguts en esta taula ara mateix. No pots canviar-ne l\'estat fins que es tanque el compte.',
+      infoSectionTitle: 'Informació',
       nameLabel: 'Nom',
       nameHelp: 'És el que veurà el teu equip i el client en escanejar el QR.',
       numberLabel: 'Número (opcional)',
       numberHelp: 'Útil si el teu equip es referix a les taules pel número.',
       capacityLabel: 'Capacitat',
+      capacityHelp: 'Quantes persones poden seure-hi còmodament.',
       capacityUnit: 'persones',
       capacityDecrease: 'Redueix la capacitat',
       capacityIncrease: 'Augmenta la capacitat',
+      locationSectionTitle: 'Ubicació',
       zoneLabel: 'Zona',
       zoneUnassigned: 'Sense zona',
+      statusSectionTitle: 'Estat',
       statusLabel: 'Estat de la taula',
       statusHelp: 'Una taula bloquejada o fora de servici deixa d\'estar disponible per a nous clients.',
       noPermission: 'No tens permís per a configurar taules.',
@@ -884,6 +894,7 @@ export default {
     errors: {
       forbidden: 'No tens permís per a gestionar les taules d\'este restaurant.',
       nameRequired: 'Introdueix un nom per a la taula.',
+      structureForbidden: 'Ja no tens permís per a modificar la configuració de les taules.',
     },
   },
   menu: {

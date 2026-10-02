@@ -35,6 +35,17 @@ export interface RestaurantSettings {
   bill_request_enabled: boolean
   kitchen_ticket_printing_enabled: boolean
   bill_receipt_printing_enabled: boolean
+  /**
+   * CARTA 8.2A/8.2B — whether staff holding `manage_tables` but NOT
+   * `manage_floor_plan` (typically waiters) may create tables or change
+   * name/number/capacity/zone/layout. `false` => 403 for them; an
+   * owner/manager holding `manage_floor_plan` is never affected either
+   * way. Viewing, QR resolution, status, sessions, orders, bills and
+   * requests are never gated by this. Defaults to `true` (pre-existing
+   * behavior) — see RestaurantContext.can_manage_table_structure for the
+   * per-user projection of this setting.
+   */
+  waiter_table_management_enabled: boolean
   updated_at: string
 }
 
@@ -70,6 +81,8 @@ export interface UpdateRestaurantSettingsPayload {
   bill_request_enabled?: boolean
   kitchen_ticket_printing_enabled?: boolean
   bill_receipt_printing_enabled?: boolean
+  /** See RestaurantSettings.waiter_table_management_enabled. Only changeable by `manage_restaurants` (same as every other field here). */
+  waiter_table_management_enabled?: boolean
 }
 
 /**

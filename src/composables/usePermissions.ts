@@ -64,6 +64,15 @@ export function usePermissions() {
     return currentOrganizationContext.value?.permissions.includes(permission) ?? false
   }
 
+  /**
+   * CARTA 8.2B — the derived `can_manage_table_structure` for the CURRENT
+   * restaurant (see RestaurantContext's own docblock). A UX projection,
+   * never re-derived from `manage_tables`/`manage_floor_plan`/a role here
+   * — the backend already folds those plus the restaurant's
+   * `waiter_table_management_enabled` setting into this one boolean.
+   */
+  const canManageTableStructure = computed(() => currentRestaurantContext.value?.can_manage_table_structure ?? false)
+
   /** Platform-scope capability — entirely separate from tenant/organization/restaurant permissions. */
   function canPlatform(permission: PlatformPermissionSlug): boolean {
     return authStore.authContext?.platform.permissions.includes(permission) ?? false
@@ -78,6 +87,7 @@ export function usePermissions() {
   return {
     can,
     canAny,
+    canManageTableStructure,
     canOrganization,
     canPlatform,
     isPlatformAdmin,

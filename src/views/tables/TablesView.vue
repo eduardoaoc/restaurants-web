@@ -32,7 +32,7 @@ import type { FloorPlanTable, UpdateTablePayload } from '@/types/floor-plan'
  */
 const { t } = useI18n()
 const restaurantStore = useRestaurantStore()
-const { can } = usePermissions()
+const { can, canManageTableStructure } = usePermissions()
 
 const canManageTables = computed(() => can('manage_tables'))
 const canManageFloorPlan = computed(() => can('manage_floor_plan'))
@@ -45,8 +45,10 @@ const selectedTableId = ref<number | null>(null)
 const newFloorName = ref('')
 const newZoneName = ref('')
 const newTableName = ref('')
+const newTableNumber = ref('')
 const newTableCapacity = ref(4)
 const tableSaveError = ref<ApiError | null>(null)
+const createTableError = ref<ApiError | null>(null)
 
 async function reload(): Promise<void> {
   await editor.load()
@@ -70,6 +72,7 @@ watch(
     selectedZoneId.value = null
     selectedTableId.value = null
     tableSaveError.value = null
+    createTableError.value = null
     void reload()
   },
 )
@@ -123,28 +126,39 @@ async function addZone(): Promise<void> {
 }
 
 /**
- * Suggested name follows the whole restaurant's numbering, never just the
- * current zone's — numbering per zone let two different tables both show up
- * as "Mesa 1" as soon as a second zone existed (real bug found in Passo 1.3).
+ * Suggested next number follows the whole restaurant's numbering, never just
+ * the current zone's — numbering per zone let two different tables both show
+ * up as "Mesa 1" as soon as a second zone existed (real bug found in Passo
+ * 1.3). Shared between the name suggestion and the new number field's own
+ * placeholder (§14 — a placeholder only, never a value sent unless the user
+ * actually types it: `addTable` below reads `newTableNumber` as typed, this
+ * is never silently substituted in).
  */
-const suggestedTableName = computed(() => {
+const suggestedTableNumber = computed(() => {
   const numbers = allTables.value.map((table) => table.number ?? 0).concat(allTables.value.length, 0)
-  return t('operations.editor.tableName', { number: Math.max(...numbers) + 1 })
+  return Math.max(...numbers) + 1
 })
+const suggestedTableName = computed(() => t('operations.editor.tableName', { number: suggestedTableNumber.value }))
 
 async function addTable(): Promise<void> {
   if (selectedZoneId.value === null) return
   const name = newTableName.value.trim() || suggestedTableName.value
+  const trimmedNumber = newTableNumber.value.trim()
+  const number = trimmedNumber === '' ? undefined : Number(trimmedNumber)
 
-  const created = await editor.createTable({
+  createTableError.value = await editor.createTable({
     name,
+    ...(number !== undefined && Number.isInteger(number) ? { number } : {}),
     capacity: newTableCapacity.value,
     zone_id: selectedZoneId.value,
     layout_x: 0.5,
     layout_y: 0.5,
   })
 
-  if (created) newTableName.value = ''
+  if (!createTableError.value) {
+    newTableName.value = ''
+    newTableNumber.value = ''
+  }
 }
 
 async function saveTableConfig(payload: UpdateTablePayload): Promise<ApiError | null> {
@@ -319,43 +333,69 @@ function markerClass(table: FloorPlanTable): string {
                 </span>
               </div>
 
-              <!-- Create table -->
-              <ASurface v-if="canManageTables && currentZone" tone="container" radius="lg" bordered class="flex flex-col gap-3 p-4">
-                <p class="text-title-md font-medium text-on-surface">{{ t('tables.create.title') }}</p>
-                <div class="flex flex-wrap items-end gap-3">
-                  <ATextField
-                    v-model="newTableName"
-                    :label="t('tables.create.nameLabel')"
-                    :placeholder="suggestedTableName"
-                    class="min-w-40 flex-1"
-                  />
-                  <div>
-                    <span class="text-label-lg font-medium text-on-surface-variant">{{ t('tables.config.capacityLabel') }}</span>
-                    <div class="mt-1.5 flex items-center gap-2">
-                      <AIconButton
-                        :label="t('tables.config.capacityDecrease')"
-                        :disabled="newTableCapacity <= 1 || editor.saving.value"
-                        @click="newTableCapacity = Math.max(1, newTableCapacity - 1)"
-                      >
-                        <PhMinus :size="16" />
-                      </AIconButton>
-                      <span class="min-w-10 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-center text-body-lg tabular-nums text-on-surface">
-                        {{ newTableCapacity }}
-                      </span>
-                      <AIconButton
-                        :label="t('tables.config.capacityIncrease')"
-                        :disabled="newTableCapacity >= 100 || editor.saving.value"
-                        @click="newTableCapacity = Math.min(100, newTableCapacity + 1)"
-                      >
-                        <PhPlus :size="16" />
-                      </AIconButton>
-                    </div>
-                  </div>
-                  <AButton :loading="editor.saving.value" @click="addTable">
-                    <template #leading><PhPlus :size="16" /></template>
-                    {{ t('tables.create.cta') }}
-                  </AButton>
+              <!-- Create table — CARTA 8.2B §10/§11/§13: a short, guided flow
+                   (Nombre → Número → Capacidad) rather than a flat technical
+                   row, gated on the structural capability (never status,
+                   which this card has nothing to do with). Placed directly
+                   in the currently selected zone at a default position
+                   (§13 "Guardar y colocar en el plano" — already this
+                   screen's existing one-step behavior, never a separate
+                   placement step). -->
+              <ASurface v-if="canManageTableStructure && currentZone" tone="container" radius="lg" bordered class="flex flex-col gap-3 p-4">
+                <div>
+                  <p class="text-title-md font-medium text-on-surface">{{ t('tables.create.title') }}</p>
+                  <p class="mt-0.5 text-body-md text-on-surface-variant">
+                    {{ t('tables.create.zoneHint', { zone: currentZone.name }) }}
+                  </p>
                 </div>
+
+                <ATextField
+                  v-model="newTableName"
+                  :label="t('tables.create.nameLabel')"
+                  :placeholder="suggestedTableName"
+                  :disabled="editor.saving.value"
+                />
+
+                <ATextField
+                  v-model="newTableNumber"
+                  :label="t('tables.create.numberLabel')"
+                  :placeholder="String(suggestedTableNumber)"
+                  inputmode="numeric"
+                  :disabled="editor.saving.value"
+                />
+
+                <div>
+                  <span class="text-label-lg font-medium text-on-surface-variant">{{ t('tables.config.capacityLabel') }}</span>
+                  <div class="mt-1.5 flex items-center gap-2">
+                    <AIconButton
+                      :label="t('tables.config.capacityDecrease')"
+                      :disabled="newTableCapacity <= 1 || editor.saving.value"
+                      @click="newTableCapacity = Math.max(1, newTableCapacity - 1)"
+                    >
+                      <PhMinus :size="16" />
+                    </AIconButton>
+                    <span class="min-w-10 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-center text-body-lg tabular-nums text-on-surface">
+                      {{ newTableCapacity }}
+                    </span>
+                    <AIconButton
+                      :label="t('tables.config.capacityIncrease')"
+                      :disabled="newTableCapacity >= 100 || editor.saving.value"
+                      @click="newTableCapacity = Math.min(100, newTableCapacity + 1)"
+                    >
+                      <PhPlus :size="16" />
+                    </AIconButton>
+                  </div>
+                  <p class="mt-1.5 text-label-md text-on-surface-variant">{{ t('tables.config.capacityHelp') }}</p>
+                </div>
+
+                <p v-if="createTableError" class="text-label-md text-error" role="alert">
+                  {{ createTableError.kind === 'forbidden' ? t('tables.errors.structureForbidden') : describeApiError(createTableError, t) }}
+                </p>
+
+                <AButton :loading="editor.saving.value" class="self-start" @click="addTable">
+                  <template #leading><PhPlus :size="16" /></template>
+                  {{ t('tables.create.cta') }}
+                </AButton>
               </ASurface>
 
               <!-- Tables with no zone yet — never dropped from the UI. -->
@@ -386,6 +426,7 @@ function markerClass(table: FloorPlanTable): string {
                   :table="selectedTable"
                   :zones="zoneOptions"
                   :can-manage-tables="canManageTables"
+                  :can-manage-structure="canManageTableStructure"
                   :can-manage-floor-plan="canManageFloorPlan"
                   :saving="editor.saving.value"
                   :error="tableSaveError"

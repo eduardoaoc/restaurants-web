@@ -508,6 +508,10 @@ export default {
       printingGroup: 'Impresión',
       kitchenTicketPrintingEnabled: 'Imprimir comandas de cocina',
       billReceiptPrintingEnabled: 'Imprimir recibos de cuenta',
+      tablesGroup: 'Mesas',
+      waiterTableManagementEnabled: 'Permitir que los camareros gestionen las mesas',
+      waiterTableManagementEnabledHelp:
+        'Cuando está activado, los camareros pueden crear y modificar la configuración de las mesas. Desactívalo si quieres que únicamente el equipo de administración pueda cambiar la distribución.',
     },
   },
   publicMenu: {
@@ -848,7 +852,9 @@ export default {
     },
     create: {
       title: 'Añadir mesa',
+      zoneHint: 'Se creará en «{zone}».',
       nameLabel: 'Nombre de la mesa',
+      numberLabel: 'Número (opcional)',
       cta: 'Añadir mesa',
     },
     unassigned: {
@@ -864,16 +870,20 @@ export default {
       title: 'Configuración de la mesa',
       subtitle: 'Estos datos definen la mesa de forma permanente.',
       activeSessionNotice: 'Hay clientes sentados en esta mesa ahora mismo. No puedes cambiar su estado hasta que se cierre la cuenta.',
+      infoSectionTitle: 'Información',
       nameLabel: 'Nombre',
       nameHelp: 'Es lo que verá tu equipo y el cliente al escanear el QR.',
       numberLabel: 'Número (opcional)',
       numberHelp: 'Útil si tu equipo se refiere a las mesas por número.',
       capacityLabel: 'Capacidad',
+      capacityHelp: 'Cuántas personas pueden sentarse cómodamente.',
       capacityUnit: 'personas',
       capacityDecrease: 'Reducir capacidad',
       capacityIncrease: 'Aumentar capacidad',
+      locationSectionTitle: 'Ubicación',
       zoneLabel: 'Zona',
       zoneUnassigned: 'Sin zona',
+      statusSectionTitle: 'Estado',
       statusLabel: 'Estado de la mesa',
       statusHelp: 'Una mesa bloqueada o fuera de servicio deja de estar disponible para nuevos clientes.',
       noPermission: 'No tienes permiso para configurar mesas.',
@@ -891,6 +901,7 @@ export default {
     errors: {
       forbidden: 'No tienes permiso para gestionar las mesas de este restaurante.',
       nameRequired: 'Introduce un nombre para la mesa.',
+      structureForbidden: 'Ya no tienes permiso para modificar la configuración de las mesas.',
     },
   },
   menu: {

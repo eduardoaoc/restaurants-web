@@ -47,10 +47,17 @@ async function fetchRequests(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const all = await tableRequestsService.list({ restaurant_id: props.restaurantId }, request.signal)
+    // CARTA 8.2B — scoped server-side via table_id (instead of fetching every
+    // request for the restaurant and filtering by table.id client-side); the
+    // pending/acknowledged union still can't be expressed by the backend's
+    // single-value `status` param, so that part stays a client-side filter.
+    const all = await tableRequestsService.list(
+      { restaurant_id: props.restaurantId, table_id: props.tableId },
+      request.signal,
+    )
     if (request.signal.aborted) return
     requests.value = all
-      .filter((r) => r.table.id === props.tableId && (r.status === 'pending' || r.status === 'acknowledged'))
+      .filter((r) => r.status === 'pending' || r.status === 'acknowledged')
       .sort((a, b) => a.created_at.localeCompare(b.created_at))
   } catch (err) {
     if (request.signal.aborted) return

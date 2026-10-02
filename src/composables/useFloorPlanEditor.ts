@@ -30,7 +30,7 @@ interface LayoutDraft {
  * restores the last-loaded snapshot.
  */
 export function useFloorPlanEditor(restaurantId: () => number | null) {
-  const { can } = usePermissions()
+  const { can, refreshAuthContext } = usePermissions()
   const floorPlan = ref<FloorPlan | null>(null)
   const loading = ref(false)
   const saving = ref(false)
@@ -118,18 +118,39 @@ export function useFloorPlanEditor(restaurantId: () => number | null) {
     return rest as T
   }
 
-  async function createTable(payload: CreateTablePayload): Promise<boolean> {
+  /**
+   * CARTA 8.2B — a 403 here is, by the live OpenAPI contract, always the
+   * "structural capability went stale" case: `can_manage_table_structure`
+   * said yes when this form opened, an admin flipped
+   * `waiter_table_management_enabled` off in another session since, and
+   * the backend is the one that actually noticed. Refetching auth context
+   * is what makes the capability — and with it, the form's own gates —
+   * catch up without the caller inventing a realtime signal for a plain
+   * settings change (§9). Fire-and-forget: the caller's own `saving`/error
+   * state resolves immediately, the structural UI disappears a moment
+   * later once the refetch lands.
+   */
+  function refreshCapabilityOn403(normalized: ApiError): void {
+    if (normalized.kind === 'forbidden') void refreshAuthContext()
+  }
+
+  async function createTable(payload: CreateTablePayload): Promise<ApiError | null> {
     const id = restaurantId()
-    if (id === null) return false
+    // No restaurant selected — practically unreachable from the real UI (the
+    // create card only renders once a floor plan has actually loaded, which
+    // itself requires one), never a real failure worth a banner.
+    if (id === null) return null
     saving.value = true
     error.value = null
     try {
       await tablesService.create(id, stripLayoutFields(payload))
       await load()
-      return true
+      return null
     } catch (err) {
-      error.value = normalizeApiError(err)
-      return false
+      const normalized = normalizeApiError(err)
+      error.value = normalized
+      refreshCapabilityOn403(normalized)
+      return normalized
     } finally {
       saving.value = false
     }
@@ -146,6 +167,7 @@ export function useFloorPlanEditor(restaurantId: () => number | null) {
     } catch (err) {
       const normalized = normalizeApiError(err)
       error.value = normalized
+      refreshCapabilityOn403(normalized)
       return normalized
     } finally {
       saving.value = false

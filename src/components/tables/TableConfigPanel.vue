@@ -21,9 +21,25 @@ export interface ZoneOption {
 const props = defineProps<{
   table: FloorPlanTable
   zones: ZoneOption[]
-  /** `manage_tables` — identity fields (name/number/capacity/status). */
+  /**
+   * `manage_tables` — the BASE permission to touch this table at all.
+   * CARTA 8.2B: `status` stays gated by this alone, never by
+   * `canManageStructure` (confirmed against the live OpenAPI contract —
+   * "status alone is never gated by the setting"), so a waiter whose
+   * `waiter_table_management_enabled` is off can still take a table out of
+   * service while the restaurant is in the middle of handling a real
+   * problem with it (burst pipe, broken chair), not just change its name.
+   */
   canManageTables: boolean
-  /** `manage_floor_plan` — zone assignment (and, elsewhere, position). */
+  /**
+   * CARTA 8.2B — `can_manage_table_structure` for the current restaurant
+   * (see RestaurantContext's own docblock): name/number/capacity. True for
+   * manage_floor_plan holders unconditionally; for a manage_tables-only
+   * waiter, follows the restaurant's `waiter_table_management_enabled`
+   * setting. Never re-derived from a role here.
+   */
+  canManageStructure: boolean
+  /** `manage_floor_plan` — zone assignment (and, elsewhere, position). Unaffected by the toggle (§21/§22 of CARTA 8.2B — a waiter never gains floor-plan access just because the toggle is on). */
   canManageFloorPlan: boolean
   saving: boolean
   error: ApiError | null
@@ -77,19 +93,29 @@ function onCapacityInput(raw: string): void {
   capacity.value = Math.min(Math.max(parsed, CAPACITY_MIN), CAPACITY_MAX)
 }
 
-/** Only what actually changed — the backend treats every field as `sometimes`. */
+/**
+ * Only what actually changed — the backend treats every field as
+ * `sometimes`. Name/number/capacity are additionally gated here on
+ * `canManageStructure` (defense-in-depth, same reasoning as the pre-existing
+ * `canManageFloorPlan` guard on `zone_id` just below) — the inputs are
+ * already disabled when it's false, so this only matters if that's ever
+ * bypassed, never a behavior change for the normal path.
+ */
 const changes = computed<UpdateTablePayload>(() => {
   const payload: UpdateTablePayload = {}
 
-  const trimmedName = name.value.trim()
-  if (trimmedName && trimmedName !== props.table.name) payload.name = trimmedName
+  if (props.canManageStructure) {
+    const trimmedName = name.value.trim()
+    if (trimmedName && trimmedName !== props.table.name) payload.name = trimmedName
 
-  const parsedNumber = numberRaw.value.trim() === '' ? null : Number(numberRaw.value)
-  const numberIsValid = parsedNumber === null || Number.isInteger(parsedNumber)
-  if (numberIsValid && parsedNumber !== props.table.number) payload.number = parsedNumber
+    const parsedNumber = numberRaw.value.trim() === '' ? null : Number(numberRaw.value)
+    const numberIsValid = parsedNumber === null || Number.isInteger(parsedNumber)
+    if (numberIsValid && parsedNumber !== props.table.number) payload.number = parsedNumber
 
-  if (capacity.value !== props.table.capacity) payload.capacity = capacity.value
+    if (capacity.value !== props.table.capacity) payload.capacity = capacity.value
+  }
 
+  // Never gated on canManageStructure — see the prop's own docblock.
   if (status.value !== props.table.status) payload.status = status.value
 
   if (props.canManageFloorPlan && zoneId.value !== props.table.zone_id) payload.zone_id = zoneId.value
@@ -99,7 +125,19 @@ const changes = computed<UpdateTablePayload>(() => {
 
 const hasChanges = computed(() => Object.keys(changes.value).length > 0)
 
-const bannerMessage = computed(() => (props.error ? describeApiError(props.error, t) : null))
+/**
+ * CARTA 8.2B §19/§20 — a 403 here is the stale-capability case (the toggle
+ * was true when this panel opened, an admin turned it off since): a
+ * dedicated, actionable copy instead of the generic "no tienes permiso"
+ * `describeApiError` would otherwise show, since `useFloorPlanEditor` has
+ * already kicked off a context refresh that will hide these fields a
+ * moment after this renders.
+ */
+const bannerMessage = computed(() => {
+  if (!props.error) return null
+  if (props.error.kind === 'forbidden') return t('tables.errors.structureForbidden')
+  return describeApiError(props.error, t)
+})
 
 async function submit(): Promise<void> {
   if (!name.value.trim()) {
@@ -144,64 +182,73 @@ function reset(): void {
       {{ t('tables.config.activeSessionNotice') }}
     </p>
 
-    <ATextField
-      :model-value="name"
-      :label="t('tables.config.nameLabel')"
-      :help-text="t('tables.config.nameHelp')"
-      :error="nameError ?? undefined"
-      :disabled="!canManageTables || saving"
-      required
-      @update:model-value="(value) => { name = value; nameError = null }"
-    />
+    <!-- CARTA 8.2B §15: Información / Ubicación / Estado, clearly separated
+         fieldsets instead of one flat stack of fields — Acceso QR stays its
+         own sibling component below (TableQrPanel, unchanged). -->
+    <fieldset class="flex flex-col gap-4">
+      <legend class="mb-1 text-label-lg font-semibold text-on-surface">{{ t('tables.config.infoSectionTitle') }}</legend>
 
-    <ATextField
-      :model-value="numberRaw"
-      :label="t('tables.config.numberLabel')"
-      :help-text="t('tables.config.numberHelp')"
-      inputmode="numeric"
-      :disabled="!canManageTables || saving"
-      @update:model-value="(value) => (numberRaw = value)"
-    />
+      <ATextField
+        :model-value="name"
+        :label="t('tables.config.nameLabel')"
+        :help-text="t('tables.config.nameHelp')"
+        :error="nameError ?? undefined"
+        :disabled="!canManageStructure || saving"
+        required
+        @update:model-value="(value) => { name = value; nameError = null }"
+      />
 
-    <!-- Capacity: a stepper, not a raw integer box — the owner thinks in
-         "mesa para 4", and the backend accepts any 1..100 so nothing is
-         artificially restricted beyond its real rule (§9). -->
-    <div>
-      <span class="text-label-lg font-medium text-on-surface-variant">{{ t('tables.config.capacityLabel') }}</span>
-      <div class="mt-1.5 flex items-center gap-2">
-        <AIconButton
-          :label="t('tables.config.capacityDecrease')"
-          :disabled="!canManageTables || saving || (capacity ?? CAPACITY_MIN) <= CAPACITY_MIN"
-          @click="stepCapacity(-1)"
-        >
-          <PhMinus :size="16" />
-        </AIconButton>
+      <ATextField
+        :model-value="numberRaw"
+        :label="t('tables.config.numberLabel')"
+        :help-text="t('tables.config.numberHelp')"
+        inputmode="numeric"
+        :disabled="!canManageStructure || saving"
+        @update:model-value="(value) => (numberRaw = value)"
+      />
 
-        <div class="flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
-          <PhUsers :size="16" class="text-on-surface-variant" aria-hidden="true" />
-          <input
-            :value="capacity ?? ''"
-            type="text"
-            inputmode="numeric"
-            :aria-label="t('tables.config.capacityLabel')"
-            :disabled="!canManageTables || saving"
-            class="w-12 bg-transparent text-center text-body-lg tabular-nums text-on-surface outline-none disabled:opacity-[0.38]"
-            @input="onCapacityInput(($event.target as HTMLInputElement).value)"
-          />
-          <span class="text-label-md text-on-surface-variant">{{ t('tables.config.capacityUnit') }}</span>
+      <!-- Capacity: a stepper, not a raw integer box — the owner thinks in
+           "mesa para 4", and the backend accepts any 1..100 so nothing is
+           artificially restricted beyond its real rule (§9). -->
+      <div>
+        <span class="text-label-lg font-medium text-on-surface-variant">{{ t('tables.config.capacityLabel') }}</span>
+        <div class="mt-1.5 flex items-center gap-2">
+          <AIconButton
+            :label="t('tables.config.capacityDecrease')"
+            :disabled="!canManageStructure || saving || (capacity ?? CAPACITY_MIN) <= CAPACITY_MIN"
+            @click="stepCapacity(-1)"
+          >
+            <PhMinus :size="16" />
+          </AIconButton>
+
+          <div class="flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
+            <PhUsers :size="16" class="text-on-surface-variant" aria-hidden="true" />
+            <input
+              :value="capacity ?? ''"
+              type="text"
+              inputmode="numeric"
+              :aria-label="t('tables.config.capacityLabel')"
+              :disabled="!canManageStructure || saving"
+              class="w-12 bg-transparent text-center text-body-lg tabular-nums text-on-surface outline-none disabled:opacity-[0.38]"
+              @input="onCapacityInput(($event.target as HTMLInputElement).value)"
+            />
+            <span class="text-label-md text-on-surface-variant">{{ t('tables.config.capacityUnit') }}</span>
+          </div>
+
+          <AIconButton
+            :label="t('tables.config.capacityIncrease')"
+            :disabled="!canManageStructure || saving || (capacity ?? 0) >= CAPACITY_MAX"
+            @click="stepCapacity(1)"
+          >
+            <PhPlus :size="16" />
+          </AIconButton>
         </div>
-
-        <AIconButton
-          :label="t('tables.config.capacityIncrease')"
-          :disabled="!canManageTables || saving || (capacity ?? 0) >= CAPACITY_MAX"
-          @click="stepCapacity(1)"
-        >
-          <PhPlus :size="16" />
-        </AIconButton>
+        <p class="mt-1.5 text-label-md text-on-surface-variant">{{ t('tables.config.capacityHelp') }}</p>
       </div>
-    </div>
+    </fieldset>
 
-    <div v-if="canManageFloorPlan">
+    <fieldset v-if="canManageFloorPlan" class="flex flex-col gap-1.5">
+      <legend class="mb-1 text-label-lg font-semibold text-on-surface">{{ t('tables.config.locationSectionTitle') }}</legend>
       <label :for="zoneSelectId" class="text-label-lg font-medium text-on-surface-variant">
         {{ t('tables.config.zoneLabel') }}
       </label>
@@ -214,10 +261,11 @@ function reset(): void {
         <option :value="null">{{ t('tables.config.zoneUnassigned') }}</option>
         <option v-for="zone in zones" :key="zone.id" :value="zone.id">{{ zone.floorName }} · {{ zone.name }}</option>
       </select>
-    </div>
+    </fieldset>
 
-    <div>
-      <span class="text-label-lg font-medium text-on-surface-variant">{{ t('tables.config.statusLabel') }}</span>
+    <fieldset class="flex flex-col gap-1.5">
+      <legend class="mb-1 text-label-lg font-semibold text-on-surface">{{ t('tables.config.statusSectionTitle') }}</legend>
+      <span class="sr-only">{{ t('tables.config.statusLabel') }}</span>
       <div
         class="mt-1.5 inline-flex flex-wrap gap-1 rounded-lg border border-outline-variant bg-surface-container-low p-1"
         role="radiogroup"
@@ -238,11 +286,16 @@ function reset(): void {
         </button>
       </div>
       <p class="mt-1.5 text-label-md text-on-surface-variant">{{ t('tables.config.statusHelp') }}</p>
-    </div>
+    </fieldset>
 
     <p v-if="bannerMessage" class="text-label-md text-error" role="alert">{{ bannerMessage }}</p>
 
-    <div v-if="canManageTables" class="flex flex-wrap items-center gap-2">
+    <!-- Shown whenever EITHER the base permission (status) or the
+         structural capability (name/number/capacity/zone) allows anything
+         at all — a manage_floor_plan-only account with no manage_tables
+         (can_manage_table_structure true, canManageTables false) would
+         otherwise lose its own Save button (CARTA 8.2B edge case). -->
+    <div v-if="canManageTables || canManageStructure" class="flex flex-wrap items-center gap-2">
       <AButton :loading="saving" :disabled="!hasChanges" @click="submit">{{ t('common.save') }}</AButton>
       <AButton variant="text" :disabled="saving || !hasChanges" @click="reset">{{ t('common.cancel') }}</AButton>
     </div>

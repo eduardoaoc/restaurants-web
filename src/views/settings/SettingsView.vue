@@ -24,7 +24,7 @@ import { RESTAURANT_SETTINGS_SUPPORTED_CURRENCIES, type UpdateRestaurantSettings
  * this Passo.
  */
 const { t } = useI18n()
-const { can, canOrganization } = usePermissions()
+const { can, canOrganization, refreshAuthContext } = usePermissions()
 
 const canManageOrganization = computed(() => canOrganization('manage_organization'))
 const canManageRestaurant = computed(() => can('manage_restaurants'))
@@ -112,6 +112,7 @@ interface OperationalForm {
   bill_request_enabled: boolean
   kitchen_ticket_printing_enabled: boolean
   bill_receipt_printing_enabled: boolean
+  waiter_table_management_enabled: boolean
 }
 
 function emptyOperationalForm(): OperationalForm {
@@ -126,6 +127,7 @@ function emptyOperationalForm(): OperationalForm {
     bill_request_enabled: false,
     kitchen_ticket_printing_enabled: false,
     bill_receipt_printing_enabled: false,
+    waiter_table_management_enabled: true,
   }
 }
 
@@ -153,6 +155,7 @@ watch(
       bill_request_enabled: value.bill_request_enabled,
       kitchen_ticket_printing_enabled: value.kitchen_ticket_printing_enabled,
       bill_receipt_printing_enabled: value.bill_receipt_printing_enabled,
+      waiter_table_management_enabled: value.waiter_table_management_enabled,
     }
     operationalOriginal.value = seeded
     operationalForm.value = { ...seeded, enabled_locales: [...seeded.enabled_locales] }
@@ -174,6 +177,7 @@ const settingsDirty = computed(() => {
     original.bill_request_enabled !== current.bill_request_enabled ||
     original.kitchen_ticket_printing_enabled !== current.kitchen_ticket_printing_enabled ||
     original.bill_receipt_printing_enabled !== current.bill_receipt_printing_enabled ||
+    original.waiter_table_management_enabled !== current.waiter_table_management_enabled ||
     [...original.enabled_locales].sort().join(',') !== [...current.enabled_locales].sort().join(',')
   )
 })
@@ -217,11 +221,25 @@ const settingsBannerError = computed(() => {
 async function saveOperational(): Promise<void> {
   if (!settingsDirty.value) return
   settingsSaved.value = false
+  // Captured BEFORE the PATCH — the toggle's own CURRENT (pre-save) state is
+  // what every other open session's auth context still reflects; comparing
+  // against it after the fact is what decides whether this save is one that
+  // actually needs a context refresh (CARTA 8.2B §8/§9), not just any save.
+  const tableManagementChanged =
+    operationalOriginal.value?.waiter_table_management_enabled !== operationalForm.value.waiter_table_management_enabled
   const payload: UpdateRestaurantSettingsPayload = { ...operationalForm.value }
   // Same race-condition guard as saveProfile: only celebrate a save that
   // was actually applied to the restaurant currently on screen.
   const { error, applied } = await restaurantSettings.updateSettings(payload)
-  if (!error && applied) settingsSaved.value = true
+  if (!error && applied) {
+    settingsSaved.value = true
+    // §9: the admin's OWN session keeps can_manage_table_structure true
+    // regardless (manage_floor_plan already makes it unconditional) — this
+    // refresh is for THIS tab's own permission-derived UI to stay consistent
+    // with the setting it just changed, never a realtime push to anyone
+    // else's session (§9 "não inventar realtime para setting").
+    if (tableManagementChanged) void refreshAuthContext()
+  }
 }
 </script>
 
@@ -425,6 +443,16 @@ async function saveOperational(): Promise<void> {
               v-model="operationalForm.bill_request_enabled"
               :label="t('settings.operational.billRequestEnabled')"
               :description="t('settings.operational.billRequestEnabledHelp')"
+              :disabled="restaurantSettings.savingSettings.value"
+            />
+          </fieldset>
+
+          <fieldset class="flex flex-col divide-y divide-outline-variant">
+            <legend class="pb-2 text-label-lg font-semibold text-on-surface">{{ t('settings.operational.tablesGroup') }}</legend>
+            <AToggle
+              v-model="operationalForm.waiter_table_management_enabled"
+              :label="t('settings.operational.waiterTableManagementEnabled')"
+              :description="t('settings.operational.waiterTableManagementEnabledHelp')"
               :disabled="restaurantSettings.savingSettings.value"
             />
           </fieldset>

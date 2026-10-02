@@ -508,6 +508,10 @@ export default {
       printingGroup: 'Printing',
       kitchenTicketPrintingEnabled: 'Print kitchen tickets',
       billReceiptPrintingEnabled: 'Print bill receipts',
+      tablesGroup: 'Tables',
+      waiterTableManagementEnabled: 'Allow waiters to manage tables',
+      waiterTableManagementEnabledHelp:
+        'When enabled, waiters can create and edit table configuration. Turn it off if only the management team should be able to change the layout.',
     },
   },
   publicMenu: {
@@ -841,7 +845,9 @@ export default {
     },
     create: {
       title: 'Add table',
+      zoneHint: 'This will be created in “{zone}”.',
       nameLabel: 'Table name',
+      numberLabel: 'Number (optional)',
       cta: 'Add table',
     },
     unassigned: {
@@ -857,16 +863,20 @@ export default {
       title: 'Table setup',
       subtitle: 'These details define the table permanently.',
       activeSessionNotice: 'Guests are seated at this table right now. You can’t change its status until the bill is closed.',
+      infoSectionTitle: 'Information',
       nameLabel: 'Name',
       nameHelp: 'This is what your team sees, and what the guest sees after scanning the QR.',
       numberLabel: 'Number (optional)',
       numberHelp: 'Handy if your team refers to tables by number.',
       capacityLabel: 'Capacity',
+      capacityHelp: 'How many guests can sit comfortably.',
       capacityUnit: 'guests',
       capacityDecrease: 'Decrease capacity',
       capacityIncrease: 'Increase capacity',
+      locationSectionTitle: 'Location',
       zoneLabel: 'Zone',
       zoneUnassigned: 'No zone',
+      statusSectionTitle: 'Status',
       statusLabel: 'Table status',
       statusHelp: 'A blocked or out-of-service table stops being available to new guests.',
       noPermission: 'You don’t have permission to configure tables.',
@@ -884,6 +894,7 @@ export default {
     errors: {
       forbidden: 'You don’t have permission to manage this restaurant’s tables.',
       nameRequired: 'Enter a name for the table.',
+      structureForbidden: 'You no longer have permission to change the table configuration.',
     },
   },
   menu: {
