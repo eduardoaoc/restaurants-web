@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { PhArmchair, PhBellRinging, PhBookOpen, PhChefHat, PhGauge, PhList, PhStar, PhUsersThree, PhX } from '@phosphor-icons/vue'
+import { PhArmchair, PhBellRinging, PhBookOpen, PhCashRegister, PhChefHat, PhGauge, PhList, PhStar, PhUsersThree, PhX } from '@phosphor-icons/vue'
 
 import AIconButton from '@/components/ui/AIconButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
@@ -66,6 +66,10 @@ const NAV_ITEMS: NavItem[] = [
     ],
   },
   { routeName: 'app-menu', labelKey: 'common.menu', icon: PhBookOpen, permission: 'manage_menu' },
+  // CARTA 9.1B — close_daily_operation (waiter/cashier, today only) OR
+  // view_daily_closes (owner/manager, today + historial). Kitchen holds
+  // neither, so it never appears for them — never a role check.
+  { routeName: 'app-day-close', labelKey: 'dayClose.pageTitle', icon: PhCashRegister, permission: ['close_daily_operation', 'view_daily_closes'] },
   { routeName: 'app-tables', labelKey: 'common.tables', icon: PhArmchair, permission: 'manage_tables' },
   // Labelled from the module's own namespace, not common.staff ("Personal"),
   // so the rail and the page agree on one name for the same place.
@@ -189,7 +193,7 @@ onMounted(() => {
           <PhList :size="22" />
         </AIconButton>
         <div class="flex min-w-0 items-center gap-1">
-          <span class="hidden shrink-0 text-title-md font-medium text-on-surface sm:block">{{ t(NAV_ITEMS.find(item => item.routeName === route.name)?.labelKey ?? 'common.settings') }}</span>
+          <span class="hidden shrink-0 text-title-md font-medium text-on-surface sm:block">{{ t(NAV_ITEMS.find(item => item.routeName === route.name)?.labelKey ?? (route.name === 'app-day-close-detail' ? 'dayClose.detail.title' : 'common.settings')) }}</span>
           <span class="hidden h-5 w-px shrink-0 bg-outline-variant sm:block" aria-hidden="true" />
           <RestaurantSwitcher />
         </div>

@@ -117,6 +117,26 @@ const router = createRouter({
           meta: { permission: 'view_customer_feedback' },
         },
         {
+          path: 'day-close',
+          name: 'app-day-close',
+          component: () => import('@/views/day-close/DayCloseView.vue'),
+          // CARTA 9.1B — close_daily_operation (waiter/cashier: today only)
+          // OR view_daily_closes (owner/manager: today + historial). The
+          // view itself further gates the Historial tab on view_daily_closes
+          // specifically — this route-level check is only the minimum bar to
+          // reach the screen at all, matching every other OR-permission
+          // route in this file.
+          meta: { permission: ['close_daily_operation', 'view_daily_closes'] },
+        },
+        {
+          path: 'day-close/:id',
+          name: 'app-day-close-detail',
+          component: () => import('@/views/day-close/DayCloseDetailView.vue'),
+          // Detail/historial is owner/manager only (view_daily_closes) —
+          // never close_daily_operation alone, matching §34/§37.
+          meta: { permission: 'view_daily_closes' },
+        },
+        {
           path: 'settings',
           name: 'app-settings',
           component: () => import('@/views/settings/SettingsView.vue'),

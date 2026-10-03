@@ -45,6 +45,18 @@ const KNOWN_ERROR_CODES: Record<string, string> = {
   // invented "already paid" rule, so any real 409 here still needs a clear,
   // localized reason.
   TABLE_SESSION_ALREADY_PAID: 'publicMenu.errors.alreadyPaid',
+  // CARTA 9.1B — Cierre Diario. CLOSE_BLOCKED, CASH_EXPECTATION_CHANGED,
+  // PERIOD_CHANGED and BUSINESS_DATE_ALREADY_CLOSED are deliberately NOT
+  // mapped here: each needs structural handling (re-show blockers, a
+  // before/after amount, a full refetch, an "open existing" action) that a
+  // single generic banner string can't carry — the day-close screen reads
+  // `error.code` directly for those instead, never this map.
+  PERIOD_EMPTY: 'common.errors.codes.periodEmpty',
+  IDEMPOTENCY_KEY_REUSED: 'common.errors.codes.idempotencyKeyReused',
+  EXPECTED_CASH_NEGATIVE: 'common.errors.codes.expectedCashNegative',
+  OPENING_FLOAT_MISMATCH: 'common.errors.codes.openingFloatMismatch',
+  TABLE_SESSION_CLOSED: 'common.errors.codes.tableSessionNotActive',
+  TABLE_SESSION_NOT_EMPTY: 'common.errors.codes.tableSessionNotEmpty',
 }
 
 /**

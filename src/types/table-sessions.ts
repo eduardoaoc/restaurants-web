@@ -127,6 +127,17 @@ export interface BillReceiptPrintResult {
   document: BillReceipt
 }
 
+/**
+ * POST /api/v1/table-sessions/{id}/void (CARTA 9.1B — surfaced from the day
+ * close screen for an empty, abandoned session). Ends a session opened by
+ * mistake: kept as status closed with voided_at set, but never counted as
+ * attended/closed/turnover. Still-open table requests are cancelled;
+ * rejected orders are allowed.
+ */
+export interface VoidTableSessionPayload {
+  reason?: string
+}
+
 export interface WaiterCall {
   id: number
   table_session_id: number

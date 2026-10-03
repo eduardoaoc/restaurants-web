@@ -7,6 +7,7 @@ import type {
   SessionBill,
   TableSession,
   TransferSessionPayload,
+  VoidTableSessionPayload,
   WaiterCall,
 } from '@/types/table-sessions'
 
@@ -82,5 +83,18 @@ export const tableSessionsService = {
   async callWaiter(sessionId: number): Promise<WaiterCall> {
     const { data } = await http.post<WaiterCallEnvelope>(`/api/v1/table-sessions/${sessionId}/waiter-calls`)
     return data.data.waiter_call
+  },
+
+  /**
+   * CARTA 9.1B — the only in-place resolution the day-close screen ever
+   * offers for a blocking active session: never an automatic close/cancel,
+   * always this explicit, confirmed action. 409 TABLE_SESSION_CLOSED /
+   * TABLE_SESSION_NOT_EMPTY (reason has_payments|has_billable_orders|
+   * has_open_orders) when it no longer qualifies — the caller refetches the
+   * day-close preview either way.
+   */
+  async void(sessionId: number, payload: VoidTableSessionPayload): Promise<TableSession> {
+    const { data } = await http.post<SessionEnvelope>(`/api/v1/table-sessions/${sessionId}/void`, payload)
+    return data.data.session
   },
 }
