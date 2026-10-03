@@ -328,6 +328,10 @@ export default {
       badges: { noIncidents: 'Sin incidencias', withIncidents: 'Con incidencias' },
       guests: '{count} comensales',
     },
+    pdf: {
+      downloadPdf: 'Descargar PDF',
+      downloadingPdf: 'Descargando…',
+    },
     detail: {
       title: 'Detalle del cierre',
       back: 'Volver al historial',
@@ -353,6 +357,7 @@ export default {
       periodChanged: 'Otro cierre se registró mientras tenías este formulario abierto. Se ha actualizado la operación.',
       businessDateAlreadyClosed: 'Este día ya tiene un cierre registrado.',
       openExisting: 'Ver cierre existente',
+      downloadPdfError: 'No se pudo descargar el PDF. Inténtalo de nuevo.',
     },
   },
   restaurant: {

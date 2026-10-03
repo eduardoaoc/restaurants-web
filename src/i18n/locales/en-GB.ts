@@ -328,6 +328,10 @@ export default {
       badges: { noIncidents: 'No incidents', withIncidents: 'With incidents' },
       guests: '{count} guests',
     },
+    pdf: {
+      downloadPdf: 'Download PDF',
+      downloadingPdf: 'Downloading…',
+    },
     detail: {
       title: 'Close detail',
       back: 'Back to history',
@@ -353,6 +357,7 @@ export default {
       periodChanged: 'Another close was recorded while you had this form open. The operation has been refreshed.',
       businessDateAlreadyClosed: 'This day already has a close recorded.',
       openExisting: 'View existing close',
+      downloadPdfError: "Couldn't download the PDF. Please try again.",
     },
   },
   restaurant: {

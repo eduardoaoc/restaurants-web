@@ -328,6 +328,10 @@ export default {
       badges: { noIncidents: 'Sense incidències', withIncidents: 'Amb incidències' },
       guests: '{count} comensals',
     },
+    pdf: {
+      downloadPdf: 'Descarregar PDF',
+      downloadingPdf: 'Descarregant…',
+    },
     detail: {
       title: 'Detall del tancament',
       back: 'Tornar a l\'historial',
@@ -353,6 +357,7 @@ export default {
       periodChanged: 'Un altre tancament es va registrar mentres tenies este formulari obert. S\'ha actualitzat l\'operació.',
       businessDateAlreadyClosed: 'Este dia ja té un tancament registrat.',
       openExisting: 'Veure tancament existent',
+      downloadPdfError: 'No s\'ha pogut descarregar el PDF. Torna-ho a intentar.',
     },
   },
   restaurant: {

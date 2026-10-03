@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { PhCashRegister } from '@phosphor-icons/vue'
+import { PhCashRegister, PhDownloadSimple } from '@phosphor-icons/vue'
 
 import AButton from '@/components/ui/AButton.vue'
 import ATextField from '@/components/ui/ATextField.vue'
@@ -10,7 +10,9 @@ import EmptyState from '@/components/dashboard/EmptyState.vue'
 import SectionCard from '@/components/dashboard/SectionCard.vue'
 import { usePermissions } from '@/composables/usePermissions'
 import type { DayCloseHistoryFilters } from '@/composables/useDayCloseHistory'
+import { useDayClosePdfDownload } from '@/composables/useDayClosePdfDownload'
 import { staffService } from '@/services/staff.service'
+import { dayClosePdfFallbackFilename } from '@/services/day-close.service'
 import type { DayCloseSummary } from '@/types/day-close'
 import type { StaffMember } from '@/types/staff'
 import { formatMoney } from '@/utils/format'
@@ -41,6 +43,7 @@ const emit = defineEmits<{ 'load-more': []; 'filters-changed': [DayCloseHistoryF
 const { t, locale } = useI18n()
 const router = useRouter()
 const { canOrganization } = usePermissions()
+const pdfDownload = useDayClosePdfDownload()
 
 const canFilterByStaff = canOrganization('manage_users')
 const staffOptions = ref<StaffMember[]>([])
@@ -85,6 +88,9 @@ function openDetail(dayClose: DayCloseSummary): void {
   void router.push({ name: 'app-day-close-detail', params: { id: String(dayClose.id) } })
 }
 
+function onDownloadPdf(dayClose: DayCloseSummary): void {
+  void pdfDownload.download(dayClose.id, dayClosePdfFallbackFilename(dayClose.business_date))
+}
 </script>
 
 <template>
@@ -123,7 +129,8 @@ function openDetail(dayClose: DayCloseSummary): void {
     <EmptyState v-if="!loading && items.length === 0" :icon="PhCashRegister" :message="t('dayClose.history.empty')" class="mt-4" />
 
     <ul v-else class="mt-4 flex flex-col divide-y divide-outline-variant">
-      <li v-for="item in items" :key="item.id" class="py-1">
+      <li v-for="item in items" :key="item.id" class="flex flex-col py-1">
+        <!-- Two independent actions, stacked — never a button nested inside a button. -->
         <button
           type="button"
           class="flex w-full flex-col gap-1.5 rounded-lg px-2 py-2 text-left transition-colors duration-200 ease-out hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -144,6 +151,21 @@ function openDetail(dayClose: DayCloseSummary): void {
           </div>
         </button>
 
+        <div class="px-2">
+          <AButton
+            variant="text"
+            class="-ml-3"
+            :loading="pdfDownload.isDownloading(item.id)"
+            @click="onDownloadPdf(item)"
+          >
+            <template #leading><PhDownloadSimple :size="16" aria-hidden="true" /></template>
+            {{ pdfDownload.isDownloading(item.id) ? t('dayClose.pdf.downloadingPdf') : t('dayClose.pdf.downloadPdf') }}
+          </AButton>
+        </div>
+
+        <p v-if="pdfDownload.error.value?.id === item.id" class="px-2 text-label-md text-error" role="alert">
+          {{ pdfDownload.error.value.message }}
+        </p>
       </li>
     </ul>
 

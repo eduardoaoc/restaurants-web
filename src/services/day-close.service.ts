@@ -1,3 +1,5 @@
+import axios from 'axios'
+
 import { http } from '@/api/http'
 import type {
   CreateDayClosePayload,
@@ -7,6 +9,7 @@ import type {
   DayCloseSummary,
   DayClosesQuery,
 } from '@/types/day-close'
+import { parseContentDispositionFilename } from '@/utils/download-blob'
 
 interface DayClosePreviewEnvelope {
   data: DayClosePreview
@@ -31,6 +34,7 @@ interface DayCloseAnnotationEnvelope {
  *   GET  /api/v1/restaurants/{restaurant}/day-closes              (cursor-paginated)
  *   GET  /api/v1/day-closes/{dayClose}                            (numeric id)
  *   POST /api/v1/day-closes/{dayClose}/annotations
+ *   GET  /api/v1/day-closes/{dayClose}/pdf                        (CARTA 9.1D, blob)
  * No WhatsApp — out of scope.
  */
 export const dayCloseService = {
@@ -92,4 +96,48 @@ export const dayCloseService = {
     return data.data
   },
 
+  /**
+   * CARTA 9.1D — GET /day-closes/{id}/pdf, `responseType: 'blob'`. Never
+   * `window.open(url)`: the endpoint needs the Sanctum session cookie, and
+   * only a real Axios call can surface 401/403/404/5xx to the caller the
+   * way the rest of this app already handles errors. The PDF is generated
+   * from the persisted snapshot (never recomputed), so the response is
+   * always byte-for-byte reproducible for a given close.
+   *
+   * The backend's own `Content-Disposition` names the file
+   * (`aforo-cierre-diario-{restaurant-slug}-{business_date}.pdf`) — read
+   * here when the header is actually exposed cross-origin; `fallbackFilename`
+   * (built by the caller from data it already has, e.g. business_date) is
+   * used otherwise, never a guessed restaurant name.
+   *
+   * With `responseType: 'blob'`, Axios delivers a JSON error body as a
+   * Blob too (never auto-parsed) — unwrapped back into real JSON here, on
+   * the error path only, so the caller's `normalizeApiError(err)` keeps
+   * working exactly as it already does everywhere else in this codebase.
+   */
+  async downloadPdf(dayCloseId: number, fallbackFilename: string): Promise<{ blob: Blob; filename: string }> {
+    try {
+      const response = await http.get(`/api/v1/day-closes/${dayCloseId}/pdf`, { responseType: 'blob' })
+      const contentType = String(response.headers['content-type'] ?? '')
+      if (!contentType.toLowerCase().includes('application/pdf')) {
+        throw new Error('DAY_CLOSE_PDF_UNEXPECTED_CONTENT_TYPE')
+      }
+      const filename = parseContentDispositionFilename(response.headers['content-disposition']) ?? fallbackFilename
+      return { blob: response.data as Blob, filename }
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.data instanceof Blob && err.response.data.type.includes('json')) {
+        try {
+          err.response.data = JSON.parse(await err.response.data.text())
+        } catch {
+          // Not real JSON after all — leave the Blob as-is; normalizeApiError's generic fallback still applies.
+        }
+      }
+      throw err
+    }
+  },
+}
+
+/** `aforo-cierre-diario-{business_date}.pdf` — never the restaurant name/slug (not reliably available to every caller, and never worth guessing). */
+export function dayClosePdfFallbackFilename(businessDate: string): string {
+  return `aforo-cierre-diario-${businessDate}.pdf`
 }

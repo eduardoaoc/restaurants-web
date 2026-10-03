@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { PhCashRegister, PhNotePencil } from '@phosphor-icons/vue'
+import { PhCashRegister, PhDownloadSimple, PhNotePencil } from '@phosphor-icons/vue'
 
 import AButton from '@/components/ui/AButton.vue'
 import AProgress from '@/components/ui/AProgress.vue'
@@ -12,6 +12,8 @@ import DayCloseSectionsSummary from '@/components/day-close/DayCloseSectionsSumm
 import EmptyState from '@/components/dashboard/EmptyState.vue'
 import SectionCard from '@/components/dashboard/SectionCard.vue'
 import { useDayCloseDetail } from '@/composables/useDayCloseDetail'
+import { useDayClosePdfDownload } from '@/composables/useDayClosePdfDownload'
+import { dayClosePdfFallbackFilename } from '@/services/day-close.service'
 import { describeApiError } from '@/utils/error-message'
 import { DEFAULT_CURRENCY, formatMoney } from '@/utils/format'
 
@@ -33,6 +35,10 @@ const dayCloseId = computed(() => {
 })
 
 const { detail, loading, error, retry, addingAnnotation, annotationError, addAnnotation } = useDayCloseDetail(() => dayCloseId.value)
+const pdfDownload = useDayClosePdfDownload()
+
+// A new `:id` on the same route instance never carries over the previous close's in-flight/error PDF state.
+watch(dayCloseId, () => pdfDownload.reset())
 
 const showAnnotationDialog = ref(false)
 
@@ -63,6 +69,11 @@ async function onSubmitAnnotation(body: string): Promise<void> {
   if (ok) showAnnotationDialog.value = false
 }
 
+function onDownloadPdf(): void {
+  if (!detail.value) return
+  void pdfDownload.download(detail.value.id, dayClosePdfFallbackFilename(detail.value.business_date))
+}
+
 function goBack(): void {
   void router.push({ name: 'app-day-close' })
 }
@@ -83,8 +94,18 @@ function goBack(): void {
 
     <template v-else-if="detail">
       <SectionCard :icon="PhCashRegister" :title="t('dayClose.detail.title')">
+        <template #actions>
+          <AButton variant="outlined" :loading="pdfDownload.isDownloading(detail.id)" @click="onDownloadPdf">
+            <template #leading><PhDownloadSimple :size="16" aria-hidden="true" /></template>
+            {{ pdfDownload.isDownloading(detail.id) ? t('dayClose.pdf.downloadingPdf') : t('dayClose.pdf.downloadPdf') }}
+          </AButton>
+        </template>
+
         <p class="text-title-md font-semibold text-on-surface">{{ dateOnly(detail.business_date) }}</p>
         <p class="mt-1 text-body-md text-on-surface-variant">{{ t('dayClose.detail.closedBy', { name: detail.closed_by.name, date: dateTime(detail.closed_at) }) }}</p>
+        <p v-if="pdfDownload.error.value?.id === detail.id" class="mt-2 text-label-md text-error" role="alert">
+          {{ pdfDownload.error.value.message }}
+        </p>
       </SectionCard>
 
       <DayCloseSectionsSummary :sections="detail.report" :currency="detail.currency" :timezone="detail.timezone" />
