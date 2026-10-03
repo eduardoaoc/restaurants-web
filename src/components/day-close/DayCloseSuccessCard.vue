@@ -5,6 +5,8 @@ import { PhCheckCircle, PhWarningCircle } from '@phosphor-icons/vue'
 
 import AButton from '@/components/ui/AButton.vue'
 import SectionCard from '@/components/dashboard/SectionCard.vue'
+import DayCloseWhatsAppBadge from '@/components/day-close/DayCloseWhatsAppBadge.vue'
+import { whatsappFailureKey } from '@/utils/day-close-whatsapp'
 import type { DayClose } from '@/types/day-close'
 import { formatMoney } from '@/utils/format'
 
@@ -65,6 +67,11 @@ const tone = computed(() => (props.dayClose.has_incidents ? 'warning' : 'success
       </div>
     </dl>
 
+    <div v-if="dayClose.whatsapp" class="mt-4 text-body-md text-on-surface-variant">
+      <span>{{ t('dayClose.whatsapp.title') }}: </span>
+      <DayCloseWhatsAppBadge :status="dayClose.whatsapp.status" />
+      <p v-if="whatsappFailureKey(dayClose.whatsapp.status, dayClose.whatsapp.failure_code)" class="mt-1">{{ t(whatsappFailureKey(dayClose.whatsapp.status, dayClose.whatsapp.failure_code)!) }}</p>
+    </div>
     <AButton class="mt-5 w-full" @click="emit('view-detail')">{{ t('dayClose.success.viewClose') }}</AButton>
   </SectionCard>
 </template>

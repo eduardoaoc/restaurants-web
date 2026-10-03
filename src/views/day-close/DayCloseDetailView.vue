@@ -9,6 +9,7 @@ import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import DayCloseAnnotationDialog from '@/components/day-close/DayCloseAnnotationDialog.vue'
 import DayCloseSectionsSummary from '@/components/day-close/DayCloseSectionsSummary.vue'
+import DayCloseWhatsAppSection from '@/components/day-close/DayCloseWhatsAppSection.vue'
 import EmptyState from '@/components/dashboard/EmptyState.vue'
 import SectionCard from '@/components/dashboard/SectionCard.vue'
 import { useDayCloseDetail } from '@/composables/useDayCloseDetail'
@@ -109,6 +110,7 @@ function goBack(): void {
       </SectionCard>
 
       <DayCloseSectionsSummary :sections="detail.report" :currency="detail.currency" :timezone="detail.timezone" />
+      <DayCloseWhatsAppSection :day-close="detail" @resent="retry" />
 
       <!-- Caja (snapshot — backend's own computed difference, never recomputed here) -->
       <SectionCard :icon="PhCashRegister" :title="t('dayClose.detail.sections.cash')">

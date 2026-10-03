@@ -171,6 +171,80 @@ export default {
     },
   },
   dayClose: {
+    whatsapp: {
+      "title": "WhatsApp",
+      "empty": "Todavía no hay envíos para este cierre.",
+      "settings": {
+        "title": "Cierre diario por WhatsApp",
+        "description": "Recibe automáticamente un resumen cuando se cierre el día.",
+        "unavailable": "WhatsApp todavía no está disponible en este entorno.",
+        "toggle": "Enviar cierre diario automáticamente por WhatsApp",
+        "recipient": "Destinatario",
+        "noRecipient": "Ningún destinatario configurado.",
+        "edit": "Editar destinatario",
+        "changePhone": "Cambiar número",
+        "name": "Nombre",
+        "phone": "Número de WhatsApp",
+        "phoneHelper": "Usa el formato internacional, por ejemplo +34612345678.",
+        "phoneInvalid": "Introduce un número en formato internacional E.164.",
+        "nameInvalid": "Introduce un nombre de hasta 100 caracteres.",
+        "consent": "Confirmo que esta persona ha aceptado recibir los cierres diarios por WhatsApp.",
+        "consentRecorded": "Consentimiento registrado.",
+        "enableRequiresRecipient": "Configura un destinatario con consentimiento válido antes de activar el envío.",
+        "states": {
+          "disabled": "Envío automático desactivado",
+          "configuration_required": "Configuración pendiente",
+          "ready": "Integración preparada"
+        }
+      },
+      "statuses": {
+        "pending": "Pendiente",
+        "accepted": "Aceptado por WhatsApp",
+        "sent": "Enviado",
+        "delivered": "Entregado",
+        "read": "Leído",
+        "failed": "Fallido",
+        "skipped": "No enviado"
+      },
+      "kinds": {
+        "automatic": "Automático",
+        "manual_resend": "Reenvío manual"
+      },
+      "resend": {
+        "button": "Reenviar por WhatsApp",
+        "title": "Reenviar cierre por WhatsApp",
+        "description": "Se enviará nuevamente el resumen de este cierre al destinatario configurado actualmente.",
+        "confirm": "Reenviar",
+        "loading": "Solicitando reenvío…"
+      },
+      "timestamps": {
+        "queued_at": "Solicitado",
+        "accepted_at": "Aceptado",
+        "sent_at": "Enviado",
+        "delivered_at": "Entregado",
+        "read_at": "Leído",
+        "failed_at": "Fallido"
+      },
+      "errors": {
+        "unavailable": "WhatsApp todavía no está disponible.",
+        "disabled": "El envío por WhatsApp está desactivado para este restaurante.",
+        "recipient": "No hay un destinatario configurado.",
+        "consent": "Necesitas confirmar el consentimiento del destinatario.",
+        "pending": "Ya hay un envío pendiente para este cierre.",
+        "idempotency": "Esta solicitud ya se procesó con otros datos. Inicia un nuevo reenvío.",
+        "generic": "No se pudo completar la solicitud. Vuelve a intentarlo.",
+        "forbidden": "No tienes permiso para realizar esta acción.",
+        "notFound": "Este cierre o restaurante ya no está disponible.",
+        "rateLimited": "Hay demasiadas solicitudes. Espera un momento y vuelve a intentarlo."
+      },
+      "failure": {
+        "failed": "No se pudo completar el envío.",
+        "skipped": "No se intentó el envío.",
+        "unavailable": "No enviado: integración no disponible.",
+        "recipient": "No enviado: destinatario no configurado.",
+        "consent": "No enviado: consentimiento pendiente."
+      }
+    },
     pageTitle: 'Cierre diario',
     tabs: { today: 'Hoy', history: 'Historial' },
     noAccess: 'No tienes permiso para ver el cierre diario de este restaurante.',

@@ -230,6 +230,8 @@ export interface DayClosePreview extends DayCloseSections {
 
 /** History row — persisted columns, never recomputed (CARTA 9.1A `DayCloseSummary`). */
 export interface DayCloseSummary {
+  /** Latest delivery, omitted when the backend relation was not loaded. */
+  whatsapp?: import('@/types/day-close-whatsapp').DayCloseWhatsAppSummary | null
   id: number
   public_id: string
   restaurant_id: number

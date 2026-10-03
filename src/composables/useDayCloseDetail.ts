@@ -1,8 +1,9 @@
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 
 import { normalizeApiError, type ApiError } from '@/api/errors'
 import { dayCloseService } from '@/services/day-close.service'
 import type { DayClose } from '@/types/day-close'
+import { useRestaurantStore } from '@/stores/restaurant'
 
 /**
  * CARTA 9.1B §37 — a single persisted Cierre Diario, by its real numeric
@@ -12,6 +13,9 @@ import type { DayClose } from '@/types/day-close'
  * stored, regardless of how the restaurant's live data has changed since.
  */
 export function useDayCloseDetail(dayCloseId: () => number | null) {
+  const restaurant = useRestaurantStore()
+  let generation = 0
+  let disposed = false
   const detail = ref<DayClose | null>(null)
   const loading = ref(false)
   const error = ref<ApiError | null>(null)
@@ -22,8 +26,13 @@ export function useDayCloseDetail(dayCloseId: () => number | null) {
   let targetId: number | null = null
 
   async function fetch(): Promise<void> {
+    const token = ++generation
+    const restaurantId = restaurant.currentRestaurantId
     const id = dayCloseId()
     controller?.abort()
+    detail.value = null
+    annotationError.value = null
+    addingAnnotation.value = false
     if (id === null) {
       detail.value = null
       error.value = null
@@ -38,7 +47,8 @@ export function useDayCloseDetail(dayCloseId: () => number | null) {
 
     try {
       const result = await dayCloseService.get(id, signal)
-      if (signal.aborted || targetId !== id) return
+      if (disposed || signal.aborted || targetId !== id || token !== generation || restaurantId !== restaurant.currentRestaurantId) return
+      if (result.restaurant_id !== restaurantId) { error.value = { kind: 'not_found', status: 404 }; return }
       detail.value = result
     } catch (err) {
       if (signal.aborted) return
@@ -54,25 +64,28 @@ export function useDayCloseDetail(dayCloseId: () => number | null) {
 
   /** §39 — appended locally from the real created response, never a full refetch (the annotation is the only thing that changed). */
   async function addAnnotation(body: string): Promise<boolean> {
+    const token = generation
     const id = dayCloseId()
-    if (id === null || !detail.value) return false
+    if (id === null || !detail.value || addingAnnotation.value) return false
     addingAnnotation.value = true
     annotationError.value = null
     try {
       const annotation = await dayCloseService.addAnnotation(id, body)
+      if (disposed || token !== generation) return false
       if (detail.value && detail.value.id === id) {
         detail.value = { ...detail.value, annotations: [...detail.value.annotations, annotation] }
       }
       return true
     } catch (err) {
-      annotationError.value = normalizeApiError(err)
+      if (!disposed && token === generation) annotationError.value = normalizeApiError(err)
       return false
     } finally {
-      addingAnnotation.value = false
+      if (!disposed && token === generation) addingAnnotation.value = false
     }
   }
 
-  watch(dayCloseId, () => void fetch(), { immediate: true })
+  watch(() => [dayCloseId(), restaurant.currentRestaurantId], () => void fetch(), { immediate: true, flush: 'sync' })
+  onBeforeUnmount(() => { disposed = true; ++generation; controller?.abort() })
 
   return { detail, loading, error, retry, addingAnnotation, annotationError, addAnnotation }
 }

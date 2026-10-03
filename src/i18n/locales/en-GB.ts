@@ -171,6 +171,80 @@ export default {
     },
   },
   dayClose: {
+    whatsapp: {
+      "title": "WhatsApp",
+      "empty": "There are no deliveries for this close yet.",
+      "settings": {
+        "title": "Daily close by WhatsApp",
+        "description": "Automatically receive a summary when the day is closed.",
+        "unavailable": "WhatsApp is not available in this environment yet.",
+        "toggle": "Automatically send the daily close by WhatsApp",
+        "recipient": "Recipient",
+        "noRecipient": "No recipient configured.",
+        "edit": "Edit recipient",
+        "changePhone": "Change number",
+        "name": "Name",
+        "phone": "WhatsApp number",
+        "phoneHelper": "Use international format, for example +34612345678.",
+        "phoneInvalid": "Enter a number in international E.164 format.",
+        "nameInvalid": "Enter a name of up to 100 characters.",
+        "consent": "I confirm that this person has agreed to receive daily closes by WhatsApp.",
+        "consentRecorded": "Consent recorded.",
+        "enableRequiresRecipient": "Configure a recipient with valid consent before enabling delivery.",
+        "states": {
+          "disabled": "Automatic delivery disabled",
+          "configuration_required": "Configuration required",
+          "ready": "Integration ready"
+        }
+      },
+      "statuses": {
+        "pending": "Pending",
+        "accepted": "Accepted by WhatsApp",
+        "sent": "Sent",
+        "delivered": "Delivered",
+        "read": "Read",
+        "failed": "Failed",
+        "skipped": "Not sent"
+      },
+      "kinds": {
+        "automatic": "Automatic",
+        "manual_resend": "Manual resend"
+      },
+      "resend": {
+        "button": "Resend by WhatsApp",
+        "title": "Resend close by WhatsApp",
+        "description": "The summary of this close will be sent again to the currently configured recipient.",
+        "confirm": "Resend",
+        "loading": "Requesting resend…"
+      },
+      "timestamps": {
+        "queued_at": "Requested",
+        "accepted_at": "Accepted",
+        "sent_at": "Sent",
+        "delivered_at": "Delivered",
+        "read_at": "Read",
+        "failed_at": "Failed"
+      },
+      "errors": {
+        "unavailable": "WhatsApp is not available yet.",
+        "disabled": "WhatsApp delivery is disabled for this restaurant.",
+        "recipient": "No recipient is configured.",
+        "consent": "You need to confirm the recipient’s consent.",
+        "pending": "There is already a pending delivery for this close.",
+        "idempotency": "This request was already processed with different data. Start a new resend.",
+        "generic": "The request could not be completed. Please try again.",
+        "forbidden": "You do not have permission to perform this action.",
+        "notFound": "This close or restaurant is no longer available.",
+        "rateLimited": "Too many requests. Wait a moment and try again."
+      },
+      "failure": {
+        "failed": "The delivery could not be completed.",
+        "skipped": "Delivery was not attempted.",
+        "unavailable": "Not sent: integration unavailable.",
+        "recipient": "Not sent: recipient not configured.",
+        "consent": "Not sent: consent required."
+      }
+    },
     pageTitle: 'Daily close',
     tabs: { today: 'Today', history: 'History' },
     noAccess: "You don't have permission to view this restaurant's daily close.",

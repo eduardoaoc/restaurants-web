@@ -171,6 +171,80 @@ export default {
     },
   },
   dayClose: {
+    whatsapp: {
+      "title": "WhatsApp",
+      "empty": "Encara no hi ha enviaments per a este tancament.",
+      "settings": {
+        "title": "Tancament diari per WhatsApp",
+        "description": "Rep automàticament un resum quan es tanque el dia.",
+        "unavailable": "WhatsApp encara no està disponible en este entorn.",
+        "toggle": "Enviar el tancament diari automàticament per WhatsApp",
+        "recipient": "Destinatari",
+        "noRecipient": "Cap destinatari configurat.",
+        "edit": "Editar destinatari",
+        "changePhone": "Canviar número",
+        "name": "Nom",
+        "phone": "Número de WhatsApp",
+        "phoneHelper": "Usa el format internacional, per exemple +34612345678.",
+        "phoneInvalid": "Introduïx un número en format internacional E.164.",
+        "nameInvalid": "Introduïx un nom de fins a 100 caràcters.",
+        "consent": "Confirme que esta persona ha acceptat rebre els tancaments diaris per WhatsApp.",
+        "consentRecorded": "Consentiment registrat.",
+        "enableRequiresRecipient": "Configura un destinatari amb consentiment vàlid abans d’activar l’enviament.",
+        "states": {
+          "disabled": "Enviament automàtic desactivat",
+          "configuration_required": "Configuració pendent",
+          "ready": "Integració preparada"
+        }
+      },
+      "statuses": {
+        "pending": "Pendent",
+        "accepted": "Acceptat per WhatsApp",
+        "sent": "Enviat",
+        "delivered": "Entregat",
+        "read": "Llegit",
+        "failed": "Fallat",
+        "skipped": "No enviat"
+      },
+      "kinds": {
+        "automatic": "Automàtic",
+        "manual_resend": "Reenviament manual"
+      },
+      "resend": {
+        "button": "Reenviar per WhatsApp",
+        "title": "Reenviar tancament per WhatsApp",
+        "description": "S’enviarà de nou el resum d’este tancament al destinatari configurat actualment.",
+        "confirm": "Reenviar",
+        "loading": "Sol·licitant reenviament…"
+      },
+      "timestamps": {
+        "queued_at": "Sol·licitat",
+        "accepted_at": "Acceptat",
+        "sent_at": "Enviat",
+        "delivered_at": "Entregat",
+        "read_at": "Llegit",
+        "failed_at": "Fallat"
+      },
+      "errors": {
+        "unavailable": "WhatsApp encara no està disponible.",
+        "disabled": "L’enviament per WhatsApp està desactivat per a este restaurant.",
+        "recipient": "No hi ha un destinatari configurat.",
+        "consent": "Has de confirmar el consentiment del destinatari.",
+        "pending": "Ja hi ha un enviament pendent per a este tancament.",
+        "idempotency": "Esta sol·licitud ja es va processar amb altres dades. Inicia un nou reenviament.",
+        "generic": "No s’ha pogut completar la sol·licitud. Torna-ho a intentar.",
+        "forbidden": "No tens permís per a fer esta acció.",
+        "notFound": "Este tancament o restaurant ja no està disponible.",
+        "rateLimited": "Hi ha massa sol·licituds. Espera un moment i torna-ho a intentar."
+      },
+      "failure": {
+        "failed": "No s’ha pogut completar l’enviament.",
+        "skipped": "No es va intentar l’enviament.",
+        "unavailable": "No enviat: integració no disponible.",
+        "recipient": "No enviat: destinatari no configurat.",
+        "consent": "No enviat: consentiment pendent."
+      }
+    },
     pageTitle: 'Tancament diari',
     tabs: { today: 'Hui', history: 'Historial' },
     noAccess: 'No tens permís per a veure el tancament diari d\'este restaurant.',

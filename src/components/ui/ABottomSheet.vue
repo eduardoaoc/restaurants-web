@@ -19,7 +19,7 @@ import AIconButton from '@/components/ui/AIconButton.vue'
  * but this one adds what that admin-only drawer doesn't: Escape-to-close
  * and moving focus into the sheet on open.
  */
-withDefaults(defineProps<{ label: string }>(), {})
+const props = withDefaults(defineProps<{ label: string; dismissible?: boolean }>(), { dismissible: true })
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -36,6 +36,7 @@ let returnFocus: HTMLElement | null = null
 const visible = ref(true)
 
 function requestClose(): void {
+  if (!props.dismissible) return
   visible.value = false
 }
 
@@ -95,7 +96,7 @@ onUnmounted(() => {
         >
           <div class="flex items-center justify-between gap-3 border-b border-outline-variant px-5 py-4">
             <h2 class="text-title-lg font-semibold text-on-surface">{{ label }}</h2>
-            <AIconButton :label="$t('common.close')" @click="requestClose">
+            <AIconButton :label="$t('common.close')" :disabled="!dismissible" @click="requestClose">
               <PhX :size="18" />
             </AIconButton>
           </div>

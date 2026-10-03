@@ -20,6 +20,7 @@ import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import ATextField from '@/components/ui/ATextField.vue'
 import AToggle from '@/components/ui/AToggle.vue'
+import DayCloseWhatsAppSettingsCard from '@/components/day-close/DayCloseWhatsAppSettingsCard.vue'
 import { AVAILABLE_LOCALES, LOCALE_LABEL, type AppLocale } from '@/i18n'
 import { useOrganizationSettings } from '@/composables/useOrganizationSettings'
 import { usePermissions } from '@/composables/usePermissions'
@@ -691,6 +692,7 @@ async function saveGoogleReview(): Promise<void> {
           </div>
         </div>
       </ASurface>
+      <DayCloseWhatsAppSettingsCard v-if="canManageRestaurant" />
     </div>
   </div>
 </template>

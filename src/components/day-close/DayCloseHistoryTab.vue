@@ -8,6 +8,7 @@ import AButton from '@/components/ui/AButton.vue'
 import ATextField from '@/components/ui/ATextField.vue'
 import EmptyState from '@/components/dashboard/EmptyState.vue'
 import SectionCard from '@/components/dashboard/SectionCard.vue'
+import DayCloseWhatsAppBadge from '@/components/day-close/DayCloseWhatsAppBadge.vue'
 import { usePermissions } from '@/composables/usePermissions'
 import type { DayCloseHistoryFilters } from '@/composables/useDayCloseHistory'
 import { useDayClosePdfDownload } from '@/composables/useDayClosePdfDownload'
@@ -148,6 +149,10 @@ function onDownloadPdf(dayClose: DayCloseSummary): void {
             >
               {{ item.has_incidents ? t('dayClose.history.badges.withIncidents') : t('dayClose.history.badges.noIncidents') }}
             </span>
+          </div>
+          <div v-if="item.whatsapp" class="flex flex-wrap items-center gap-2 text-label-md text-on-surface-variant">
+            <span>{{ t('dayClose.whatsapp.title') }}</span>
+            <DayCloseWhatsAppBadge :status="item.whatsapp.status" />
           </div>
         </button>
 
