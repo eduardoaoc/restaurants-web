@@ -76,7 +76,7 @@ function onDownloadPdf(): void {
 }
 
 function goBack(): void {
-  void router.push({ name: 'app-day-close' })
+  void router.push({ name: 'app-day-close', query: { tab: 'history' } })
 }
 </script>
 

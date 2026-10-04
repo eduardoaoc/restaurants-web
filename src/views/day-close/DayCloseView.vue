@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { normalizeApiError, type ApiError } from '@/api/errors'
 import AButton from '@/components/ui/AButton.vue'
@@ -35,6 +35,7 @@ import { describeApiError } from '@/utils/error-message'
  */
 const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
 const restaurantStore = useRestaurantStore()
 const { can } = usePermissions()
 
@@ -43,7 +44,7 @@ const canViewHistory = computed(() => can('view_daily_closes'))
 const canShowToday = computed(() => canCloseNormal.value)
 
 type Tab = 'today' | 'history'
-const activeTab = ref<Tab>(canShowToday.value ? 'today' : 'history')
+const activeTab = ref<Tab>(canViewHistory.value && route.query.tab === 'history' ? 'history' : canShowToday.value ? 'today' : 'history')
 
 const restaurantId = () => restaurantStore.currentRestaurantId
 const todayEnabled = () => activeTab.value === 'today' && canShowToday.value
