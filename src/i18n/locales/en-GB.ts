@@ -83,6 +83,11 @@ export default {
     },
   },
   auth: {
+    apiUnavailable: "The service is unavailable. Please try again.",
+    sessionExpired: "Your session has expired. Please sign in again.",
+    logoutIncomplete: "Signed out on this device. Server sign-out could not be confirmed.",
+    retry: "Try again",
+
     title: 'Welcome back',
     subtitle: 'Enter your credentials to access AFORO.',
     heroTitle: 'Run your restaurant,\nall in one place.',

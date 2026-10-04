@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { parseRetryAfter } from './retry-after'
 
 /**
  * Verified against the live backend (restaurants-api):
@@ -23,6 +24,7 @@ export type ApiErrorKind =
 
 export interface ApiError {
   kind: ApiErrorKind
+  retryAfterSeconds?: number
   status?: number
   message?: string
   fieldErrors?: Record<string, string[]>
@@ -81,6 +83,8 @@ export function normalizeApiError(error: unknown): ApiError {
         message,
         code,
       }
+    case 419:
+      return { kind: 'unauthenticated', status, code }
     case 403:
       return { kind: 'forbidden', status, message, code }
     case 404:
@@ -90,7 +94,7 @@ export function normalizeApiError(error: unknown): ApiError {
     case 422:
       return { kind: 'validation', status, message, fieldErrors: body?.errors, code }
     case 429:
-      return { kind: 'rate_limited', status, message, code }
+      return { kind: 'rate_limited', status, message, code, retryAfterSeconds: parseRetryAfter(error.response.headers['retry-after']) }
     default:
       return status >= 500
         ? { kind: 'server', status, message, code }

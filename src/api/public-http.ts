@@ -1,4 +1,6 @@
 import axios from 'axios'
+import { appConfig } from '@/config/runtime'
+import { HTTP_TIMEOUT_MS } from './timeouts'
 
 /**
  * A SEPARATE axios instance from `src/api/http.ts` (Passo 3.1) — the public
@@ -10,7 +12,8 @@ import axios from 'axios'
  * that (CLAUDE.md Passo 3.1 §5/§29).
  */
 export const publicHttp = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: appConfig.apiUrl,
+  timeout: HTTP_TIMEOUT_MS,
   headers: {
     Accept: 'application/json',
   },

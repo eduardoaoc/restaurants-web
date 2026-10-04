@@ -3,6 +3,7 @@ import Pusher from 'pusher-js'
 import type { ChannelAuthorizerGenerator } from 'pusher-js'
 
 import { http } from '@/api/http'
+import { appConfig } from '@/config/runtime'
 
 /**
  * The single Laravel Echo (Reverb) client for this app session (Passo
@@ -15,30 +16,24 @@ import { http } from '@/api/http'
  */
 let echoInstance: Echo<'reverb'> | null = null
 
-/**
- * False when any VITE_REVERB_* var is missing — lets the rest of the app
- * fail closed to "realtime unavailable" instead of throwing when a
- * dev/test environment simply hasn't configured Reverb (Passo 1.3 §31).
- */
+/** Optional locally; partial realtime configuration fails protected builds. */
 export function isRealtimeConfigured(): boolean {
-  const env = import.meta.env
-  return Boolean(env.VITE_REVERB_APP_KEY && env.VITE_REVERB_HOST && env.VITE_REVERB_PORT && env.VITE_REVERB_SCHEME)
+  return appConfig.realtimeConfigured
 }
 
 export function getEcho(): Echo<'reverb'> | null {
-  if (!isRealtimeConfigured()) return null
+  const reverb = appConfig.reverb
+  if (!reverb) return null
   if (echoInstance) return echoInstance
-
-  const env = import.meta.env
 
   echoInstance = new Echo({
     broadcaster: 'reverb',
-    key: env.VITE_REVERB_APP_KEY,
-    wsHost: env.VITE_REVERB_HOST,
-    wsPort: Number(env.VITE_REVERB_PORT),
-    wssPort: Number(env.VITE_REVERB_PORT),
-    forceTLS: env.VITE_REVERB_SCHEME === 'https',
-    enabledTransports: ['ws', 'wss'],
+    key: reverb.key,
+    wsHost: reverb.host,
+    wsPort: reverb.port,
+    wssPort: reverb.port,
+    forceTLS: reverb.tls,
+    enabledTransports: reverb.tls ? ['wss'] : ['ws', 'wss'],
     // Passed directly rather than assigned to `window.Pusher` — laravel-echo
     // accepts a Pusher constructor via `options.Pusher` (see its own
     // connector: `options.Pusher ? new options.Pusher(...) : window.Pusher

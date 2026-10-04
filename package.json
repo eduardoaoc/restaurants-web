@@ -4,15 +4,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "dev": "vite --mode development",
+    "build": "vue-tsc -b && vite build --mode development",
     "preview": "vite preview",
-    "browser:install": "agent-browser install"
+    "browser:install": "agent-browser install",
+    "test:hardening": "node tests/frontend-hardening.mjs && node tests/frontend-hardening-build.mjs",
+    "build:staging": "vue-tsc -b && vite build --mode staging",
+    "build:production": "vue-tsc -b && vite build --mode production"
   },
   "dependencies": {
     "@phosphor-icons/vue": "^2.2.1",
     "@tailwindcss/vite": "^4.3.3",
-    "agent-browser": "^0.36.0",
     "axios": "^1.20.0",
     "laravel-echo": "^2.5.0",
     "pinia": "^4.0.3",
@@ -29,6 +31,7 @@
     "@vue/tsconfig": "^0.9.1",
     "typescript": "~6.0.2",
     "vite": "^8.2.2",
-    "vue-tsc": "^3.3.11"
+    "vue-tsc": "^3.3.11",
+    "agent-browser": "^0.36.0"
   }
 }

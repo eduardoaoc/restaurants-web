@@ -1,4 +1,5 @@
 import { http } from '@/api/http'
+import { UPLOAD_TIMEOUT_MS } from '@/api/timeouts'
 import type { CreateProductPayload, Product, UpdateProductPayload } from '@/types/product'
 import type { ProductMedia, ProductMediaType } from '@/types/product-media'
 
@@ -63,7 +64,7 @@ export const productService = {
   async uploadMedia(productId: number, type: ProductMediaType, file: File): Promise<ProductMedia> {
     const formData = new FormData()
     formData.append('file', file)
-    const { data } = await http.post<ProductMediaEnvelope>(`/api/v1/products/${productId}/media/${type}`, formData)
+    const { data } = await http.post<ProductMediaEnvelope>(`/api/v1/products/${productId}/media/${type}`, formData, { timeout: UPLOAD_TIMEOUT_MS })
     return data.data.media
   },
 

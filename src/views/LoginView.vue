@@ -76,6 +76,12 @@ async function onSubmit(): Promise<void> {
       case 'rate_limited':
         bannerError.value = t('auth.errors.rateLimited')
         break
+      case 'unauthenticated':
+        bannerError.value = t('auth.sessionExpired')
+        break
+      case 'server':
+        bannerError.value = t('auth.apiUnavailable')
+        break
       case 'network':
         bannerError.value = t('auth.errors.network')
         break
@@ -162,6 +168,10 @@ async function onSubmit(): Promise<void> {
         <div class="w-full max-w-sm">
           <h1 class="text-headline font-semibold text-on-surface">{{ t('auth.title') }}</h1>
           <p class="mt-1.5 text-body-md text-on-surface-variant">{{ t('auth.subtitle') }}</p>
+
+          <ASurface v-if="auth.notice" tone="container" radius="md" role="status" class="mt-6 px-4 py-3 text-body-md text-on-surface">
+            {{ t(`auth.${auth.notice}`) }}
+          </ASurface>
 
           <ASurface
             v-if="bannerError"

@@ -166,6 +166,7 @@ router.beforeEach(async (to) => {
   // GET /me call; every navigation after that just awaits the same
   // already-resolved promise, so this never fires /me per route change.
   await auth.bootstrap()
+  if (auth.unavailable) return
 
   if (to.meta.requiresAuth && !auth.authenticated) {
     return { name: 'login' }

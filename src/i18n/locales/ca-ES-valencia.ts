@@ -83,6 +83,11 @@ export default {
     },
   },
   auth: {
+    apiUnavailable: "El servici no està disponible. Torna a intentar-ho.",
+    sessionExpired: "La teua sessió ha caducat. Torna a iniciar sessió.",
+    logoutIncomplete: "Sessió tancada en este dispositiu. No s’ha pogut confirmar el tancament en el servidor.",
+    retry: "Tornar a intentar",
+
     title: 'Benvingut de nou',
     subtitle: "Introdueix les teues credencials per accedir a AFORO.",
     heroTitle: 'La gestió del teu restaurant,\nen un sol lloc.',

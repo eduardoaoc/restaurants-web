@@ -83,6 +83,11 @@ export default {
     },
   },
   auth: {
+    apiUnavailable: "El servicio no está disponible. Inténtalo de nuevo.",
+    sessionExpired: "Tu sesión ha caducado. Vuelve a iniciar sesión.",
+    logoutIncomplete: "Sesión cerrada en este dispositivo. No se pudo confirmar el cierre en el servidor.",
+    retry: "Reintentar",
+
     title: 'Bienvenido de nuevo',
     subtitle: 'Introduce tus credenciales para acceder a AFORO.',
     heroTitle: 'La gestión de tu restaurante,\nen un solo lugar.',

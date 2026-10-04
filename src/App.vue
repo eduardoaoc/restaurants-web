@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import AButton from '@/components/ui/AButton.vue'
 
 import AppBootstrapScreen from '@/components/shared/AppBootstrapScreen.vue'
 import router from '@/router'
 import { useAuthStore } from '@/stores/auth'
 
+const { t } = useI18n()
 const auth = useAuthStore()
+async function retry(): Promise<void> {
+  await auth.retryBootstrap()
+  if (!auth.unavailable) await router.replace({ path: route.fullPath, force: true })
+}
 const route = useRoute()
 
 /**
@@ -29,5 +36,9 @@ onMounted(async () => {
 
 <template>
   <AppBootstrapScreen v-if="!isPublicRoute && auth.initializing" />
+  <div v-else-if="!isPublicRoute && auth.unavailable" class="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background p-6">
+    <p role="alert">{{ t('auth.apiUnavailable') }}</p>
+    <AButton @click="retry">{{ t('auth.retry') }}</AButton>
+  </div>
   <RouterView v-else />
 </template>

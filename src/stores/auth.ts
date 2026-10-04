@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { normalizeApiError } from '@/api/errors'
 import { defineStore } from 'pinia'
 
 import { disconnectEcho } from '@/realtime/echo'
@@ -11,6 +12,8 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<AuthenticatedUser | null>(null)
   const initializing = ref(true)
   const submitting = ref(false)
+  const unavailable = ref(false)
+  const notice = ref<'sessionExpired' | 'logoutIncomplete' | null>(null)
   /**
    * Full authorization context (organizations/restaurants/permissions +
    * platform access) from GET /auth/context — see
@@ -42,14 +45,31 @@ export const useAuthStore = defineStore('auth', () => {
     return bootstrapPromise
   }
 
+  function clearSession(): void {
+    user.value = null
+    authContext.value = null
+    useRestaurantStore().clearRestaurant()
+    disconnectEcho()
+  }
+  function expireSession(): void {
+    if (!authenticated.value) return
+    clearSession()
+    notice.value = 'sessionExpired'
+  }
+  async function retryBootstrap(): Promise<void> {
+    if (initializing.value) return
+    bootstrapPromise = null
+    initializing.value = true
+    await bootstrap()
+  }
   async function fetchUser(): Promise<void> {
+    unavailable.value = false
     try {
       user.value = await authService.me()
-    } catch {
-      // No session (guest) or an expired one — both are expected outcomes
-      // of a bootstrap check, not application errors.
-      user.value = null
-      authContext.value = null
+    } catch (error) {
+      const status = normalizeApiError(error).status
+      if (status === 401 || status === 419) clearSession()
+      else unavailable.value = true
       return
     }
 
@@ -90,6 +110,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(payload: LoginPayload): Promise<void> {
     submitting.value = true
     try {
+      notice.value = null
       await authService.csrf()
       user.value = await authService.login(payload)
       await fetchAuthContext()
@@ -99,25 +120,17 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout(): Promise<void> {
-    try {
-      await authService.logout()
-    } finally {
-      // Every piece of the previous session's authorization state is
-      // dropped here — user, authContext (platform + every organization/
-      // restaurant permission list), and the restaurant selection — so
-      // nothing can leak into whoever logs in next on this browser. The
-      // realtime socket is closed outright (Passo 1.3 §14), not just its
-      // channel left: an authenticated WebSocket has no reason to linger
-      // past logout, and the next session's first subscribe should always
-      // start from a fresh connection/auth handshake.
-      user.value = null
-      authContext.value = null
-      useRestaurantStore().clearRestaurant()
-      disconnectEcho()
-    }
+    notice.value = null
+    try { await authService.logout() }
+    catch { notice.value = 'logoutIncomplete' }
+    finally { clearSession() }
   }
 
   return {
+    unavailable,
+    notice,
+    retryBootstrap,
+    expireSession,
     user,
     initializing,
     submitting,
