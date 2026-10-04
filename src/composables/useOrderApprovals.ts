@@ -36,6 +36,7 @@ export function useOrderApprovals(enabled: () => boolean = () => true) {
 
   async function fetch(restaurantId: number | null): Promise<void> {
     controller?.abort()
+    orders.value = []
     error.value = null
 
     if (restaurantId === null || !enabled()) {
@@ -68,10 +69,11 @@ export function useOrderApprovals(enabled: () => boolean = () => true) {
   watch(
     () => [restaurantStore.currentRestaurantId, enabled()] as const,
     ([id]) => void fetch(id),
-    { immediate: true },
+    { immediate: true, flush: 'sync' },
   )
 
   async function act(orderId: number, action: 'approve' | 'reject'): Promise<ApiError | null> {
+    if (!enabled() || actingOn[orderId]) return null
     actingOn[orderId] = action
     actionError[orderId] = null
     try {

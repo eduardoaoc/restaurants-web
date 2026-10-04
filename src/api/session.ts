@@ -1,7 +1,22 @@
 import axios from 'axios'
-import type { AxiosInstance } from 'axios'
-export function installSessionInterceptor(client: AxiosInstance, expire: () => void): void {
-  client.interceptors.response.use(response => response, error => {
+import type { AxiosInstance, InternalAxiosRequestConfig } from 'axios'
+export function installSessionInterceptor(client: AxiosInstance, expire: () => void, session?: () => { version: number; authenticated: boolean }): void {
+  const versions = new WeakMap<InternalAxiosRequestConfig, number>()
+  client.interceptors.request.use(config => {
+    const state = session?.()
+    if (state) {
+      const path = config.url?.split('?')[0]
+      const authFlow = ['/api/v1/auth/login', '/sanctum/csrf-cookie', '/api/v1/auth/logout', '/api/v1/auth/me'].includes(path ?? '')
+      if (state.version > 0 && !state.authenticated && !authFlow) throw new axios.CanceledError('Session ended')
+      versions.set(config, state.version)
+    }
+    return config
+  })
+  client.interceptors.response.use(response => {
+    if (session && versions.get(response.config) !== session().version) throw new axios.CanceledError('Stale session response')
+    return response
+  }, error => {
+    if (session && error.config && versions.get(error.config) !== session().version) return Promise.reject(new axios.CanceledError('Stale session response'))
     if (axios.isAxiosError(error)) {
       const status = error.response?.status
       const path = error.config?.url?.split('?')[0]

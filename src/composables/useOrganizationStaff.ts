@@ -40,6 +40,8 @@ export function useOrganizationStaff(enabled: () => boolean = () => true) {
 
   let controller: AbortController | null = null
   let shiftsController: AbortController | null = null
+  let generation = 0
+  let disposed = false
 
   function abortAll(): void {
     controller?.abort()
@@ -95,7 +97,11 @@ export function useOrganizationStaff(enabled: () => boolean = () => true) {
   watch(
     () => [restaurantStore.currentRestaurantId, enabled()] as const,
     ([restaurantId, isEnabled]) => {
+      ++generation
       abortAll()
+      staff.value = []
+      activeShifts.value = []
+      saveError.value = null
       if (!isEnabled || restaurantId === null) {
         staff.value = []
         activeShifts.value = []
@@ -106,7 +112,7 @@ export function useOrganizationStaff(enabled: () => boolean = () => true) {
       void fetchStaff()
       void fetchActiveShifts()
     },
-    { immediate: true },
+    { immediate: true, flush: 'sync' },
   )
 
   /** user_id -> the active shift they are currently on, if any. */
@@ -119,13 +125,17 @@ export function useOrganizationStaff(enabled: () => boolean = () => true) {
   })
 
   async function createStaff(payload: CreateStaffPayload): Promise<ApiError | null> {
+    if (saving.value || !enabled() || disposed) return null
+    const token = generation
     saving.value = true
     saveError.value = null
     try {
       const created = await staffService.create(payload)
+      if (token !== generation || disposed || !enabled()) return null
       staff.value = [...staff.value, created]
       return null
     } catch (err) {
+      if (token !== generation || disposed || !enabled()) return null
       const normalized = normalizeApiError(err)
       saveError.value = normalized
       return normalized
@@ -135,13 +145,17 @@ export function useOrganizationStaff(enabled: () => boolean = () => true) {
   }
 
   async function updateStaff(userId: number, payload: UpdateStaffPayload): Promise<ApiError | null> {
+    if (saving.value || !enabled() || disposed) return null
+    const token = generation
     saving.value = true
     saveError.value = null
     try {
       const updated = await staffService.update(userId, payload)
+      if (token !== generation || disposed || !enabled()) return null
       staff.value = staff.value.map((member) => (member.id === userId ? updated : member))
       return null
     } catch (err) {
+      if (token !== generation || disposed || !enabled()) return null
       const normalized = normalizeApiError(err)
       saveError.value = normalized
       return normalized
@@ -150,7 +164,7 @@ export function useOrganizationStaff(enabled: () => boolean = () => true) {
     }
   }
 
-  onBeforeUnmount(abortAll)
+  onBeforeUnmount(() => { disposed = true; ++generation; abortAll() })
 
   return {
     staff,

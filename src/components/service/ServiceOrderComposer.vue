@@ -76,7 +76,7 @@ function onAddToCart(payload: { quantity: number; selections: StaffCartModifierS
 }
 
 async function confirmOrder(): Promise<void> {
-  if (cart.lines.value.length === 0) return
+  if (submitting.value || cart.lines.value.length === 0) return
   submitting.value = true
   submitError.value = null
   try {

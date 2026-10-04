@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import { normalizeApiError, type ApiError } from '@/api/errors'
 import { dayCloseService } from '@/services/day-close.service'
@@ -108,11 +108,17 @@ export function useDayCloseHistory(restaurantId: () => number | null, enabled: (
   watch(
     () => [restaurantId(), enabled()] as const,
     () => {
+      loadMoreController?.abort()
+      items.value = []
+      nextCursor.value = null
+      loadingMore.value = false
       filters.value = emptyFilters()
       void fetchFirstPage()
     },
-    { immediate: true },
+    { immediate: true, flush: 'sync' },
   )
+
+  onBeforeUnmount(() => { controller?.abort(); loadMoreController?.abort() })
 
   return {
     items,

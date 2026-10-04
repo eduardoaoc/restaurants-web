@@ -34,6 +34,7 @@ export function getEcho(): Echo<'reverb'> | null {
     wssPort: reverb.port,
     forceTLS: reverb.tls,
     enabledTransports: reverb.tls ? ['wss'] : ['ws', 'wss'],
+    enableStats: false,
     // Passed directly rather than assigned to `window.Pusher` — laravel-echo
     // accepts a Pusher constructor via `options.Pusher` (see its own
     // connector: `options.Pusher ? new options.Pusher(...) : window.Pusher

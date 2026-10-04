@@ -72,10 +72,15 @@ export function useRestaurantAnalytics(enabled: () => boolean = () => true) {
   }
 
   watch(
-    () => restaurantStore.currentRestaurantId,
+    () => [restaurantStore.currentRestaurantId, enabled()],
     () => {
-      if (hasLoadedOnce.value) void fetch(currentQuery.value)
+      controller?.abort()
+      data.value = null
+      error.value = null
+      loading.value = false
+      if (hasLoadedOnce.value && enabled()) void fetch(currentQuery.value)
     },
+    { flush: 'sync' },
   )
 
   onBeforeUnmount(() => controller?.abort())

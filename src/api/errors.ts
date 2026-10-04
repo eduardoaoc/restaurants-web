@@ -57,8 +57,20 @@ interface LaravelErrorBody {
   error?: { code?: string; message?: string }
 }
 
+/** Drop technical diagnostics while preserving ordinary business/validation text. */
+function displaySafeMessage(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 1000) return undefined
+  if (/SQLSTATE|\bSELECT\s.+\bFROM\b|\bINSERT\s+INTO\b|\bUPDATE\s.+\bSET\b|stack\s*trace|\bat\s+\S+\s*\([^)]*:\d+|(?:[A-Z]:\\|\/(?:var|home|srv|app|Users)\/)|Bearer\s+\S+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|(?:token|secret|password|api[_-]?key)\s*[=:]\s*\S+/i.test(value)) return undefined
+  return value
+}
+
+function safeFieldErrors(value: unknown): Record<string, string[]> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  return Object.fromEntries(Object.entries(value).map(([key, messages]) => [key, Array.isArray(messages) ? messages.map(displaySafeMessage).filter((message): message is string => message !== undefined) : []]))
+}
+
 function extractMessage(body: LaravelErrorBody | undefined): string | undefined {
-  return body?.message ?? body?.error?.message
+  return displaySafeMessage(body?.message ?? body?.error?.message)
 }
 
 export function normalizeApiError(error: unknown): ApiError {
@@ -92,7 +104,7 @@ export function normalizeApiError(error: unknown): ApiError {
     case 409:
       return { kind: 'conflict', status, message, code }
     case 422:
-      return { kind: 'validation', status, message, fieldErrors: body?.errors, code }
+      return { kind: 'validation', status, message, fieldErrors: safeFieldErrors(body?.errors), code }
     case 429:
       return { kind: 'rate_limited', status, message, code, retryAfterSeconds: parseRetryAfter(error.response.headers['retry-after']) }
     default:

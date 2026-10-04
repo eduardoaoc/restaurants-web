@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 
 import { normalizeApiError, type ApiError } from '@/api/errors'
 import { dayCloseService } from '@/services/day-close.service'
@@ -65,9 +65,11 @@ export function useDayClosePreview(restaurantId: () => number | null, enabled: (
 
   watch(
     () => [restaurantId(), enabled()] as const,
-    () => void fetch(),
-    { immediate: true },
+    () => { preview.value = null; void fetch() },
+    { immediate: true, flush: 'sync' },
   )
+
+  onBeforeUnmount(() => { controller?.abort() })
 
   return { preview, loading, error, refetch, refetchWithOpeningFloat }
 }

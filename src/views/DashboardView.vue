@@ -13,6 +13,7 @@ import { useRestaurantAnalytics } from '@/composables/useRestaurantAnalytics'
 import { useRestaurantOperations } from '@/composables/useRestaurantOperations'
 import { useRestaurantRealtime } from '@/composables/useRestaurantRealtime'
 import { useRestaurantStore } from '@/stores/restaurant'
+import { describeApiError } from '@/utils/error-message'
 import AnalyticsView from './analytics/AnalyticsView.vue'
 import OperationView from './operation/OperationView.vue'
 
@@ -95,7 +96,7 @@ const attentionCount = computed(() => operations.snapshot.value?.alerts.length ?
       class="max-w-xl border border-error/40 bg-error-container p-6 text-on-error-container"
     >
       <p class="text-title-md font-medium">{{ t('dashboard.errors.generic') }}</p>
-      <p class="mt-1 text-body-md">{{ restaurantStore.error.message ?? t('dashboard.errors.generic') }}</p>
+      <p class="mt-1 text-body-md">{{ describeApiError(restaurantStore.error, t) }}</p>
     </ASurface>
 
     <ASurface

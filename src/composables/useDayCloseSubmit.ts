@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import axios from 'axios'
 
 import { normalizeApiError, type ApiError } from '@/api/errors'
@@ -26,16 +26,19 @@ import type { CreateDayClosePayload, DayClose } from '@/types/day-close'
  * 409 description, so this is documented contract, not a guess; every
  * other field on these 409s is deliberately never assumed.
  */
-export function useDayCloseSubmit(restaurantId: () => number | null) {
+export function useDayCloseSubmit(restaurantId: () => number | null, enabled: () => boolean = () => true) {
   const submitting = ref(false)
   const error = ref<ApiError | null>(null)
   /** Set only for CASH_EXPECTATION_CHANGED — the backend's current (fresher) expected_cash. */
   const currentExpectedCash = ref<string | null>(null)
 
   let idempotencyKey: string | null = null
+  let generation = 0
+  let disposed = false
 
   /** Call whenever the form's own close-relevant fields change — forces a fresh attempt (and a fresh key) on the next submit. */
   function resetAttempt(): void {
+    ++generation
     idempotencyKey = null
     error.value = null
     currentExpectedCash.value = null
@@ -43,7 +46,9 @@ export function useDayCloseSubmit(restaurantId: () => number | null) {
 
   async function submit(payload: CreateDayClosePayload): Promise<DayClose | null> {
     const id = restaurantId()
-    if (id === null) return null
+    if (id === null || submitting.value || !enabled() || disposed) return null
+    const token = generation
+    const current = () => !disposed && token === generation && id === restaurantId() && enabled()
     if (!idempotencyKey) idempotencyKey = crypto.randomUUID()
     submitting.value = true
     error.value = null
@@ -51,9 +56,11 @@ export function useDayCloseSubmit(restaurantId: () => number | null) {
 
     try {
       const dayClose = await dayCloseService.create(id, payload, idempotencyKey)
+      if (!current()) return null
       idempotencyKey = null
       return dayClose
     } catch (err) {
+      if (!current()) return null
       const normalized = normalizeApiError(err)
       error.value = normalized
       if (normalized.code === 'CASH_EXPECTATION_CHANGED' && axios.isAxiosError(err)) {
@@ -68,6 +75,9 @@ export function useDayCloseSubmit(restaurantId: () => number | null) {
       submitting.value = false
     }
   }
+
+  watch(() => [restaurantId(), enabled()], resetAttempt, { flush: 'sync' })
+  onBeforeUnmount(() => { disposed = true; ++generation })
 
   return { submitting, error, currentExpectedCash, submit, resetAttempt }
 }

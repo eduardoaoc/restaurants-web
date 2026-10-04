@@ -138,6 +138,7 @@ function onWaiterMenuKeydown(event: KeyboardEvent): void {
 }
 
 async function run(action: string, task: () => Promise<unknown>, successKey: string): Promise<void> {
+  if (submittingAction.value) return
   submittingAction.value = action
   feedback.value = null
   try {

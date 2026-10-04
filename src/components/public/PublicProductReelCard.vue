@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { safeHttpUrl } from '@/utils/safe-url'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PhPlay } from '@phosphor-icons/vue'
@@ -51,13 +52,15 @@ function prefersReducedMotion(): boolean {
 const reducedMotion = prefersReducedMotion()
 
 /** video -> image -> branded fallback (§7/§13/§14/§15/§32) — a broken/missing media never removes the product itself. */
+const videoUrl = computed(() => safeHttpUrl(props.product.media.video?.url))
+const imageUrl = computed(() => safeHttpUrl(props.product.media.image?.url))
 const effectiveMedia = computed<'video' | 'image' | 'fallback'>(() => {
-  if (props.product.media.video && !videoFailed.value) return 'video'
-  if (props.product.media.image && !imageFailed.value) return 'image'
+  if (videoUrl.value && !videoFailed.value) return 'video'
+  if (imageUrl.value && !imageFailed.value) return 'image'
   return 'fallback'
 })
 
-const posterUrl = computed(() => (!imageFailed.value ? (props.product.media.image?.url ?? undefined) : undefined))
+const posterUrl = computed(() => (!imageFailed.value ? imageUrl.value : undefined))
 
 /** Only the active card ± 1 neighbor ever mounts a real `<video>` (§12 — see the `nearActive` prop doc). A video product outside that window shows its poster image instead, same as an image-only product; the branded fallback only shows if it has no image either. */
 const mountVideo = computed(() => effectiveMedia.value === 'video' && props.nearActive)
@@ -153,7 +156,7 @@ onBeforeUnmount(() => {
       <video
         v-if="mountVideo"
         ref="videoRef"
-        :src="product.media.video!.url"
+        :src="videoUrl"
         :poster="posterUrl"
         class="absolute inset-0 h-full w-full object-cover"
         muted
@@ -166,8 +169,9 @@ onBeforeUnmount(() => {
       />
       <img
         v-else-if="effectiveMedia === 'image' || showPosterInsteadOfVideo"
-        :src="effectiveMedia === 'image' ? product.media.image!.url : posterUrl!"
+        :src="effectiveMedia === 'image' ? imageUrl : posterUrl!"
         :alt="product.name"
+        referrerpolicy="no-referrer"
         class="absolute inset-0 h-full w-full object-cover"
         loading="lazy"
         @error="onImageError"

@@ -40,5 +40,5 @@ onMounted(async () => {
     <p role="alert">{{ t('auth.apiUnavailable') }}</p>
     <AButton @click="retry">{{ t('auth.retry') }}</AButton>
   </div>
-  <RouterView v-else />
+  <RouterView v-else-if="isPublicRoute || !route.meta.requiresAuth || auth.authenticated" />
 </template>

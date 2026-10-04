@@ -39,6 +39,8 @@ const forbidden = [...new Set([
   'http://localhost:8080', 'http://localhost:5173', 'http://localhost:5174',
   'http://127.0.0.1', 'https://localhost', ...knownLocalValues,
   'day-close-whatsapp.browser', 'agent-browser',
+  'frontend-security.browser', 'runSecurityBrowserChecks', 'aforo-floor-layout',
+  'fonts.googleapis.com', 'images.unsplash.com',
 ])]
 // Regression fixtures: reject application origins while tolerating vendor text.
 const scan = bytes => forbidden.find(value => bytes.includes(Buffer.from(value)))
@@ -49,8 +51,13 @@ for (const mode of ['production', 'staging']) {
   const env = { ...safe, VITE_API_URL: mode === 'production' ? 'https://api.example' : 'https://api.staging.example', VITE_PUBLIC_APP_URL: mode === 'production' ? 'https://app.example' : 'https://app.staging.example', VITE_REVERB_HOST: mode === 'production' ? 'ws.example' : 'ws.staging.example' }
   const result = spawnSync(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--mode', mode], { env, encoding: 'utf8' })
   assert.equal(result.status, 0, result.stderr)
-  for (const file of files('dist')) assert.equal(scan(readFileSync(file)), undefined, `Local application config or tooling in ${file}`)
+  for (const file of files('dist')) {
+    assert.ok(!file.endsWith('.map'), `Source map in ${file}`)
+    assert.equal(scan(readFileSync(file)), undefined, `Local application config or tooling in ${file}`)
+  }
   const bundleText = files('dist').filter(file => file.endsWith('.js')).map(file => readFileSync(file, 'utf8')).join('\n')
+  assert.doesNotMatch(bundleText, /\bnew Function\b|\beval\s*\(/, 'No production eval sinks')
+  assert.doesNotMatch(bundleText, /\b(?:APP_KEY|DB_PASSWORD|SUPABASE|SERVICE_ROLE|META_APP_SECRET|WHATSAPP_ACCESS_TOKEN|REVERB_APP_SECRET|PRIVATE_KEY)\b|Bearer ey/, 'No private secret identifiers/tokens')
   assert.ok(bundleText.includes(env.VITE_API_URL), `${mode}: API origin embedded`)
   assert.ok(bundleText.includes(env.VITE_PUBLIC_APP_URL), `${mode}: QR origin embedded`)
   assert.ok(bundleText.includes(env.VITE_REVERB_HOST), `${mode}: Reverb host embedded`)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { safeHttpUrl } from '@/utils/safe-url'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
@@ -314,7 +315,7 @@ watch(
 )
 
 /** The last value the BACKEND confirmed — never the draft (§9 "Testar link" must never open an unvalidated draft). */
-const savedGoogleReviewUrl = computed(() => restaurantSettings.settings.value?.google_review_url ?? null)
+const savedGoogleReviewUrl = computed(() => safeHttpUrl(restaurantSettings.settings.value?.google_review_url) ?? null)
 const googleReviewConfigured = computed(() => savedGoogleReviewUrl.value !== null)
 const googleReviewDirty = computed(() => googleReviewUrlDraft.value !== (savedGoogleReviewUrl.value ?? ''))
 const canTestGoogleReviewLink = computed(

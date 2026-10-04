@@ -106,6 +106,8 @@
   }
 
   body {
+    /* Untrusted names/comments/URLs must not widen flex/grid layouts. */
+    overflow-wrap: anywhere;
     background-color: var(--color-background);
     color: var(--color-on-background);
     font-family: var(--font-sans);

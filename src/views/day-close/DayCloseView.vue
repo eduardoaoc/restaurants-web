@@ -53,7 +53,7 @@ const historyEnabled = () => activeTab.value === 'history' && canViewHistory.val
 const preview = useDayClosePreview(restaurantId, todayEnabled)
 const cashMovements = useCashMovements(restaurantId, todayEnabled)
 const history = useDayCloseHistory(restaurantId, historyEnabled)
-const submit = useDayCloseSubmit(restaurantId)
+const submit = useDayCloseSubmit(restaurantId, () => canCloseNormal.value)
 
 // Form fields owned by this view (CreateDayClosePayload's own fields).
 const openingFloatInput = ref('')

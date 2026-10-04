@@ -20,7 +20,7 @@ installSessionInterceptor(http, () => {
   const wasAuthenticated = auth.authenticated
   auth.expireSession()
   if (wasAuthenticated && !router.currentRoute.value.meta.public && router.currentRoute.value.name !== 'login') void router.replace({ name: 'login' })
-})
+}, () => { const auth = useAuthStore(pinia); return { version: auth.sessionGeneration, authenticated: auth.authenticated } })
 app.use(router)
 app.use(i18n)
 

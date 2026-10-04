@@ -27,6 +27,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   const authenticated = computed(() => user.value !== null)
 
+  const sessionGeneration = ref(0)
+  let contextGeneration = 0
+
   let bootstrapPromise: Promise<void> | null = null
 
   /**
@@ -46,6 +49,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function clearSession(): void {
+    ++sessionGeneration.value
+    authContextLoading.value = false
     user.value = null
     authContext.value = null
     useRestaurantStore().clearRestaurant()
@@ -64,9 +69,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
   async function fetchUser(): Promise<void> {
     unavailable.value = false
+    const generation = sessionGeneration.value
     try {
-      user.value = await authService.me()
+      const result = await authService.me()
+      if (generation !== sessionGeneration.value) return
+      user.value = result
     } catch (error) {
+      if (generation !== sessionGeneration.value) return
       const status = normalizeApiError(error).status
       if (status === 401 || status === 419) clearSession()
       else unavailable.value = true
@@ -88,13 +97,18 @@ export const useAuthStore = defineStore('auth', () => {
    * an otherwise-valid session from reaching the app.
    */
   async function fetchAuthContext(): Promise<void> {
+    const generation = sessionGeneration.value
+    const token = ++contextGeneration
+    const current = () => generation === sessionGeneration.value && token === contextGeneration
+    authContext.value = null
     authContextLoading.value = true
     try {
-      authContext.value = await authService.context()
+      const result = await authService.context()
+      if (current()) authContext.value = result
     } catch {
-      authContext.value = null
+      if (current()) authContext.value = null
     } finally {
-      authContextLoading.value = false
+      if (current()) authContextLoading.value = false
     }
   }
 
@@ -108,11 +122,16 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function login(payload: LoginPayload): Promise<void> {
+    if (submitting.value) return
+    const generation = ++sessionGeneration.value
     submitting.value = true
     try {
       notice.value = null
       await authService.csrf()
-      user.value = await authService.login(payload)
+      if (generation !== sessionGeneration.value) return
+      const result = await authService.login(payload)
+      if (generation !== sessionGeneration.value) return
+      user.value = result
       await fetchAuthContext()
     } finally {
       submitting.value = false
@@ -121,12 +140,14 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logout(): Promise<void> {
     notice.value = null
+    clearSession()
+    const generation = sessionGeneration.value
     try { await authService.logout() }
-    catch { notice.value = 'logoutIncomplete' }
-    finally { clearSession() }
+    catch { if (generation === sessionGeneration.value) notice.value = 'logoutIncomplete' }
   }
 
   return {
+    sessionGeneration,
     unavailable,
     notice,
     retryBootstrap,

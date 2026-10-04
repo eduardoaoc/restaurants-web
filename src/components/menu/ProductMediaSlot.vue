@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { safeHttpUrl } from '@/utils/safe-url'
 import { computed, onBeforeUnmount, ref, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PhArrowClockwise, PhImageSquare, PhTrashSimple, PhUploadSimple, PhVideoCamera, PhWarningCircle } from '@phosphor-icons/vue'
@@ -76,7 +77,7 @@ const isPendingRemoval = computed(() => !props.draft.pendingFile && props.draft.
 // post-save state before Guardar was ever pressed.
 const previewUrl = computed(() => {
   if (props.draft.pendingFile) return objectUrl.value
-  if (props.existing) return props.existing.url
+  if (props.existing) return safeHttpUrl(props.existing.url) ?? null
   return null
 })
 
@@ -184,6 +185,7 @@ const displayError = computed(() => localError.value ?? props.serverError ?? nul
         <video
           v-if="type === 'video' && previewUrl"
           :src="previewUrl"
+          referrerpolicy="no-referrer"
           class="aspect-video w-full object-cover"
           muted
           playsinline
@@ -192,6 +194,7 @@ const displayError = computed(() => localError.value ?? props.serverError ?? nul
         <img
           v-else-if="previewUrl"
           :src="previewUrl"
+          referrerpolicy="no-referrer"
           :alt="t('menu.products.media.imageAlt')"
           class="aspect-video w-full object-cover"
         />

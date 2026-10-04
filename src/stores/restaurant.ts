@@ -58,6 +58,9 @@ export const useRestaurantStore = defineStore('restaurant', () => {
     restaurants.value.filter((restaurant) => isRestaurantEligible(restaurant.id)),
   )
 
+  let listGeneration = 0
+  let settingsGeneration = 0
+
   let loadPromise: Promise<void> | null = null
 
   /**
@@ -73,17 +76,20 @@ export const useRestaurantStore = defineStore('restaurant', () => {
   }
 
   async function fetchRestaurants(): Promise<void> {
+    const generation = ++listGeneration
     loading.value = true
     error.value = null
 
     try {
-      restaurants.value = await restaurantsService.list()
+      const result = await restaurantsService.list()
+      if (generation !== listGeneration) return
+      restaurants.value = result
       resolveCurrentRestaurant()
       await loadCurrentSettings()
     } catch (err) {
-      error.value = normalizeApiError(err)
+      if (generation === listGeneration) error.value = normalizeApiError(err)
     } finally {
-      loading.value = false
+      if (generation === listGeneration) loading.value = false
     }
   }
 
@@ -154,6 +160,7 @@ export const useRestaurantStore = defineStore('restaurant', () => {
    * the platform defaults (src/utils/format.ts) when this is unavailable.
    */
   async function loadCurrentSettings(): Promise<void> {
+    const generation = ++settingsGeneration
     currentSettings.value = null
     const id = currentRestaurantId.value
     if (id === null) return
@@ -163,13 +170,16 @@ export const useRestaurantStore = defineStore('restaurant', () => {
 
     try {
       const settings = await restaurantsService.settings(id)
-      if (currentRestaurantId.value === id) currentSettings.value = settings
+      if (generation === settingsGeneration && currentRestaurantId.value === id) currentSettings.value = settings
     } catch {
-      if (currentRestaurantId.value === id) currentSettings.value = null
+      if (generation === settingsGeneration && currentRestaurantId.value === id) currentSettings.value = null
     }
   }
 
   function clearRestaurant(): void {
+    ++listGeneration
+    ++settingsGeneration
+    loading.value = false
     restaurants.value = []
     currentRestaurantId.value = null
     currentSettings.value = null

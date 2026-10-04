@@ -178,6 +178,7 @@ router.beforeEach(async (to) => {
 
   if (to.meta.requiresAuth && auth.authenticated) {
     await useRestaurantStore().load()
+    if (!auth.authenticated) return { name: 'login' }
     const { can, canAny, canOrganization } = usePermissions()
     // Operational-only accounts (kitchen, waiter, cashier — anyone without
     // view_operations/view_reports) land directly in their real working

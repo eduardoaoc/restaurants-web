@@ -48,6 +48,7 @@ async function fetchBill(): Promise<void> {
   controller?.abort()
   const request = new AbortController()
   controller = request
+  bill.value = null
   loading.value = true
   error.value = null
   try {
@@ -87,15 +88,18 @@ function cancelPayment(): void {
 }
 
 async function confirmPayment(): Promise<void> {
-  if (!bill.value || !pendingMethod.value) return
+  if (submitting.value || !props.canRecordPayments || !bill.value || !pendingMethod.value) return
   const payload: RecordPaymentPayload = { method: pendingMethod.value, amount: bill.value.balance }
+  const sessionId = props.tableSessionId
   submitting.value = true
   paymentError.value = null
   try {
-    await tableSessionsService.recordPayment(props.tableSessionId, payload)
+    await tableSessionsService.recordPayment(sessionId, payload)
+    if (sessionId !== props.tableSessionId || !props.canRecordPayments) return
     pendingMethod.value = null
     emit('changed')
   } catch (err) {
+    if (sessionId !== props.tableSessionId || !props.canRecordPayments) return
     // A conflict (already paid/closed by someone else) or a stale-balance
     // 422 both mean this view's own numbers are out of date — refetch the
     // authoritative bill instead of leaving the confirm dialog open on

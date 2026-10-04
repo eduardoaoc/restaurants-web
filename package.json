@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "browser:install": "agent-browser install",
     "test:hardening": "node tests/frontend-hardening.mjs && node tests/frontend-hardening-build.mjs",
+    "test:security": "node tests/frontend-security.mjs",
     "build:staging": "vue-tsc -b && vite build --mode staging",
     "build:production": "vue-tsc -b && vite build --mode production"
   },
