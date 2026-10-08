@@ -11,6 +11,12 @@ must respect them, not just the task that introduced them.
 - Backend: Laravel REST API, auth via Sanctum SPA session-cookie.
 - Locales: `es-ES` (default), `ca-ES-valencia`, `en-GB`.
 - Default restaurant timezone: `Europe/Madrid` (each restaurant has its own from the backend — never assume the browser's).
+- **`docs/architecture.md`** and **`docs/business-rules.md`** document, from
+  the real code, how the frontend is organized (layers, folders, auth,
+  routing) and the real business domain (multi-restaurant, order/table
+  lifecycle, permissions, QR flow). Read them for onboarding or before a
+  structural change — they complement, not replace, this file and
+  `docs/design-system.md`.
 
 ## 2. Design system authority — mandatory, permanent
 
