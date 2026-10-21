@@ -61,3 +61,10 @@ export function markPublicIntroSeen(publicToken: string): void {
 export function markPublicMenuEntered(publicToken: string): void {
   writeFlag(MENU_ENTERED_PREFIX, publicToken)
 }
+
+export function clearPublicEntryState(publicToken: string): void {
+  try {
+    sessionStorage.removeItem(`${INTRO_SEEN_PREFIX}${publicToken}`)
+    sessionStorage.removeItem(`${MENU_ENTERED_PREFIX}${publicToken}`)
+  } catch { /* Entry flags are optional. */ }
+}

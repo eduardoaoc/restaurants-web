@@ -69,7 +69,7 @@ const NAV_ITEMS: NavItem[] = [
   // CARTA 9.1B — close_daily_operation (waiter/cashier, today only) OR
   // view_daily_closes (owner/manager, today + historial). Kitchen holds
   // neither, so it never appears for them — never a role check.
-  { routeName: 'app-day-close', labelKey: 'dayClose.pageTitle', icon: PhCashRegister, permission: ['close_daily_operation', 'view_daily_closes'] },
+  { routeName: 'app-day-close', labelKey: 'dayClose.pageTitle', icon: PhCashRegister, permission: ['open_daily_operation', 'close_daily_operation', 'view_daily_closes'] },
   { routeName: 'app-tables', labelKey: 'common.tables', icon: PhArmchair, permission: 'manage_tables' },
   // Labelled from the module's own namespace, not common.staff ("Personal"),
   // so the rail and the page agree on one name for the same place.

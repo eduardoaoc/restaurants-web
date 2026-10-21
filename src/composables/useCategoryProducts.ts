@@ -1,6 +1,7 @@
 import { onBeforeUnmount, reactive, watch } from 'vue'
 
 import { normalizeApiError, type ApiError } from '@/api/errors'
+import { useCatalogRefresh } from '@/composables/useCatalogRefresh'
 import { categoryProductService } from '@/services/category-product.service'
 import { computeAdjacentSwap, nextSortOrder } from '@/utils/reorder'
 import type { AttachCategoryProductPayload, CategoryProduct } from '@/types/category-product'
@@ -61,13 +62,13 @@ export function useCategoryProducts(categories: () => Category[], enabled: () =>
     delete errorByCategory[categoryId]
   }
 
-  async function fetchOne(categoryId: number): Promise<void> {
+  async function fetchOne(categoryId: number, background = false): Promise<void> {
     abortController(categoryId)
     const localController = new AbortController()
     controllers[categoryId] = localController
     const { signal } = localController
 
-    loadingByCategory[categoryId] = true
+    if (!background) loadingByCategory[categoryId] = true
     errorByCategory[categoryId] = null
 
     try {
@@ -82,14 +83,14 @@ export function useCategoryProducts(categories: () => Category[], enabled: () =>
     }
   }
 
-  async function fetchAll(): Promise<void> {
+  async function fetchAll(background = false): Promise<void> {
     const currentIds = new Set(categories().map((c) => c.id))
     Object.keys(productsByCategory)
       .map(Number)
       .filter((id) => !currentIds.has(id))
       .forEach(dropCategory)
 
-    await Promise.all(categories().map((category) => fetchOne(category.id)))
+    await Promise.all(categories().map((category) => fetchOne(category.id, background)))
   }
 
   watch(
@@ -191,12 +192,18 @@ export function useCategoryProducts(categories: () => Category[], enabled: () =>
     return detachingByKey[detachKey(categoryId, restaurantProductId)] ?? false
   }
 
+  useCatalogRefresh(async () => {
+    if (enabled()) await fetchAll(true)
+    return Object.values(errorByCategory)
+  })
+
   onBeforeUnmount(() => {
     Object.keys(controllers).map(Number).forEach(abortController)
   })
 
   return {
     productsByCategory,
+    refetch: () => fetchAll(true),
     loadingByCategory,
     errorByCategory,
     attachingByCategory,

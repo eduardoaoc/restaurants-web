@@ -40,6 +40,8 @@ export type RealtimeEventName =
   | 'waiter_call.acknowledged'
   | 'payment.recorded'
   | 'floor_plan.updated'
+  | 'product.availability_changed'
+  | 'daily_operation.changed'
 
 /**
  * docs/realtime.md's own event catalog, transcribed exactly (Event →
@@ -63,6 +65,8 @@ export const REALTIME_EVENT_NAMES: readonly RealtimeEventName[] = [
   'waiter_call.acknowledged',
   'payment.recorded',
   'floor_plan.updated',
+  'product.availability_changed',
+  'daily_operation.changed',
 ]
 
 /**

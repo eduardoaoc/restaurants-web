@@ -1,8 +1,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import type { Channel } from 'laravel-echo'
 
+import { useAuthStore } from '@/stores/auth'
 import { normalizeApiError, type ApiError } from '@/api/errors'
-import { getEcho } from '@/realtime/echo'
+import { getEcho, retainPrivateChannel } from '@/realtime/echo'
 import { restaurantActivityService } from '@/services/restaurant-activity.service'
 import type { RestaurantActivityCategory, RestaurantActivityEvent } from '@/types/activity'
 
@@ -14,6 +14,11 @@ const MARK_READ_DEBOUNCE_MS = 800
  * notification bell/panel. A composable, not a Pinia store (CLAUDE.md §11
  * — this is screen-local state for the bell/panel, never cross-cutting
  * global state another unrelated screen needs to read).
+ *
+ * Full-feed consumers keep the view_activity channel; assignment-only
+ * consumers use their existing private user channel plus scoped REST. No
+ * activity-channel authorization is broadened. Both recover durable reads
+ * after reconnect/focus and poll with backoff while disconnected.
  *
  * Own, dedicated Reverb subscription — deliberately NOT
  * `useRestaurantRealtime` (which is hardwired to the `restaurant.{id}`
@@ -29,7 +34,18 @@ const MARK_READ_DEBOUNCE_MS = 800
  * down and starts clean — no stale restaurant's events/unread ever
  * lingers (Carta 6.1B §19).
  */
-export function useRestaurantActivity(restaurantId: () => number | null, enabled: () => boolean) {
+export function useRestaurantActivity(restaurantId: () => number | null, enabled: () => boolean, fullFeed: () => boolean = () => true) {
+  const authStore = useAuthStore()
+  const scope = () => fullFeed() ? undefined : 'assignments' as const
+  let generation = 0
+  let eventRevision = 0
+  let unreadRequest = 0
+  let releaseChannel: (() => void) | null = null
+  let connected = false
+  let readDenied = false
+  let fallbackTimer: ReturnType<typeof setTimeout> | null = null
+  let fallbackDelay = 15_000
+  let stopped = false
   const events = ref<RestaurantActivityEvent[]>([])
   const loading = ref(false)
   const loadingMore = ref(false)
@@ -45,8 +61,6 @@ export function useRestaurantActivity(restaurantId: () => number | null, enabled
   let controller: AbortController | null = null
   let loadMoreController: AbortController | null = null
   let targetRestaurantId: number | null = null
-  let channel: Channel | null = null
-  let joinedRestaurantId: number | null = null
   let markReadDebounce: ReturnType<typeof setTimeout> | null = null
   const seenIds = new Set<number>()
 
@@ -64,12 +78,15 @@ export function useRestaurantActivity(restaurantId: () => number | null, enabled
     }
   }
 
-  function currentFilterParams(): { category?: RestaurantActivityCategory } {
-    return category.value ? { category: category.value } : {}
+  function currentFilterParams(): { category?: RestaurantActivityCategory; scope?: 'assignments' } {
+    return { ...(category.value ? { category: category.value } : {}), scope: scope() }
   }
 
   /** The full first page — called on panel open, filter change, and Reverb (re)subscribe reconciliation (§26). */
   async function fetchFirstPage(): Promise<void> {
+    const revision = eventRevision
+    const badgeRequest = ++unreadRequest
+    const epoch = generation
     const id = restaurantId()
     if (id === null || !enabled()) return
     controller?.abort()
@@ -81,16 +98,20 @@ export function useRestaurantActivity(restaurantId: () => number | null, enabled
 
     try {
       const { activity, meta } = await restaurantActivityService.list(id, currentFilterParams(), signal)
-      if (signal.aborted || targetRestaurantId !== id) return
+      if (signal.aborted || targetRestaurantId !== id || epoch !== generation) return
+      if (revision !== eventRevision) return await fetchFirstPage()
+      fallbackDelay = 15_000
       events.value = activity
       seenIds.clear()
       for (const event of activity) seenIds.add(event.id)
       nextCursor.value = meta.next_cursor
       lastReadEventId.value = meta.last_read_event_id
-      unreadCount.value = meta.unread_count
+      if (badgeRequest === unreadRequest) unreadCount.value = meta.unread_count
     } catch (err) {
       if (signal.aborted) return
       error.value = normalizeApiError(err)
+      fallbackDelay = Math.max(Math.min(fallbackDelay * 2, 120_000), (error.value.retryAfterSeconds ?? 0) * 1000)
+      if (['forbidden', 'unauthenticated'].includes(error.value.kind)) readDenied = true
     } finally {
       if (!signal.aborted) loading.value = false
     }
@@ -98,6 +119,7 @@ export function useRestaurantActivity(restaurantId: () => number | null, enabled
 
   /** Cursor pagination "Mostrar anteriores" (§20) — always appends, never replaces `events`. */
   async function loadMore(): Promise<void> {
+    const epoch = generation
     const id = restaurantId()
     if (id === null || nextCursor.value === null || loadingMore.value) return
     loadMoreController?.abort()
@@ -112,7 +134,7 @@ export function useRestaurantActivity(restaurantId: () => number | null, enabled
         { ...currentFilterParams(), cursor: nextCursor.value },
         signal,
       )
-      if (signal.aborted || targetRestaurantId !== id) return
+      if (signal.aborted || targetRestaurantId !== id || epoch !== generation) return
       for (const event of activity) {
         if (seenIds.has(event.id)) continue
         seenIds.add(event.id)
@@ -131,14 +153,22 @@ export function useRestaurantActivity(restaurantId: () => number | null, enabled
 
   /** Cheap badge-only refresh — used on restaurant switch/subscribe so the bell is correct even before the panel is ever opened. */
   async function refreshUnreadOnly(): Promise<void> {
+    const badgeRequest = ++unreadRequest
+    const epoch = generation
     const id = restaurantId()
     if (id === null || !enabled()) return
     try {
-      const state = await restaurantActivityService.unreadCount(id)
-      if (restaurantId() !== id) return
+      const state = await restaurantActivityService.unreadCount(id, undefined, scope())
+      if (restaurantId() !== id || epoch !== generation) return
+      if (badgeRequest !== unreadRequest) return
       unreadCount.value = state.unread_count
       lastReadEventId.value = state.last_read_event_id
-    } catch {
+      fallbackDelay = 15_000
+    } catch (err) {
+      if (epoch !== generation) return
+      const failure = normalizeApiError(err)
+      fallbackDelay = Math.max(Math.min(fallbackDelay * 2, 120_000), (failure.retryAfterSeconds ?? 0) * 1000)
+      if (['forbidden', 'unauthenticated'].includes(failure.kind)) readDenied = true
       // Best-effort — the panel's own fetchFirstPage is the authoritative path; a failed badge refresh just leaves the previous (or zero) count showing.
     }
   }
@@ -149,12 +179,13 @@ export function useRestaurantActivity(restaurantId: () => number | null, enabled
    * response is the new authority.
    */
   async function markReadUpToNewest(): Promise<void> {
+    const epoch = generation
     const id = restaurantId()
     const newest = events.value[0]?.id
     if (id === null || newest === undefined) return
     try {
-      const state = await restaurantActivityService.markRead(id, newest)
-      if (restaurantId() !== id) return
+      const state = await restaurantActivityService.markRead(id, newest, scope())
+      if (restaurantId() !== id || epoch !== generation) return
       lastReadEventId.value = state.last_read_event_id
       unreadCount.value = state.unread_count
     } catch {
@@ -191,18 +222,19 @@ export function useRestaurantActivity(restaurantId: () => number | null, enabled
   const hasMore = computed(() => nextCursor.value !== null)
 
   function leaveChannel(): void {
-    if (joinedRestaurantId === null) return
-    getEcho()?.leave(`restaurant.${joinedRestaurantId}.activity`)
-    channel = null
-    joinedRestaurantId = null
+    releaseChannel?.()
+    releaseChannel = null
+    connected = false
   }
 
   function handleIncomingEvent(activity: RestaurantActivityEvent): void {
     if (seenIds.has(activity.id)) return
     seenIds.add(activity.id)
+    eventRevision++
+    unreadRequest++
 
     // §22 — unread always reflects the WHOLE feed, never just the active filter.
-    unreadCount.value += 1
+    if (activity.id > lastReadEventId.value) unreadCount.value += 1
 
     // Only splice into the visible list if it matches the current filter —
     // otherwise the badge still moved, but the (filtered) list stays correct.
@@ -224,36 +256,80 @@ export function useRestaurantActivity(restaurantId: () => number | null, enabled
 
   function subscribeTo(id: number): void {
     const echo = getEcho()
-    if (!echo) return
-
-    joinedRestaurantId = id
-    channel = echo.private(`restaurant.${id}.activity`)
-
-    // §26 — every successful (re)subscription (initial connect AND Reverb's
-    // own automatic resubscribe after a reconnect) reconciles: the badge
-    // always refreshes, and the visible list only refetches when the panel
-    // is actually open (no point re-fetching a hidden panel's page 1).
-    channel.subscribed(() => {
+    const userId = authStore.user?.id
+    if (!echo || (!fullFeed() && !userId)) return
+    const epoch = generation
+    const retained = retainPrivateChannel(fullFeed() ? `restaurant.${id}.activity` : `user.${userId}`)
+    if (!retained) return
+    const channel = retained.channel
+    const current = () => generation === epoch && restaurantId() === id && enabled()
+    const reconcile = () => {
+      if (!current()) return
+      connected = true
       void refreshUnreadOnly()
       if (panelOpen.value) void fetchFirstPage()
-    })
-
-    channel.listen('.restaurant.activity.created', (payload: { activity: RestaurantActivityEvent }) => {
+    }
+    const connection = echo.connector.pusher.connection
+    const onState = ({ current: state }: { current: string }) => { if (state !== 'connected') connected = false }
+    const listener = (payload: { restaurant_id: number; activity: RestaurantActivityEvent }) => {
+      if (!current() || payload.restaurant_id !== id) return
+      if (!fullFeed() && payload.activity.metadata?.recipient_user_id !== userId) return
       handleIncomingEvent(payload.activity)
-    })
+    }
+    connection.bind('state_change', onState)
+    const onError = () => { if (current()) connected = false }
+    // Bind named callbacks so a shared channel can remove this consumer only.
+    channel.listen('.pusher:subscription_succeeded', reconcile)
+    channel.listen('.pusher:subscription_error', onError)
+    channel.listen('.restaurant.activity.created', listener)
+    // A shared user channel might already be subscribed by ready-order alerts.
+    if ('subscription' in channel && (channel.subscription as { subscribed?: boolean }).subscribed) reconcile()
+    releaseChannel = () => {
+      connection.unbind('state_change', onState)
+      retained.channel.stopListening('.restaurant.activity.created', listener)
+      retained.channel.stopListening('.pusher:subscription_succeeded', reconcile)
+      retained.channel.stopListening('.pusher:subscription_error', onError)
+      retained.release()
+    }
   }
 
+  async function fallback(): Promise<void> {
+    if (stopped) return
+    if (enabled() && restaurantId() !== null && !document.hidden && navigator.onLine && !connected && !readDenied) {
+      if (panelOpen.value) await fetchFirstPage()
+      else await refreshUnreadOnly()
+    }
+    if (!stopped) fallbackTimer = setTimeout(() => { void fallback() }, fallbackDelay)
+  }
+  const resume = () => {
+    if (enabled() && !document.hidden && navigator.onLine) {
+      void refreshUnreadOnly()
+      if (panelOpen.value) void fetchFirstPage()
+    }
+  }
+  document.addEventListener('visibilitychange', resume)
+  window.addEventListener('online', resume)
+  window.addEventListener('focus', resume)
+  fallbackTimer = setTimeout(() => { void fallback() }, fallbackDelay)
+
   watch(
-    () => [restaurantId(), enabled()] as const,
+    () => [restaurantId(), enabled(), fullFeed(), authStore.user?.id] as const,
     ([id, isEnabled]) => {
       // Always leave before joining anything else — including a same-id
       // re-evaluation — so A → B → A → B never leaves a stale listener
       // bound to an earlier channel instance (§19).
+      generation++
+      unreadRequest++
+      eventRevision++
       leaveChannel()
       controller?.abort()
       loadMoreController?.abort()
       resetLocal()
       targetRestaurantId = id
+      fallbackDelay = 15_000
+      readDenied = false
+      loading.value = false
+      loadingMore.value = false
 
       if (id !== null && isEnabled) {
         subscribeTo(id)
@@ -264,6 +340,12 @@ export function useRestaurantActivity(restaurantId: () => number | null, enabled
   )
 
   onBeforeUnmount(() => {
+    stopped = true
+    generation++
+    if (fallbackTimer) clearTimeout(fallbackTimer)
+    document.removeEventListener('visibilitychange', resume)
+    window.removeEventListener('online', resume)
+    window.removeEventListener('focus', resume)
     leaveChannel()
     controller?.abort()
     loadMoreController?.abort()

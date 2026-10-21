@@ -5,10 +5,13 @@ import { PhCheck, PhX } from '@phosphor-icons/vue'
 
 import ABottomSheet from '@/components/ui/ABottomSheet.vue'
 import AButton from '@/components/ui/AButton.vue'
+import { usePermissions } from '@/composables/usePermissions'
+import { useRestaurantStore } from '@/stores/restaurant'
 import type { ApiError } from '@/api/errors'
 import type { Order } from '@/types/orders'
 import { describeApiError } from '@/utils/error-message'
 import { formatDuration, formatMoney } from '@/utils/format'
+import { isPendingCustomerOrder } from '@/utils/order-approval'
 
 /**
  * Pending-approval order detail (Passo 3.2 §9/§10/§11) — every price,
@@ -29,18 +32,24 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; approve: []; reject: [] }>()
 
 const { t, locale } = useI18n()
+const { can } = usePermissions()
+const restaurantStore = useRestaurantStore()
+const canAct = computed(() => can('approve_customer_orders') && isPendingCustomerOrder(props.order, restaurantStore.currentRestaurantId))
+const busy = computed(() => props.approving || props.rejecting)
 
 const confirmingReject = ref(false)
 
 const ageSeconds = computed(() => Math.max(0, Math.floor((Date.now() - new Date(props.order.created_at).getTime()) / 1000)))
 
 function requestReject(): void {
+  if (!canAct.value || busy.value) return
   confirmingReject.value = true
 }
 function cancelReject(): void {
   confirmingReject.value = false
 }
 function confirmReject(): void {
+  if (!canAct.value || busy.value) return
   confirmingReject.value = false
   emit('reject')
 }
@@ -66,6 +75,9 @@ function confirmReject(): void {
           </div>
           <p v-if="item.modifiers.length > 0" class="text-label-md text-on-surface-variant">
             {{ item.modifiers.map((m) => m.name).join(', ') }}
+          </p>
+          <p v-if="item.note" class="rounded-md bg-surface-container-highest px-2.5 py-1.5 text-label-md text-on-surface">
+            <span class="font-medium">{{ t('tableDrawer.orders.detail.itemNote') }}:</span> {{ item.note }}
           </p>
         </li>
       </ul>
@@ -94,7 +106,7 @@ function confirmReject(): void {
       the interaction away from the point of contact).
     -->
     <template #footer>
-      <div v-if="confirmingReject" class="flex flex-col gap-3">
+      <div v-if="canAct && confirmingReject" class="flex flex-col gap-3">
         <p class="text-body-md text-on-surface">{{ t('service.order.confirmRejectMessage') }}</p>
         <div class="flex gap-3">
           <AButton variant="outlined" class="flex-1" @click="cancelReject">{{ t('common.cancel') }}</AButton>
@@ -103,12 +115,12 @@ function confirmReject(): void {
           </AButton>
         </div>
       </div>
-      <div v-else class="flex gap-3">
+      <div v-else-if="canAct" class="flex gap-3">
         <AButton variant="outlined" class="flex-1" :disabled="approving" :loading="rejecting" @click="requestReject">
           <template #leading><PhX :size="16" /></template>
           {{ t('service.order.reject') }}
         </AButton>
-        <AButton class="flex-1" :disabled="rejecting" :loading="approving" @click="emit('approve')">
+        <AButton class="flex-1" :disabled="rejecting" :loading="approving" @click="canAct && !busy && emit('approve')">
           <template #leading><PhCheck :size="16" /></template>
           {{ t('service.order.approve') }}
         </AButton>

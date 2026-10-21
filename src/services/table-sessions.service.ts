@@ -40,8 +40,8 @@ interface ReceiptPrintEnvelope {
  * never re-derive them from raw orders/payments client-side.
  */
 export const tableSessionsService = {
-  async bill(sessionId: number): Promise<SessionBill> {
-    const { data } = await http.get<BillEnvelope>(`/api/v1/table-sessions/${sessionId}/bill`)
+  async bill(sessionId: number, signal?: AbortSignal): Promise<SessionBill> {
+    const { data } = await http.get<BillEnvelope>(`/api/v1/table-sessions/${sessionId}/bill`, { signal })
     return data.data
   },
 

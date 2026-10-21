@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { getEcho } from '@/realtime/echo'
+import { retainPrivateChannel } from '@/realtime/echo'
 import { usePermissions } from '@/composables/usePermissions'
+import { useRestaurantStore } from '@/stores/restaurant'
 import { useAuthStore } from '@/stores/auth'
 import type { OrderReadyAttentionEvent } from '@/types/kitchen'
 import { playNotificationChime } from '@/utils/notification-sound'
@@ -34,12 +35,13 @@ export interface ReadyOrderNotification {
  */
 export function useReadyOrderNotifications() {
   const authStore = useAuthStore()
+  const restaurantStore = useRestaurantStore()
   const { can } = usePermissions()
 
   const notifications = ref<ReadyOrderNotification[]>([])
   const enabled = computed(() => can('serve_orders'))
 
-  let joinedUserId: number | null = null
+  let releaseChannel: (() => void) | null = null
   const rememberedEventIds: string[] = []
   const rememberedSet = new Set<string>()
 
@@ -56,7 +58,7 @@ export function useReadyOrderNotifications() {
   }
 
   function handleEvent(payload: OrderReadyAttentionEvent): void {
-    if (!remember(payload.event_id)) return
+    if (payload.restaurant_id !== restaurantStore.currentRestaurantId || !remember(payload.event_id)) return
     notifications.value.push({
       eventId: payload.event_id,
       orderId: payload.order.id,
@@ -73,25 +75,26 @@ export function useReadyOrderNotifications() {
   }
 
   function leaveChannel(): void {
-    if (joinedUserId === null) return
-    getEcho()?.leave(`user.${joinedUserId}`)
-    joinedUserId = null
-  }
-
-  function subscribeTo(userId: number): void {
-    const echo = getEcho()
-    if (!echo) return
-    joinedUserId = userId
-    echo.private(`user.${userId}`).listen('.order.ready.attention', (payload: OrderReadyAttentionEvent) => {
-      handleEvent(payload)
-    })
+    releaseChannel?.()
+    releaseChannel = null
   }
 
   watch(
-    () => [authStore.user?.id ?? null, enabled.value] as const,
+    () => [authStore.user?.id ?? null, enabled.value, restaurantStore.currentRestaurantId] as const,
     ([userId, isEnabled]) => {
       leaveChannel()
-      if (userId !== null && isEnabled) subscribeTo(userId)
+      notifications.value = []
+      rememberedEventIds.length = 0
+      rememberedSet.clear()
+      if (userId === null || !isEnabled) return
+      const retained = retainPrivateChannel(`user.${userId}`)
+      if (!retained) return
+      const listener = (payload: OrderReadyAttentionEvent) => handleEvent(payload)
+      retained.channel.listen('.order.ready.attention', listener)
+      releaseChannel = () => {
+        retained.channel.stopListening('.order.ready.attention', listener)
+        retained.release()
+      }
     },
     { immediate: true },
   )

@@ -6,7 +6,7 @@ import { PhBellRinging, PhForkKnife, PhTable, PhWallet } from '@phosphor-icons/v
 import MetricCard from '@/components/dashboard/MetricCard.vue'
 import { useCountUp } from '@/composables/useCountUp'
 import type { OperationsSummary } from '@/types/operations'
-import { formatMoney, formatNumber } from '@/utils/format'
+import { formatDateOnly, formatMoney, formatNumber } from '@/utils/format'
 
 const props = defineProps<{
   summary: OperationsSummary
@@ -26,6 +26,20 @@ const activeOrdersCount = useCountUp(computed(() => props.summary.orders.active)
 const pendingCount = useCountUp(computed(() => props.pendingAttentionCount))
 
 const occupancyPercent = computed(() => Math.round(props.summary.tables.occupancy_rate * 100))
+
+/**
+ * One stable meaning: payments ("cobrado") of the operational day — the open
+ * one, else the last closed one (flagged), else an explicit empty state.
+ * Never the calendar day, never the opening float, never "ventas".
+ */
+const operationCard = computed(() => {
+  const card = props.summary.sales.operation
+  if (card.state === 'none') return { label: t('dailyOperation.salesMetric'), value: '—', context: t('dailyOperation.salesNone') }
+  const date = formatDateOnly(card.business_date, locale.value)
+  return card.state === 'open'
+    ? { label: t('dailyOperation.salesMetric'), value: formatMoney(card.received, locale.value, props.currency), context: t('dailyOperation.salesContextOpen', { date }) }
+    : { label: t('dailyOperation.salesClosed'), value: formatMoney(card.received, locale.value, props.currency), context: t('dailyOperation.salesContextClosed', { date }) }
+})
 </script>
 
 <template>
@@ -43,8 +57,9 @@ const occupancyPercent = computed(() => Math.round(props.summary.tables.occupanc
     />
     <MetricCard
       :icon="PhWallet"
-      :label="t('operations.salesToday')"
-      :value="formatMoney(summary.sales.received_today, locale, currency)"
+      :label="operationCard.label"
+      :value="operationCard.value"
+      :context="operationCard.context"
     />
     <MetricCard
       :icon="PhBellRinging"

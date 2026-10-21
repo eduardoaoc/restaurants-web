@@ -126,7 +126,7 @@ const router = createRouter({
           // specifically — this route-level check is only the minimum bar to
           // reach the screen at all, matching every other OR-permission
           // route in this file.
-          meta: { permission: ['close_daily_operation', 'view_daily_closes'] },
+          meta: { permission: ['open_daily_operation', 'close_daily_operation', 'view_daily_closes'] },
         },
         {
           path: 'day-close/:id',

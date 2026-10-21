@@ -245,6 +245,7 @@ onBeforeUnmount(() => {
                   v-for="(event, index) in group.events"
                   :key="event.id"
                   :event="event"
+                  @open-table="emit('close')"
                   :locale="locale"
                   :timezone="timezone"
                   :currency="currency"

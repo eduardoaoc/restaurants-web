@@ -12,7 +12,9 @@ import MenuPreview from '@/components/menu/MenuPreview.vue'
 import MenuSectionTabs, { type MenuSection } from '@/components/menu/MenuSectionTabs.vue'
 import ModifiersOverview from '@/components/menu/ModifiersOverview.vue'
 import ProductList from '@/components/menu/ProductList.vue'
+import { provideCatalogRefresh } from '@/composables/useCatalogRefresh'
 import { usePermissions } from '@/composables/usePermissions'
+import { useRestaurantRealtime } from '@/composables/useRestaurantRealtime'
 import { useRestaurantMenu } from '@/composables/useRestaurantMenu'
 import { AVAILABLE_LOCALES, DEFAULT_LOCALE, type AppLocale } from '@/i18n'
 import { useRestaurantStore } from '@/stores/restaurant'
@@ -20,6 +22,7 @@ import { useRestaurantStore } from '@/stores/restaurant'
 const { t } = useI18n()
 const { can } = usePermissions()
 const restaurantStore = useRestaurantStore()
+const refreshCatalog = provideCatalogRefresh()
 
 /**
  * The restaurant's own primary content language for the Carta (CLAUDE.md
@@ -47,6 +50,10 @@ const canManageProducts = computed(() => can('manage_products'))
 const { menu, loading, notFound, error, saving, saveError, createMenu, updateMenu } = useRestaurantMenu(
   () => canManageMenu.value,
 )
+
+useRestaurantRealtime(() => restaurantStore.currentRestaurantId, () => canManageMenu.value && menu.value !== null, {
+  refresh: refreshCatalog,
+})
 
 const ALL_SECTIONS: { id: MenuSection; icon: typeof PhSquaresFour; permission?: 'manage_products' }[] = [
   { id: 'categories', icon: PhSquaresFour },

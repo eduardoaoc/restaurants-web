@@ -10,6 +10,7 @@ import SectionCard from '@/components/dashboard/SectionCard.vue'
 import type { CashMovement } from '@/types/cash-movement'
 import type { DayCloseCashPreview } from '@/types/day-close'
 import { formatMoney } from '@/utils/format'
+import { moneyToCents, parseMoneyInput } from '@/utils/price'
 
 /**
  * CARTA 9.1B §13-§17 — "Recuento de caja". `countedCash`/`openingFloatInput`/
@@ -60,6 +61,7 @@ function timeOnly(value: string): string {
 const openingFloatRequired = computed(() => props.cash.opening_float_source === 'required')
 
 const openingFloatDisplay = computed(() => {
+  if (props.cash.opening_float_source === 'daily_operation') return t('dailyOperation.openingFloatSourceLabel')
   if (props.cash.opening_float_source === 'previous_close') return t('dayClose.cash.openingFloatInherited')
   if (props.cash.opening_float_source === 'restaurant_default') return t('dayClose.cash.openingFloatDefault')
   return null
@@ -68,11 +70,15 @@ const openingFloatDisplay = computed(() => {
 /** §16 — a live preview only; the backend's own expected_cash (once the opening float is known) is what this is actually compared against. */
 const localDifference = computed<number | null>(() => {
   if (props.cash.expected_cash === null) return null
-  const counted = Number(props.countedCash)
-  const expected = Number(props.cash.expected_cash)
-  if (Number.isNaN(counted)) return null
-  return Math.round((counted - expected) * 100) / 100
+  // Same normalization as the submitted payload ("100,00" == "100.00");
+  // empty/invalid shows no difference instead of pretending it is zero.
+  const counted = parseMoneyInput(props.countedCash)
+  if (counted === null) return null
+  return (moneyToCents(counted) - moneyToCents(props.cash.expected_cash)) / 100
 })
+
+/** Typed but not a valid amount → inline error (never sent). */
+const invalidMessage = (value: string) => (value.trim() !== '' && parseMoneyInput(value) === null ? t('dailyOperation.invalidAmount') : undefined)
 
 const differenceLabel = computed(() => {
   const diff = localDifference.value
@@ -85,7 +91,7 @@ const differenceLabel = computed(() => {
 const differenceExceedsThreshold = computed(() => {
   const diff = localDifference.value
   if (diff === null) return false
-  return Math.abs(diff) > Number(props.cash.cash_difference_note_threshold)
+  return Math.abs(Math.round(diff * 100)) > moneyToCents(props.cash.cash_difference_note_threshold)
 })
 </script>
 
@@ -106,6 +112,7 @@ const differenceExceedsThreshold = computed(() => {
           :model-value="openingFloatInput"
           :label="t('dayClose.cash.openingFloatRequiredLabel')"
           :help-text="t('dayClose.cash.openingFloatRequiredHelp')"
+          :error="invalidMessage(openingFloatInput)"
           inputmode="decimal"
           @update:model-value="emit('update:openingFloatInput', $event)"
           @blur="emit('opening-float-blur')"
@@ -167,6 +174,7 @@ const differenceExceedsThreshold = computed(() => {
         :model-value="countedCash"
         :label="t('dayClose.cash.countedCashLabel')"
         :help-text="t('dayClose.cash.countedCashHelp')"
+        :error="invalidMessage(countedCash)"
         inputmode="decimal"
         required
         @update:model-value="emit('update:countedCash', $event)"
@@ -198,6 +206,7 @@ const differenceExceedsThreshold = computed(() => {
         :model-value="cashLeftForNextDay"
         :label="t('dayClose.cash.cashLeftLabel')"
         :help-text="t('dayClose.cash.cashLeftHelp')"
+        :error="invalidMessage(cashLeftForNextDay)"
         inputmode="decimal"
         @update:model-value="emit('update:cashLeftForNextDay', $event)"
       />

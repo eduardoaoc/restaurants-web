@@ -7,13 +7,18 @@ import { PhBellRinging, PhCheckCircle, PhStar, PhTable } from '@phosphor-icons/v
 import EmptyState from '@/components/dashboard/EmptyState.vue'
 import SectionCard from '@/components/dashboard/SectionCard.vue'
 import AProgress from '@/components/ui/AProgress.vue'
+import AButton from '@/components/ui/AButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import AttentionPanel from '@/components/dashboard/operation/AttentionPanel.vue'
 import TableDetailsDrawer from '@/components/dashboard/table/TableDetailsDrawer.vue'
+import ProductAvailabilityPanel from '@/components/service/ProductAvailabilityPanel.vue'
+import DailyOperationBanner from '@/components/shared/DailyOperationBanner.vue'
+import { useProductAvailability } from '@/composables/useProductAvailability'
 import OrderDetailSheet from '@/components/service/OrderDetailSheet.vue'
 import { normalizeApiError, type ApiError } from '@/api/errors'
 import { useOperationalTableDeepLink } from '@/composables/useOperationalTableDeepLink'
 import { useOrderApprovals } from '@/composables/useOrderApprovals'
+import { provideCatalogRefresh } from '@/composables/useCatalogRefresh'
 import { usePermissions } from '@/composables/usePermissions'
 import { useRestaurantOperations } from '@/composables/useRestaurantOperations'
 import { useRestaurantRealtime } from '@/composables/useRestaurantRealtime'
@@ -42,8 +47,11 @@ const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const restaurantStore = useRestaurantStore()
+const refreshCatalog = provideCatalogRefresh()
 const { can } = usePermissions()
 
+const canChangeAvailability = computed(() => can('manage_product_availability') || can('manage_products'))
+const availability = useProductAvailability(() => canChangeAvailability.value, () => realtime.refresh())
 const canApprove = computed(() => can('approve_customer_orders'))
 const canViewOperations = computed(() => can('view_operations'))
 const canCreateOrders = computed(() => can('create_orders'))
@@ -74,7 +82,7 @@ const usingFallbackTables = computed(() => !canViewOperations.value && canViewTa
 // what the endpoint itself returns, see CustomerFeedbackSummary's docblock).
 const canSeeOwnFeedback = computed(() => can('serve_orders'))
 const hasAnyAccess = computed(
-  () => canApprove.value || canViewTables.value || canCreateOrders.value || can('serve_orders'),
+  () => canChangeAvailability.value || canApprove.value || canViewTables.value || canCreateOrders.value || can('serve_orders'),
 )
 
 const feedbackSummary = ref<CustomerFeedbackSummary | null>(null)
@@ -98,8 +106,8 @@ async function fetchFeedbackSummary(): Promise<void> {
 }
 watch(() => [restaurantStore.currentRestaurantId, canSeeOwnFeedback.value] as const, fetchFeedbackSummary, { immediate: true })
 
-const approvals = useOrderApprovals(() => canApprove.value)
 const operations = useRestaurantOperations(() => canViewOperations.value)
+const approvals = useOrderApprovals(() => canApprove.value, () => realtime.refresh())
 
 const fallbackTables = ref<FloorPlanTable[]>([])
 const fallbackLoading = ref(false)
@@ -136,15 +144,12 @@ onBeforeUnmount(() => fallbackController?.abort())
 // QR order reaches this screen without a manual refresh.
 const realtime = useRestaurantRealtime(
   () => restaurantStore.currentRestaurantId,
-  () => canViewTables.value || canApprove.value,
-)
-watch(
-  () => realtime.refreshTick.value,
-  () => {
-    operations.refetch()
-    approvals.refetch()
-    void fetchFallbackTables()
-  },
+  () => canViewTables.value || canApprove.value || canChangeAvailability.value,
+  { refresh: async () => {
+    const catalogErrors = await refreshCatalog()
+    await Promise.all([operations.refetch(), approvals.refetch(), fetchFallbackTables(), availability.refetch()])
+    return [operations.refreshError.value, approvals.error.value, fallbackError.value, availability.error.value, ...catalogErrors]
+  } },
 )
 
 const currency = computed(
@@ -243,27 +248,27 @@ function openTable(tableId: number): void {
  * "not found". Always consumes once loading settles, found or not, so the
  * query never dangles.
  */
-const { pendingTableId, onPendingTableConsumed } = useOperationalTableDeepLink(route, router, () => canViewTables.value)
+const { pendingTableId, pendingSessionId, onPendingTableConsumed } = useOperationalTableDeepLink(route, router, () => canViewTables.value)
 watch(
-  () => [pendingTableId.value, tablesLoading.value, allTables.value] as const,
-  ([pendingId, loading, tables]) => {
+  () => [pendingTableId.value, tablesLoading.value, allTables.value, pendingSessionId.value] as const,
+  ([pendingId, loading, tables, sessionId]) => {
     if (pendingId === null || loading) return
-    const match = tables.find((table) => table.id === pendingId)
+    const match = tables.find((table) => sessionId !== null ? table.session?.id === sessionId : table.id === pendingId)
     if (match) selectedTableId.value = match.id
     onPendingTableConsumed()
   },
   { immediate: true },
 )
 function onDrawerRefresh(): void {
-  operations.refetch()
-  approvals.refetch()
-  void fetchFallbackTables()
+  realtime.refresh()
 }
 
-const selectedOrder = ref<Order | null>(null)
+const selectedOrderId = ref<number | null>(null)
+const selectedOrder = computed(() => canApprove.value
+  ? approvals.orders.value.find((order) => order.id === selectedOrderId.value) ?? null : null)
 
 function openOrder(order: Order): void {
-  selectedOrder.value = order
+  selectedOrderId.value = order.id
 }
 
 // Table ids aren't restaurant-scoped in the URL/state here, so switching
@@ -275,25 +280,32 @@ watch(
   () => restaurantStore.currentRestaurantId,
   () => {
     selectedTableId.value = null
-    selectedOrder.value = null
+    selectedOrderId.value = null
   },
 )
 
 async function approveSelected(): Promise<void> {
-  if (!selectedOrder.value) return
-  const err = await approvals.approve(selectedOrder.value.id)
+  if (selectedOrder.value) await approveOrder(selectedOrder.value)
+}
+
+async function approveOrder(order: Order): Promise<void> {
+  if (!approvals.canAct(order) || approvals.actingOn[order.id]) return
+  const restaurantId = restaurantStore.currentRestaurantId
+  const err = await approvals.approve(order.id)
+  if (restaurantId !== restaurantStore.currentRestaurantId) return
   if (!err) {
-    selectedOrder.value = null
-    operations.refetch()
+    if (selectedOrderId.value === order.id) selectedOrderId.value = null
   }
 }
 
 async function rejectSelected(): Promise<void> {
-  if (!selectedOrder.value) return
-  const err = await approvals.reject(selectedOrder.value.id)
+  const order = selectedOrder.value
+  if (!order || !approvals.canAct(order) || approvals.actingOn[order.id]) return
+  const restaurantId = restaurantStore.currentRestaurantId
+  const err = await approvals.reject(order.id)
+  if (restaurantId !== restaurantStore.currentRestaurantId) return
   if (!err) {
-    selectedOrder.value = null
-    operations.refetch()
+    if (selectedOrderId.value === order.id) selectedOrderId.value = null
   }
 }
 </script>
@@ -310,8 +322,17 @@ async function rejectSelected(): Promise<void> {
     </ASurface>
 
     <template v-else>
+      <p role="status" class="text-body-md text-on-surface-variant">
+        {{ t(`operations.connection.${realtime.connectionState.value}`) }}
+        <span v-if="realtime.connectionState.value !== 'connected'">{{ t('kitchen.refreshHint') }}</span>
+      </p>
+      <DailyOperationBanner
+        v-if="operations.snapshot.value?.daily_operation"
+        :daily-operation="operations.snapshot.value.daily_operation"
+        :can-manage="can('open_daily_operation') || can('close_daily_operation')"
+      />
       <SectionCard v-if="canApprove" :icon="PhBellRinging" :title="t('service.pending.title')">
-        <div v-if="approvals.loading.value" class="flex justify-center py-6">
+        <div v-if="approvals.loading.value && approvals.orders.value.length === 0" class="flex justify-center py-6">
           <AProgress size="sm" />
         </div>
         <p v-else-if="approvals.error.value" class="text-body-md text-error" role="alert">
@@ -319,24 +340,35 @@ async function rejectSelected(): Promise<void> {
         </p>
         <EmptyState v-else-if="approvals.orders.value.length === 0" :icon="PhCheckCircle" :message="t('service.pending.empty')" />
         <ul v-else class="flex flex-col divide-y divide-outline-variant">
-          <li v-for="order in approvals.orders.value" :key="order.id">
-            <button
-              type="button"
-              class="flex min-h-11 w-full items-center justify-between gap-3 py-3 text-left hover:bg-surface-container-low focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              @click="openOrder(order)"
-            >
+          <li v-for="order in approvals.orders.value" :key="order.id" class="flex flex-col gap-3 py-3">
+            <div class="flex items-center justify-between gap-3">
               <div class="min-w-0">
                 <p class="truncate text-body-lg font-medium text-on-surface">{{ order.table.name }} · {{ order.order_number }}</p>
                 <p class="text-label-md text-on-surface-variant">
-                  {{ t('service.pending.itemCount', { count: order.items.length }) }} · {{ formatDuration(orderAgeSeconds(order)) }}
+                  {{ t('service.pending.itemCount', { count: order.items.reduce((total, item) => total + item.quantity, 0) }) }} · {{ formatDuration(orderAgeSeconds(order)) }}
                 </p>
               </div>
               <span class="shrink-0 text-body-lg font-semibold tabular-nums text-on-surface">
                 {{ formatMoney(order.total, locale, currency) }}
               </span>
-            </button>
+            </div>
+            <p class="text-label-md text-on-surface-variant">{{ t('tableDrawer.orders.status.waiting_approval') }}</p>
+            <div class="flex flex-wrap gap-3">
+              <AButton variant="outlined" :aria-label="t('tableDrawer.orders.actions.viewDetail', { number: order.order_number })" @click="openOrder(order)">
+                {{ t('service.pending.viewOrder') }}
+              </AButton>
+              <AButton v-if="approvals.canAct(order)" :loading="approvals.actingOn[order.id] === 'approve'" :disabled="!!approvals.actingOn[order.id]" @click="approveOrder(order)">
+                {{ t('service.order.approve') }}
+              </AButton>
+            </div>
+            <p v-if="approvals.actionError[order.id]" class="text-label-md text-error" role="alert">
+              {{ describeApiError(approvals.actionError[order.id]!, t) }}
+            </p>
           </li>
         </ul>
+        <AButton variant="text" class="mt-3" :loading="approvals.loading.value" @click="onDrawerRefresh">
+          {{ t('operations.quickActions.refresh') }}
+        </AButton>
       </SectionCard>
 
       <SectionCard
@@ -381,6 +413,10 @@ async function rejectSelected(): Promise<void> {
           </li>
         </ul>
       </SectionCard>
+
+      <ProductAvailabilityPanel v-if="canChangeAvailability" :key="restaurantStore.currentRestaurantId ?? 0"
+        :products="availability.products.value" :loading="availability.loading.value" :error="availability.error.value"
+        :busy="availability.busy" :errors="availability.errors" @toggle="availability.toggle" @refresh="realtime.refresh" />
 
       <!-- "Mis valoraciones" (Passo 3.5 §17) — the waiter's own aggregate
            only, GET /me/feedback-summary. Deliberately never the same card
@@ -436,12 +472,13 @@ async function rejectSelected(): Promise<void> {
 
     <OrderDetailSheet
       v-if="selectedOrder"
+      :key="selectedOrder.id"
       :order="selectedOrder"
       :currency="currency"
       :approving="approvals.actingOn[selectedOrder.id] === 'approve'"
       :rejecting="approvals.actingOn[selectedOrder.id] === 'reject'"
       :action-error="approvals.actionError[selectedOrder.id] ?? null"
-      @close="selectedOrder = null"
+      @close="selectedOrderId = null"
       @approve="approveSelected"
       @reject="rejectSelected"
     />

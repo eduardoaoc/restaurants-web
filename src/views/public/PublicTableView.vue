@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { PhList, PhShoppingCart, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhArrowLeft, PhList, PhShoppingCart, PhWarningCircle } from '@phosphor-icons/vue'
 
 import { normalizeApiError, type ApiError } from '@/api/errors'
+import ABottomSheet from '@/components/ui/ABottomSheet.vue'
+import AButton from '@/components/ui/AButton.vue'
+import PublicOrderHistory from '@/components/public/PublicOrderHistory.vue'
+import { useSessionOrderHistory } from '@/composables/useSessionOrderHistory'
 import AIconButton from '@/components/ui/AIconButton.vue'
 import AProgress from '@/components/ui/AProgress.vue'
 import ThemeSwitcher from '@/components/shared/ThemeSwitcher.vue'
@@ -15,6 +19,7 @@ import PublicCategoryNav from '@/components/public/PublicCategoryNav.vue'
 import PublicEntryIntro from '@/components/public/PublicEntryIntro.vue'
 import PublicFeedbackSheet from '@/components/public/PublicFeedbackSheet.vue'
 import PublicLanguageSwitcher from '@/components/public/PublicLanguageSwitcher.vue'
+import PublicMenuCatalog from '@/components/public/PublicMenuCatalog.vue'
 import PublicOrderSuccess from '@/components/public/PublicOrderSuccess.vue'
 import PublicPostVisitView from '@/components/public/PublicPostVisitView.vue'
 import PublicProductFeed from '@/components/public/PublicProductFeed.vue'
@@ -29,6 +34,8 @@ import { usePublicTableResolution } from '@/composables/usePublicTableResolution
 import { usePublicVisit } from '@/composables/usePublicVisit'
 import { useStaffTableEntry } from '@/composables/useStaffTableEntry'
 import { publicTableService } from '@/services/public-table.service'
+import { clearPublicVisitToken, readPublicVisitToken } from '@/utils/public-visit-context'
+import { clearPublicEntryState } from '@/composables/usePublicEntryState'
 import { AVAILABLE_LOCALES, DEFAULT_LOCALE, i18n, type AppLocale } from '@/i18n'
 import type { PublicFeedItem, PublicOrderCreated, PublicProduct } from '@/types/public-menu'
 import { describeApiError } from '@/utils/error-message'
@@ -42,8 +49,10 @@ import { formatMoney } from '@/utils/format'
  * table always starts from a clean slate, never reusing another table's
  * in-memory state.
  */
+const showOrderHistory = ref(false)
 const route = useRoute()
 const publicToken = route.params.publicToken as string
+let initialVisitToken = readPublicVisitToken(publicToken)
 
 const { t } = useI18n()
 
@@ -51,10 +60,10 @@ const { t } = useI18n()
  * `resolveTable` (Carta Cliente 4.1 final fix) is the source of truth for
  * the entry experience (intro/gateway) — it exists independently of the
  * carta itself, so a table with no menu published yet still resolves fine.
- * `usePublicMenu` keeps running in parallel exactly as before and remains
+ * `usePublicMenu` waits for entry to establish the visit and remains
  * authoritative for actual carta content once the visitor reaches MENU.
  */
-const { resolution, error: resolutionError, reload: reloadResolution } = usePublicTableResolution(publicToken)
+const { resolution, error: resolutionError, serviceClosed, reload: reloadResolution, retryEntry, beginNewVisit } = usePublicTableResolution(publicToken)
 
 // Carta 8.1B §11-§14 — runs in parallel, never gates or delays anything
 // above/below: a genuine staff member gets redirected into the operational
@@ -67,7 +76,7 @@ useStaffTableEntry(publicToken)
 // locale-less load) — see usePublicMenu's own docblock for why re-feeding
 // the resolved locale back in would cause a redundant second fetch.
 const requestedLocale = ref<string | undefined>(undefined)
-const { menu, loading, error, reload } = usePublicMenu(publicToken, requestedLocale)
+const { menu, loading, error, reload } = usePublicMenu(publicToken, requestedLocale, computed(() => Boolean(resolution.value) || serviceClosed.value))
 
 /**
  * The restaurant's own `default_locale`/`enabled_locales` are real
@@ -113,7 +122,22 @@ onBeforeUnmount(() => {
 watch(currentLocale, (value) => (i18n.global.locale.value = value), { immediate: true })
 
 const cart = usePublicCart(publicToken)
+let cartVisitChecked = false
+watch(() => resolution.value?.session.feedback.token, (token) => {
+  if (!token || cartVisitChecked) return
+  cartVisitChecked = true
+  // A fresh browser context must not inherit a previous visit's local cart.
+  if (token !== initialVisitToken) cart.clear()
+}, { immediate: true })
 
+const currentProducts = computed(() => menu.value?.menu.categories.flatMap(c => c.products) ?? [])
+function currentProduct(id: number): PublicProduct | undefined {
+  return currentProducts.value.find(p => p.restaurant_product_id === id)
+}
+const unavailableIds = computed(() => cart.lines.value.filter(line => {
+  const product = currentProduct(line.restaurant_product_id)
+  return !product || line.modifiers.some(m => !product.modifier_groups.some(g => g.id === m.group_id && g.options.some(o => o.id === m.option_id)))
+}).map(line => line.restaurant_product_id))
 const selectedProduct = ref<PublicProduct | null>(null)
 const showCart = ref(false)
 const successOrder = ref<PublicOrderCreated | null>(null)
@@ -122,7 +146,7 @@ const submitError = ref<ApiError | null>(null)
 let idempotencyKey: string | null = null
 
 function openProduct(product: PublicProduct): void {
-  selectedProduct.value = product
+  selectedProduct.value = currentProduct(product.restaurant_product_id) ?? null
 }
 
 /**
@@ -134,6 +158,10 @@ function openProduct(product: PublicProduct): void {
  * same close handler.
  */
 const infoProduct = ref<PublicProduct | null>(null)
+watch(currentProducts, () => {
+  if (selectedProduct.value) selectedProduct.value = currentProduct(selectedProduct.value.restaurant_product_id) ?? null
+  if (infoProduct.value) infoProduct.value = currentProduct(infoProduct.value.restaurant_product_id) ?? null
+})
 function onOpenProductInfo(product: PublicProduct): void {
   infoProduct.value = product
 }
@@ -145,13 +173,14 @@ function onRequestAddFromInfo(): void {
 }
 
 function onAddToCart(payload: { quantity: number; selections: CartModifierSelection[]; note: string | null }): void {
-  if (!selectedProduct.value) return
-  cart.addItem(selectedProduct.value, payload.quantity, payload.selections, payload.note)
+  const product = selectedProduct.value && currentProduct(selectedProduct.value.restaurant_product_id)
+  if (!product) return
+  cart.addItem(product, payload.quantity, payload.selections, payload.note)
   selectedProduct.value = null
 }
 
 async function confirmOrder(): Promise<void> {
-  if (cart.lines.value.length === 0) return
+  if (unavailableIds.value.length > 0 || !menu.value || submitting.value || cart.lines.value.length === 0) return
   // Defense-in-depth: PublicCartSheet's own footer already replaces the
   // confirm button once effectiveBillRequested is true, so this only fires
   // if that guard is ever bypassed — never a second network round-trip for a
@@ -184,6 +213,7 @@ async function confirmOrder(): Promise<void> {
     idempotencyKey = null
     showCart.value = false
     successOrder.value = order
+    void publicHistory.refresh()
     // CARTA 5.1E §9 — a fresh order can flip bill_request.reason from
     // no_billable_orders to open_orders; the backend alone decides this, so
     // refresh the read-model once rather than inferring the transition
@@ -202,6 +232,11 @@ async function confirmOrder(): Promise<void> {
       idempotencyKey = null
     } else {
       submitError.value = normalized
+      if (['INVALID_ORDER_ITEM', 'INVALID_MODIFIER_SELECTION'].includes(normalized.code ?? '')) {
+        idempotencyKey = null
+        await reload(true)
+      }
+      if (['TABLE_SESSION_ALREADY_PAID', 'TABLE_SESSION_NOT_ACTIVE'].includes(normalized.code ?? '')) void reloadResolution()
     }
   } finally {
     submitting.value = false
@@ -366,7 +401,7 @@ const showWaiterCallOnGate = computed(() =>
  * before the menu exists at all — see that computed's own comment).
  */
 const showWaiterCallInMenu = computed(() =>
-  Boolean(menu.value?.session.active && menu.value?.restaurant.capabilities.waiter_call),
+  Boolean(resolution.value?.session.active && menu.value?.restaurant.capabilities.waiter_call),
 )
 // Bill-request visibility is `showBillRequestAction` (defined alongside the
 // rest of the bill_request read-model above) — deliberately `resolution`-driven
@@ -387,7 +422,7 @@ const orderingEnabled = computed(() => menu.value?.restaurant.capabilities.custo
  * waiter/bill gating above, so checkout shouldn't invite an attempt already
  * known to fail.
  */
-const sessionActive = computed(() => menu.value?.session.active ?? false)
+const sessionActive = computed(() => Boolean(resolution.value?.session.active && !resolution.value.session.feedback.eligible))
 
 /**
  * Flattened (category, product) read-model for the Reel feed (Carta 4.4
@@ -442,7 +477,7 @@ function onSelectCategoryFromMenu(categoryId: number): void {
 /** Any overlay that must pause the active card's video (Carta 4.4 §10) — the product sheet, cart, order success, feedback sheet, category menu, and now the info sheet all count. Carta 4.5 §4 relies on this exact flag for its own pause/resume — no second, parallel pause mechanism. */
 const anyOverlayOpen = computed(() =>
   Boolean(
-    selectedProduct.value || showCart.value || successOrder.value || showFeedback.value || showCategoryMenu.value || infoProduct.value,
+    selectedProduct.value || showCart.value || successOrder.value || showFeedback.value || showCategoryMenu.value || infoProduct.value || showOrderHistory.value,
   ),
 )
 
@@ -494,6 +529,51 @@ function enterMenu(): void {
   if (!menuAvailable.value) return
   markPublicMenuEntered(publicToken)
   stage.value = 'menu'
+  menuView.value = 'catalog'
+}
+
+/**
+ * Catalog + Reel (never a new `EntryStage` — `stage === 'menu'` still means
+ * exactly what it always did, so every polling/session/post-payment watcher
+ * above keeps working unchanged) — the traditional carta is now the default
+ * presentation inside the 'menu' stage; the Reel is a second, deliberately
+ * entered way to explore the exact same products. Never persisted (§15 "não
+ * persistir menuView = reels") — a reload always lands back on 'catalog' via
+ * this ref's own default, same as a visitor whose `menuEntered` flag already
+ * sends them straight into 'menu' above.
+ */
+type PublicMenuView = 'catalog' | 'reels'
+const menuView = ref<PublicMenuView>('catalog')
+
+/**
+ * Lifted out of `PublicMenuCatalog` itself (not local `ref`s there) for the
+ * same reason `activeCategoryId` above already lives here rather than
+ * inside `PublicProductFeed`: `usePublicMenu`'s `loading` flips true on
+ * every locale switch, and the template's `v-if="loading"` chain fully
+ * unmounts whatever's in `v-else` (catalog included) while that happens —
+ * local child state would silently reset on every language switch, not
+ * just a Reel round trip. Living here, neither does.
+ */
+const catalogSearchQuery = ref('')
+const catalogSelectedCategoryId = ref<number | null>(null)
+
+/** "Volver a la mesa" (§11) — pure navigation back to the existing gateway, reusing PublicWelcomeGate; never touches session/cart/requests/feedback state. */
+function onBackToTable(): void {
+  stage.value = 'gateway'
+}
+
+/**
+ * Opens the Reel at the EXACT product tapped in the catalog (§9) —
+ * `restaurant_product_id` is the only identity trusted (never a persisted
+ * index, see `PublicProductFeed.scrollToProduct`'s own doc). The feed is
+ * already mounted the moment `stage` first became 'menu' (kept alive via
+ * `v-show`, never re-created by switching `menuView`), so there's no
+ * loading to wait for — `nextTick` here only guards against the rare case
+ * this fires in the same tick `feedItems` itself just changed.
+ */
+function openReelFromCatalog(product: PublicProduct): void {
+  menuView.value = 'reels'
+  void nextTick(() => feedRef.value?.scrollToProduct(product.restaurant_product_id))
 }
 
 /**
@@ -528,9 +608,9 @@ const feedbackAlreadySubmitted = ref(false)
 const showFeedback = ref(false)
 
 watch(
-  () => menu.value?.session,
+  () => resolution.value?.session,
   (session) => {
-    const live = session?.active ? session.feedback : undefined
+    const live = session?.feedback
     if (live?.token) {
       syncStoredFeedback(publicToken, live.token, live.already_submitted ?? false)
       feedbackToken.value = live.token
@@ -620,7 +700,7 @@ watch(
   () => resolution.value?.session,
   (session) => {
     if (!session || stage.value === 'post-visit' || visitLoading.value) return
-    if (session.active && session.feedback.eligible && session.feedback.token) {
+    if (session.feedback.eligible && session.feedback.token) {
       void enterPostVisitIfPaid(session.feedback.token, false)
       return
     }
@@ -632,9 +712,40 @@ watch(
   { immediate: true },
 )
 
-/** PublicPostVisitView's own retry button (already-dead/invalid-token cases never reach here — `enterPostVisitIfPaid` already dropped that token via `onFeedbackInvalid`). */
+/** Explicit customer intent is required before detaching a closed visit. */
+async function startNewVisit(): Promise<void> {
+  if (resolutionError.value?.code !== 'PUBLIC_VISIT_INVALID' && resolution.value?.session.active !== false) return
+  if (submitting.value || requestingBill.value || requestingWaiter.value || visitLoading.value) return
+  stopResolutionPolling()
+  clearPublicVisitToken(publicToken)
+  clearPublicEntryState(publicToken)
+  clearStoredFeedback(publicToken)
+  initialVisitToken = null
+  cartVisitChecked = false
+  cart.clear()
+  idempotencyKey = null
+  billRequested.value = false
+  waiterCalled.value = false
+  requestError.value = null
+  submitError.value = null
+  successOrder.value = null
+  selectedProduct.value = null
+  infoProduct.value = null
+  showCart.value = false
+  showCategoryMenu.value = false
+  feedbackToken.value = null
+  feedbackEligible.value = false
+  feedbackAlreadySubmitted.value = false
+  showFeedback.value = false
+  visit.value = null
+  stageInitialized = false
+  stage.value = 'entry-intro'
+  await beginNewVisit()
+}
+
+/** Retry keeps the original paid visit; it never starts another session. */
 function retryVisit(): void {
-  const token = readStoredFeedback(publicToken)?.token ?? feedbackToken.value
+  const token = feedbackToken.value ?? readStoredFeedback(publicToken)?.token
   if (token) void enterPostVisitIfPaid(token, true)
 }
 
@@ -693,47 +804,68 @@ const shouldPollForBillEligibility = computed(
  * composable's own `load()` already aborts any previous call), never two
  * timers racing each other.
  */
-const shouldPollResolution = computed(() => shouldPollForPayment.value || shouldPollForBillEligibility.value)
-
-let resolutionPollTimer: ReturnType<typeof setInterval> | null = null
+const historyContext = computed(() => stage.value === 'menu' && resolution.value?.session.active
+  ? resolution.value.session.feedback.token ?? null : null)
+const publicHistory = useSessionOrderHistory(
+  () => historyContext.value,
+  (beforeId, signal) => publicTableService.orders(publicToken, beforeId, signal),
+)
+const shouldPollResolution = computed(() => Boolean(historyContext.value) || shouldPollForPayment.value || shouldPollForBillEligibility.value)
+let resolutionPollTimer: ReturnType<typeof setTimeout> | null = null
+let trackingPending: Promise<void> | null = null
+let trackingRetryAt = 0
+let trackingFailures = 0
+let trackingStopped = false
 function stopResolutionPolling(): void {
-  if (resolutionPollTimer) {
-    clearInterval(resolutionPollTimer)
-    resolutionPollTimer = null
-  }
+  if (resolutionPollTimer) clearTimeout(resolutionPollTimer)
+  resolutionPollTimer = null
+}
+function trackingVisible(): boolean {
+  return document.visibilityState === 'visible' && navigator.onLine
 }
 function startResolutionPollingIfNeeded(): void {
-  if (resolutionPollTimer || !shouldPollResolution.value) return
-  resolutionPollTimer = setInterval(() => {
-    if (!shouldPollResolution.value) {
-      stopResolutionPolling()
-      return
-    }
-    void reloadResolution()
-  }, 12000)
+  if (resolutionPollTimer || trackingPending || !shouldPollResolution.value || !trackingVisible() || trackingStopped) return
+  resolutionPollTimer = setTimeout(() => { resolutionPollTimer = null; void refreshTracking() }, Math.max(12000, trackingRetryAt - Date.now()))
 }
-
-watch(shouldPollResolution, (should) => {
-  if (should) startResolutionPollingIfNeeded()
-  else stopResolutionPolling()
-})
-
+function refreshTracking(): Promise<void> {
+  if (trackingPending) return trackingPending
+  if (!trackingVisible() || trackingStopped || Date.now() < trackingRetryAt) { startResolutionPollingIfNeeded(); return Promise.resolve() }
+  stopResolutionPolling()
+  trackingPending = (async () => {
+    await reloadResolution()
+    if (trackingStopped || !trackingVisible()) return
+    if (stage.value === 'menu') await reload(true)
+    if (historyContext.value) await publicHistory.refresh()
+    const failure = resolutionError.value ?? error.value ?? publicHistory.error.value
+    if (failure) {
+      trackingFailures++
+      trackingRetryAt = Date.now() + Math.max((failure.retryAfterSeconds ?? 0) * 1000, Math.min(60000, 12000 * 2 ** Math.min(trackingFailures, 3)))
+      if (['forbidden', 'unauthenticated', 'not_found'].includes(failure.kind) || failure.code === 'PUBLIC_VISIT_INVALID') trackingStopped = true
+    } else { trackingFailures = 0; trackingRetryAt = 0 }
+  })().finally(() => { trackingPending = null; startResolutionPollingIfNeeded() })
+  return trackingPending
+}
+watch(shouldPollResolution, should => { if (should) startResolutionPollingIfNeeded(); else stopResolutionPolling() })
+watch(historyContext, () => { showOrderHistory.value = false; trackingStopped = false; trackingRetryAt = 0; trackingFailures = 0 })
 function onVisibilityChangeForResolutionPolling(): void {
-  if (document.visibilityState === 'visible') {
-    if (shouldPollResolution.value) {
-      void reloadResolution()
-      startResolutionPollingIfNeeded()
-    }
-  } else {
-    stopResolutionPolling()
-  }
+  stopResolutionPolling()
+  if (trackingVisible() && shouldPollResolution.value) void refreshTracking()
 }
-
-onMounted(() => document.addEventListener('visibilitychange', onVisibilityChangeForResolutionPolling))
+onMounted(() => {
+  document.addEventListener('visibilitychange', onVisibilityChangeForResolutionPolling)
+  window.addEventListener('online', onVisibilityChangeForResolutionPolling)
+  window.addEventListener('offline', onVisibilityChangeForResolutionPolling)
+  window.addEventListener('focus', onVisibilityChangeForResolutionPolling)
+})
 onBeforeUnmount(() => {
+  trackingStopped = true
   document.removeEventListener('visibilitychange', onVisibilityChangeForResolutionPolling)
+  window.removeEventListener('online', onVisibilityChangeForResolutionPolling)
+  window.removeEventListener('offline', onVisibilityChangeForResolutionPolling)
+  window.removeEventListener('focus', onVisibilityChangeForResolutionPolling)
   stopResolutionPolling()
 })
+
 </script>
 
 <template>
@@ -741,7 +873,59 @@ onBeforeUnmount(() => {
        one case where there's genuinely nothing to show, not even an intro. Same visual
        language as the carta's own hard-error state below, just standalone (no header yet:
        we don't have a restaurant name to show one for). -->
-  <div v-if="resolutionError" class="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center">
+  <!-- Operational day not open: the carta stays readable (no visit, no
+       cart, no requests) and only an explicit tap tries to enter again. -->
+  <div v-if="serviceClosed" class="flex h-dvh w-full items-center justify-center bg-surface-container-lowest sm:p-6">
+    <div class="flex h-full w-full flex-col overflow-hidden bg-background sm:max-w-[560px] sm:rounded-xl sm:shadow-elevated">
+      <div role="status" class="flex shrink-0 flex-col gap-3 border-b border-outline-variant bg-warning-container px-4 py-4 text-on-warning-container">
+        <div>
+          <p class="text-body-lg font-semibold">{{ t('dailyOperation.public.closedTitle') }}</p>
+          <p class="text-body-md">{{ t('dailyOperation.public.closedText') }}</p>
+        </div>
+        <button
+          type="button"
+          class="min-h-11 self-start rounded-full border border-outline bg-surface px-5 text-label-lg font-medium text-on-surface hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          @click="retryEntry()"
+        >
+          {{ t('dailyOperation.public.checkAgain') }}
+        </button>
+      </div>
+      <div class="relative flex-1">
+        <div v-if="loading && !menu" class="flex h-full items-center justify-center"><AProgress size="sm" /></div>
+        <PublicMenuCatalog
+          v-else-if="menu"
+          class="absolute inset-0"
+          :restaurant-name="menu.restaurant.name"
+          :table-name="menu.table.name"
+          :locale="currentLocale"
+          :categories="categoriesWithProducts"
+          :ordering-enabled="false"
+          :cart-count="0"
+          :cart-total="0"
+          :available-locales="availableLocales"
+          :current-locale="currentLocale"
+          :search-query="catalogSearchQuery"
+          :selected-category-id="catalogSelectedCategoryId"
+          :show-waiter-call="false"
+          :waiter-called="false"
+          :requesting-waiter="false"
+          :show-bill-request="false"
+          :bill-request-confirmed="false"
+          :bill-request-blocked-message="null"
+          :requesting-bill="false"
+          :request-error="null"
+          :show-feedback="false"
+          :feedback-already-submitted="false"
+          hide-back-to-table
+          @select-locale="selectLocale"
+          @update:search-query="catalogSearchQuery = $event"
+          @update:selected-category-id="catalogSelectedCategoryId = $event"
+        />
+      </div>
+    </div>
+  </div>
+
+  <div v-else-if="resolutionError" class="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center">
     <PhWarningCircle :size="32" class="text-on-surface-variant" aria-hidden="true" />
     <p class="max-w-xs text-body-lg text-on-surface-variant">
       {{ resolutionError.kind === 'not_found' ? t('publicMenu.errors.tableNotFound') : describeApiError(resolutionError, t) }}
@@ -749,9 +933,9 @@ onBeforeUnmount(() => {
     <button
       type="button"
       class="min-h-11 rounded-full border border-outline px-5 text-label-lg font-medium text-on-surface hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      @click="reloadResolution"
+      @click="resolutionError.code === 'PUBLIC_VISIT_INVALID' ? startNewVisit() : reloadResolution()"
     >
-      {{ t('publicMenu.errors.retry') }}
+      {{ resolutionError.code === 'PUBLIC_VISIT_INVALID' ? t('publicMenu.entry.newVisit') : t('publicMenu.errors.retry') }}
     </button>
   </div>
 
@@ -786,13 +970,19 @@ onBeforeUnmount(() => {
        panel instead of stretching a vertical photo/video across the whole window (§34). -->
   <div v-else-if="stage === 'menu'" class="flex h-dvh w-full items-center justify-center bg-surface-container-lowest sm:p-6">
     <div class="relative h-full w-full overflow-hidden bg-background sm:max-w-[560px] sm:rounded-xl sm:shadow-elevated">
-      <div v-if="loading" class="flex h-full flex-col items-center justify-center gap-3 text-on-surface-variant">
+      <div v-if="resolution?.session.active === false" class="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+        <p class="text-body-lg text-on-surface-variant">{{ t('publicMenu.postVisit.visitClosed') }}</p>
+        <button type="button" class="min-h-11 rounded-full border border-outline px-5 text-label-lg text-on-surface hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" @click="startNewVisit">
+          {{ t('publicMenu.entry.newVisit') }}
+        </button>
+      </div>
+      <div v-else-if="loading" class="flex h-full flex-col items-center justify-center gap-3 text-on-surface-variant">
         <AProgress size="sm" />
         <span class="text-body-md">{{ t('publicMenu.loading') }}</span>
       </div>
 
       <!-- Hard error: token invalid, table/menu not found, rate limited, network, server -->
-      <div v-else-if="error" class="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+      <div v-else-if="error && !menu" class="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
         <PhWarningCircle :size="32" class="text-on-surface-variant" aria-hidden="true" />
         <p class="max-w-xs text-body-lg text-on-surface-variant">
           {{ error.kind === 'not_found' ? t('publicMenu.errors.tableNotFound') : describeApiError(error, t) }}
@@ -800,7 +990,7 @@ onBeforeUnmount(() => {
         <button
           type="button"
           class="min-h-11 rounded-full border border-outline px-5 text-label-lg font-medium text-on-surface hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          @click="reload"
+          @click="reload()"
         >
           {{ t('publicMenu.errors.retry') }}
         </button>
@@ -812,85 +1002,151 @@ onBeforeUnmount(() => {
       </div>
 
       <template v-else>
-        <PublicProductFeed
-          ref="feedRef"
-          :items="feedItems"
-          :locale="currentLocale"
-          :suspended="anyOverlayOpen"
-          :ordering-enabled="orderingEnabled"
-          @add="openProduct"
-          @open-product-info="onOpenProductInfo"
-          @active-category-change="activeCategoryId = $event"
-        />
-
-        <!-- Compact overlay header (§26, simplified Carta 4.4.1) — floats on top
-             of the media, never reserves layout space from it. The restaurant/
-             table identity pill and the permanent category pills are both gone
-             from here (never deleted from state — `restaurantName`/`tableLabel`
-             still back the intro/gateway stages above, and `categoriesWithProducts`
-             still feeds the hamburger's sheet below): the media itself is the
-             only thing competing for attention now. `pointer-events-none` on the
-             wrapper keeps the empty gaps tap-through; only the actual controls
-             are interactive. -->
-        <div
-          class="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start gap-2 px-3 pb-1"
-          style="padding-top: max(0.625rem, env(safe-area-inset-top))"
-        >
-          <AIconButton
-            v-if="categoriesWithProducts.length > 1"
-            :label="t('publicMenu.feed.categoryNavLabel')"
-            variant="onMedia"
-            class="pointer-events-auto rounded-full bg-black/35 backdrop-blur-sm"
-            @click="showCategoryMenu = true"
-          >
-            <PhList :size="20" />
-          </AIconButton>
-
-          <div class="pointer-events-auto ml-auto flex shrink-0 items-center gap-0.5 rounded-full bg-black/35 px-1 backdrop-blur-sm">
-            <PublicLanguageSwitcher :available="availableLocales" :current="currentLocale" on-media @select="selectLocale" />
-            <ThemeSwitcher on-media />
-            <PublicActionsMenu
-              :show-waiter-call="showWaiterCallInMenu"
-              :waiter-called="waiterCalled"
-              :requesting-waiter="requestingWaiter"
-              :show-bill-request="showBillRequestAction"
-              :bill-request-confirmed="effectiveBillRequested"
-              :bill-request-blocked-message="billRequestBlockedMessage"
-              :requesting-bill="requestingBill"
-              :request-error="requestError"
-              :show-feedback="!error && Boolean(feedbackToken) && (feedbackEligible || feedbackAlreadySubmitted)"
-              :feedback-already-submitted="feedbackAlreadySubmitted"
-              @call-waiter="callWaiter"
-              @request-bill="requestBill"
-              @open-feedback="showFeedback = true"
-            />
-          </div>
+        <!-- menuView === 'catalog' — the new default landing (CARTA catalog+reels
+             §2/§3): the traditional list, kept mounted via v-show rather than
+             v-if whenever the Reel is open, so its own search/category/scroll
+             state survives a round trip into the Reel and back for free. -->
+        <div v-show="menuView === 'catalog'" class="absolute inset-0">
+          <PublicMenuCatalog
+            :restaurant-name="restaurantName"
+            :table-name="tableLabel"
+            :locale="currentLocale"
+            :categories="categoriesWithProducts"
+            :ordering-enabled="orderingEnabled"
+            :cart-count="cart.totalItems.value"
+            :cart-total="cart.total.value"
+            :available-locales="availableLocales"
+            :current-locale="currentLocale"
+            :search-query="catalogSearchQuery"
+            :selected-category-id="catalogSelectedCategoryId"
+            :show-waiter-call="showWaiterCallInMenu"
+            :waiter-called="waiterCalled"
+            :requesting-waiter="requestingWaiter"
+            :show-bill-request="showBillRequestAction"
+            :bill-request-confirmed="effectiveBillRequested"
+            :bill-request-blocked-message="billRequestBlockedMessage"
+            :requesting-bill="requestingBill"
+            :request-error="requestError"
+            :show-feedback="!error && Boolean(feedbackToken) && (feedbackEligible || feedbackAlreadySubmitted)"
+            :feedback-already-submitted="feedbackAlreadySubmitted"
+            @back-to-table="onBackToTable"
+            @open-reel="openReelFromCatalog"
+            @open-info="onOpenProductInfo"
+            @open-cart="showCart = true"
+            @select-locale="selectLocale"
+            @call-waiter="callWaiter"
+            @request-bill="requestBill"
+            @open-feedback="showFeedback = true"
+            @update:search-query="catalogSearchQuery = $event"
+            @update:selected-category-id="catalogSelectedCategoryId = $event"
+          />
         </div>
 
-        <PublicCategoryNav
-          v-if="showCategoryMenu"
-          :categories="categoriesWithProducts"
-          :active-category-id="activeCategoryId"
-          @select="onSelectCategoryFromMenu"
-          @close="showCategoryMenu = false"
-        />
+        <!-- menuView === 'reels' — the exact same Reel as before (CARTA
+             catalog+reels §12: nothing about PublicProductFeed/
+             PublicProductReelCard/video windowing/IntersectionObserver
+             changed), now reached deliberately from the catalog rather than
+             being the default. `:suspended` additionally pauses playback the
+             instant the customer isn't actually looking at it (menuView
+             !== 'reels'), on top of every pre-existing overlay/visibility
+             reason — never plays hidden behind the catalog. -->
+        <div v-show="menuView === 'reels'" class="absolute inset-0">
+          <PublicProductFeed
+            ref="feedRef"
+            :items="feedItems"
+            :locale="currentLocale"
+            :suspended="anyOverlayOpen || menuView !== 'reels'"
+            :ordering-enabled="orderingEnabled"
+            @add="openProduct"
+            @open-product-info="onOpenProductInfo"
+            @active-category-change="activeCategoryId = $event"
+          />
 
-        <!-- Persistent cart access (§27) — a floating pill, never a full-width
-             bar competing with the media. Positioned clear of each card's own
-             bottom content block (name/description/allergens/price/CTA). -->
-        <button
-          v-if="cart.lines.value.length > 0"
-          type="button"
-          class="pointer-events-auto absolute right-3 z-30 flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-label-lg font-medium text-on-primary shadow-elevated hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          style="bottom: max(7.5rem, calc(7.5rem + env(safe-area-inset-bottom)))"
-          @click="showCart = true"
-        >
-          <PhShoppingCart :size="20" />
-          <span>{{ cart.totalItems.value }}</span>
-          <span class="tabular-nums">{{ formatMoney(String(cart.total.value), currentLocale) }}</span>
-        </button>
+          <!-- Compact overlay header (§26, simplified Carta 4.4.1) — floats on top
+               of the media, never reserves layout space from it. The restaurant/
+               table identity pill and the permanent category pills are both gone
+               from here (never deleted from state — `restaurantName`/`tableLabel`
+               still back the intro/gateway stages above, and `categoriesWithProducts`
+               still feeds the hamburger's sheet below): the media itself is the
+               only thing competing for attention now. `pointer-events-none` on the
+               wrapper keeps the empty gaps tap-through; only the actual controls
+               are interactive. -->
+          <div
+            class="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start gap-2 px-3 pb-1"
+            style="padding-top: max(0.625rem, env(safe-area-inset-top))"
+          >
+            <!-- "← Carta" (CARTA catalog+reels §10) — the one way back to the
+                 catalog from here; never falls through to the gateway, never
+                 touches session/cart/feedback/search/category state. -->
+            <button
+              type="button"
+              class="pointer-events-auto inline-flex h-11 items-center gap-1.5 rounded-full bg-black/35 px-3 text-label-lg font-medium text-white backdrop-blur-sm transition-colors duration-200 ease-out hover:bg-black/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              @click="menuView = 'catalog'"
+            >
+              <PhArrowLeft :size="18" aria-hidden="true" />
+              {{ t('publicMenu.feed.backToCatalog') }}
+            </button>
+
+            <AIconButton
+              v-if="categoriesWithProducts.length > 1"
+              :label="t('publicMenu.feed.categoryNavLabel')"
+              variant="onMedia"
+              class="pointer-events-auto rounded-full bg-black/35 backdrop-blur-sm"
+              @click="showCategoryMenu = true"
+            >
+              <PhList :size="20" />
+            </AIconButton>
+
+            <div class="pointer-events-auto ml-auto flex shrink-0 items-center gap-0.5 rounded-full bg-black/35 px-1 backdrop-blur-sm">
+              <PublicLanguageSwitcher :available="availableLocales" :current="currentLocale" on-media @select="selectLocale" />
+              <ThemeSwitcher on-media />
+              <PublicActionsMenu
+                :show-waiter-call="showWaiterCallInMenu"
+                :waiter-called="waiterCalled"
+                :requesting-waiter="requestingWaiter"
+                :show-bill-request="showBillRequestAction"
+                :bill-request-confirmed="effectiveBillRequested"
+                :bill-request-blocked-message="billRequestBlockedMessage"
+                :requesting-bill="requestingBill"
+                :request-error="requestError"
+                :show-feedback="!error && Boolean(feedbackToken) && (feedbackEligible || feedbackAlreadySubmitted)"
+                :feedback-already-submitted="feedbackAlreadySubmitted"
+                @call-waiter="callWaiter"
+                @request-bill="requestBill"
+                @open-feedback="showFeedback = true"
+              />
+            </div>
+          </div>
+
+          <PublicCategoryNav
+            v-if="showCategoryMenu"
+            :categories="categoriesWithProducts"
+            :active-category-id="activeCategoryId"
+            @select="onSelectCategoryFromMenu"
+            @close="showCategoryMenu = false"
+          />
+
+          <!-- Persistent cart access (§27) — a floating pill, never a full-width
+               bar competing with the media. Positioned clear of each card's own
+               bottom content block (name/description/allergens/price/CTA). -->
+          <button
+            v-if="cart.lines.value.length > 0"
+            type="button"
+            class="pointer-events-auto absolute right-3 z-30 flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-label-lg font-medium text-on-primary shadow-elevated hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            style="bottom: max(7.5rem, calc(7.5rem + env(safe-area-inset-bottom)))"
+            @click="showCart = true"
+          >
+            <PhShoppingCart :size="20" />
+            <span>{{ cart.totalItems.value }}</span>
+            <span class="tabular-nums">{{ formatMoney(String(cart.total.value), currentLocale) }}</span>
+          </button>
+        </div>
       </template>
 
+      <AButton v-if="cart.lines.value.length > 0 && (feedItems.length === 0 || (!menu && error))"
+        class="absolute bottom-6 right-4 z-30" @click="showCart = true">
+        {{ t('publicMenu.cart.title') }} · {{ cart.totalItems.value }}
+      </AButton>
       <PublicProductSheet
         v-if="selectedProduct"
         :product="selectedProduct"
@@ -915,6 +1171,7 @@ onBeforeUnmount(() => {
         :locale="currentLocale"
         :submitting="submitting"
         :submit-error="submitError"
+        :unavailable-ids="unavailableIds"
         :bill-requested="effectiveBillRequested"
         :ordering-enabled="orderingEnabled"
         :session-active="sessionActive"
@@ -924,6 +1181,13 @@ onBeforeUnmount(() => {
         @confirm="confirmOrder"
       />
 
+      <div v-if="historyContext" class="fixed bottom-24 right-4 z-30">
+        <AButton variant="tonal" @click="showOrderHistory = true">{{ t('sessionHistory.publicTitle') }}</AButton>
+      </div>
+      <ABottomSheet v-if="showOrderHistory" :label="t('sessionHistory.publicTitle')" @close="showOrderHistory = false">
+        <PublicOrderHistory :orders="publicHistory.orders.value" :loading="publicHistory.loading.value" :error="publicHistory.error.value"
+          :has-more="publicHistory.nextBeforeId.value !== null" :locale="currentLocale" @retry="refreshTracking" @more="publicHistory.loadMore" />
+      </ABottomSheet>
       <PublicOrderSuccess v-if="successOrder" :order="successOrder" :locale="currentLocale" @close="dismissSuccess" />
 
       <PublicFeedbackSheet
@@ -966,6 +1230,7 @@ onBeforeUnmount(() => {
           :requesting-waiter="requestingWaiter"
           :request-error="requestError"
           @retry="retryVisit"
+          @new-visit="startNewVisit"
           @open-feedback="showFeedback = true"
           @call-waiter="callWaiter"
         />

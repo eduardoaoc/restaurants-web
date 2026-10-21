@@ -13,18 +13,19 @@ import type { PublicMenu } from '@/types/public-menu'
  * gets a fresh component instance (see PublicTableView's `:key`), never a
  * silent re-target of the same one.
  */
-export function usePublicMenu(publicToken: string, locale: Ref<string | undefined>) {
+export function usePublicMenu(publicToken: string, locale: Ref<string | undefined>, enabled: Ref<boolean> = ref(true)) {
   const menu = ref<PublicMenu | null>(null)
   const loading = ref(true)
   const error = ref<ApiError | null>(null)
 
   let controller: AbortController | null = null
 
-  async function load(): Promise<void> {
+  async function load(background = false): Promise<void> {
     controller?.abort()
+    if (!enabled.value) return
     controller = new AbortController()
     const { signal } = controller
-    loading.value = true
+    if (!background) loading.value = true
     error.value = null
 
     try {
@@ -33,14 +34,14 @@ export function usePublicMenu(publicToken: string, locale: Ref<string | undefine
       menu.value = result
     } catch (err) {
       if (signal.aborted) return
-      menu.value = null
+      if (!background || ['forbidden', 'unauthenticated'].includes(normalizeApiError(err).kind)) menu.value = null
       error.value = normalizeApiError(err)
     } finally {
       if (!signal.aborted) loading.value = false
     }
   }
 
-  watch(locale, () => void load(), { immediate: true })
+  watch([locale, enabled], () => void load(), { immediate: true })
   onBeforeUnmount(() => controller?.abort())
 
   return { menu, loading, error, reload: load }

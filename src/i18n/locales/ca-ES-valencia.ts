@@ -1,4 +1,74 @@
 export default {
+  dailyOperation: {
+    salesClosed: 'Cobrat · últim dia tancat',
+    salesContextOpen: 'Dia operatiu {date} · obert',
+    salesContextClosed: 'Dia operatiu {date} · tancat',
+    salesNone: 'Encara no s’ha obert cap dia.',
+    openingFloatSourceLabel: 'Declarat en obrir el dia',
+    salesMetric: 'Cobrat en l’operació',
+    title: 'Dia operatiu',
+    openTitle: 'Obrir el dia',
+    businessDate: 'Data operativa: {date}',
+    lastClose: 'Últim tancament: {date}',
+    openingFloat: 'Fons inicial de caixa',
+    openingFloatHelp: 'Efectiu amb què comença la caixa. Usa 0 si no n’hi ha. No compta com a venda.',
+    suggested: 'Suggerit: {amount}',
+    suggestedSources: { previous_close: 'deixat en l’últim tancament', restaurant_default: 'valor per defecte del restaurant', required: '' },
+    invalidAmount: 'Introdueix un import vàlid (màx. 2 decimals, sense negatius).',
+    tooHigh: 'El fons inicial no pot superar {max}.',
+    reviewAvailability: 'Revisa els productes esgotats abans d’obrir. No es restableixen automàticament.',
+    openCta: 'Obrir dia',
+    opening: 'Obrint…',
+    openState: 'Dia obert · {date}',
+    openedBy: 'Obert per {name} · {time}',
+    openingFloatValue: 'Fons inicial: {amount}',
+    received: 'Cobrat en esta operació: {amount}',
+    floatNotSales: 'El fons inicial no se suma a les vendes.',
+    readOnlyFloat: 'El fons inicial no es pot editar després de l’obertura; les diferències es veuen en el recompte del tancament.',
+    notOpen: 'El dia no està obert',
+    notOpenStaff: 'No es poden obrir taules ni prendre comandes fins que un responsable obri el dia.',
+    goToOpen: 'Obrir el dia',
+    closeHint: 'Per a acabar el dia, tanca totes les taules i fes el tancament diari.',
+    retry: 'Tornar a intentar',
+    errors: {
+      notOpen: 'El restaurant encara no ha obert el dia. Torna-ho a provar més tard.',
+      alreadyOpen: 'El dia ja estava obert. Es mostra l’estat actual.',
+      dateClosed: 'Esta data operativa ja està tancada. Podràs obrir el dia següent després de l’hora de tall.',
+    },
+    public: {
+      closedTitle: 'Encara no estem atenent',
+      closedText: 'Pots consultar la carta. Per a demanar, espera que el restaurant obri o pregunta al personal.',
+      checkAgain: 'Comprovar de nou',
+    },
+  },
+  availability: {
+    title: 'Disponibilitat de productes',
+    search: 'Buscar producte',
+    available: 'Disponible',
+    soldOut: 'Esgotat',
+    markSoldOut: 'Marcar esgotat',
+    restore: 'Tornar a disposar',
+    empty: 'No hi ha productes per a mostrar.',
+    itemUnavailable: 'No disponible. Pots eliminar este article.',
+    cartBlocked: 'Revisa o elimina els articles no disponibles abans de confirmar.',
+    invalidOrderItem: 'Algun producte ja no està disponible. Revisa la comanda.',
+    invalidModifiers: 'Alguna opció ja no està disponible. Revisa la comanda.',
+  },
+  sessionHistory: {
+    retry: 'Tornar-ho a provar',
+    "publicTitle": "Comandes de la taula",
+    "groupVisibility": "Les comandes QR es compartixen amb qui està vinculat a esta visita de la taula.",
+    "empty": "Encara no hi ha comandes QR en esta visita.",
+    "loadMore": "Carregar comandes anteriors",
+    "billingRule": "Es cobren les comandes confirmades, acceptades, en preparació, llestes i servides. S’exclouen les pendents d’aprovació i cancel·lades.",
+    "balance": "Saldo pendent",
+    "payment": {
+      "unpaid": "Sense pagar",
+      "partial": "Pagament parcial",
+      "paid": "Pagat"
+    }
+  },
+
   kitchen: {
     title: 'Cuina', subtitle: 'Comandes per ordre d’arribada. Les més antigues primer.',
     columns: { dashboard: 'Panell', confirmed: 'Noves', accepted: 'Acceptades', preparing: 'En preparació', ready: 'Llestes' },
@@ -14,7 +84,7 @@ export default {
     printDisabled: 'La impressió de comandes està desactivada en este restaurant.',
     notPrintable: 'Esta comanda ja no es pot imprimir. Actualitza la cua.',
     limit: 'Es mostren les 100 comandes més antigues. Pot haver-hi més comandes pendents.',
-    refreshHint: 'Pots actualitzar la cua manualment.',
+    refreshHint: 'Les dades s’actualitzen automàticament; també pots actualitzar manualment.',
     connection: { connected: 'En directe', connecting: 'Connectant…', reconnecting: 'Reconnectant…', disconnected: 'Sense connexió en directe', unavailable: 'Actualització en directe no disponible', error: 'No s’ha pogut connectar en directe' },
     dashboard: {
       sections: {
@@ -130,6 +200,7 @@ export default {
     closeMenu: 'Tanca el menú',
   },
   activity: {
+    openTable: 'Obrir taula',
     title: "Centre d'activitat",
     bellLabel: 'Notificacions',
     bellLabelUnread: '{count} notificacions sense llegir',
@@ -169,6 +240,8 @@ export default {
       billRequestAcknowledged: 'Compte en preparació',
       billRequestCompleted: 'Compte entregat',
       paymentRecorded: 'Pagament registrat',
+      tableWaiterAssigned: 'Nova taula assignada',
+      tableAssignmentPending: 'Pendent d’assignació',
       tableSessionOpened: 'Taula oberta',
       tableSessionClosed: 'Taula tancada',
       productMarkedUnavailable: 'Producte no disponible',
@@ -642,6 +715,7 @@ export default {
     },
   },
   tableDrawer: {
+    pendingAssignment: 'Pendent d’assignació',
     freeHint: 'Esta taula està lliure. Obri una sessió per a començar a prendre comandes.',
     guestCount: 'Nombre de clients',
     elapsed: 'Ocupada des de fa',
@@ -904,6 +978,7 @@ export default {
     loading: 'Carregant la carta…',
     languageLabel: 'Idioma',
     entry: {
+      newVisit: 'Iniciar una nova visita',
       welcomeTo: 'Benvingut a',
       readyTitle: 'Tot està preparat.',
       readySubtitle: 'Descobreix la nostra carta.',
@@ -915,6 +990,7 @@ export default {
       waiterCalledSubtitle: 'De seguida estarem amb tu.',
     },
     errors: {
+      visitInvalid: 'Esta visita ja no està disponible. Torna a escanejar el QR o avisa el personal.',
       tableNotFound: 'No hem pogut trobar esta taula. Comprova el codi QR o avisa el personal.',
       menuUnavailable: 'La carta no està disponible en este moment.',
       generic: 'Ha ocorregut un problema. Torna-ho a intentar en uns segons.',
@@ -929,6 +1005,16 @@ export default {
     },
     emptyMenu: 'Encara no hi ha productes disponibles en la carta.',
     emptyCategoryProducts: 'No hi ha productes en esta categoria encara.',
+    catalog: {
+      backToTable: 'Tornar a la taula',
+      searchLabel: 'Buscar en la carta',
+      searchPlaceholder: 'Buscar en la carta...',
+      all: 'Tots',
+      itemCount: '{count} plats',
+      tableSubtitle: 'Carta · {table}',
+      openReel: 'Veure vídeo de {name}',
+      noResults: 'No hem trobat productes amb la teua busca.',
+    },
     product: {
       add: 'Afegir',
       addWithPrice: 'Afegir · {price}',
@@ -1032,6 +1118,7 @@ export default {
       noMediaAlt: 'Sense foto ni vídeo disponible',
       playVideo: 'Reproduir vídeo',
       actionsLabel: 'Més accions',
+      backToCatalog: 'Carta',
     },
     postVisit: {
       paidBadge: 'Pagat',
@@ -1058,6 +1145,7 @@ export default {
     subtitle: 'El que necessita la teua atenció ara mateix.',
     noAccess: 'No tens permís per a veure esta pantalla.',
     pending: {
+      viewOrder: 'Veure comanda',
       title: 'Comandes pendents d\'aprovació',
       empty: 'No hi ha comandes pendents.',
       itemCount: '{count} productes',

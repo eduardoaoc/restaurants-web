@@ -1,3 +1,5 @@
+import type { OperationsDailyOperation, OperationsSalesCard } from '@/types/daily-operation'
+
 /**
  * Shape confirmed against the live backend's OpenAPI contract (L5-swagger,
  * operationId `restaurantOperationsLive`) — GET
@@ -40,6 +42,12 @@ export interface OperationsSummary {
   sales: {
     /** SUM(PaymentRecord.amount) since local midnight — never Order totals. */
     received_today: string
+    /**
+     * Operational-day card (restaurants-api DailyOperationState::salesCard):
+     * payments of the open day's sessions; after closing, the last closed day;
+     * `none` before any day. Never includes the opening float.
+     */
+    operation: OperationsSalesCard
   }
 }
 
@@ -80,6 +88,7 @@ export interface TableActiveSession {
   started_at: string
   elapsed_seconds: number
   guest_count: number
+  assignment_status?: 'assigned' | 'pending'
   assigned_waiter: TableAssignedWaiter | null
 }
 
@@ -205,6 +214,8 @@ export interface OperationsLiveSnapshot {
   restaurant: OperationsRestaurant
   generated_at: string
   summary: OperationsSummary
+  /** Non-financial state of the operational day (restaurants-api DailyOperationState::publicState). */
+  daily_operation: OperationsDailyOperation
   operation: OperationsHealth
   floors: OperationsFloor[]
   /** Tables with no zone_id yet — must still render somewhere, never dropped. */

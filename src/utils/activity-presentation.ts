@@ -46,6 +46,8 @@ export const ACTIVITY_TYPE_PRESENTATION: Record<RestaurantActivityType, Activity
   'bill_request.acknowledged': { labelKey: 'activity.events.billRequestAcknowledged', icon: PhReceipt },
   'bill_request.completed': { labelKey: 'activity.events.billRequestCompleted', icon: PhCheckCircle },
   'payment.recorded': { labelKey: 'activity.events.paymentRecorded', icon: PhCreditCard },
+  'table_session.waiter_assigned': { labelKey: 'activity.events.tableWaiterAssigned', icon: PhHandWaving },
+  'table_session.assignment_pending': { labelKey: 'activity.events.tableAssignmentPending', icon: PhBellSimpleRinging },
   'table_session.opened': { labelKey: 'activity.events.tableSessionOpened', icon: PhDoorOpen },
   'table_session.closed': { labelKey: 'activity.events.tableSessionClosed', icon: PhDoor },
   'product.marked_unavailable': { labelKey: 'activity.events.productMarkedUnavailable', icon: PhPackage },

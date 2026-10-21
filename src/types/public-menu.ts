@@ -36,6 +36,8 @@ export interface PublicRestaurant {
   name: string
   default_locale: string
   enabled_locales: string[]
+  /** false while the operational day is not open: carta readable, no visit/order/request. */
+  service_open: boolean
   capabilities: PublicRestaurantCapabilities
 }
 
@@ -298,4 +300,15 @@ export interface PublicTableRequest {
   type: string
   status: string
   created_at: string
+}
+
+/** Shared QR group orders of the pinned visit; no staff orders or personal notes. */
+export interface PublicTrackedOrder {
+  id: number
+  order_number: string
+  status: string
+  created_at: string
+  total: string
+  items: { name: string; quantity: number; unit_price: string; line_total: string;
+    modifiers: { group_name: string; name: string; price_delta: string }[] }[]
 }

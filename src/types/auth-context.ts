@@ -32,6 +32,7 @@ export type PermissionSlug =
   | 'manage_users'
   | 'manage_menu'
   | 'manage_products'
+  | 'manage_product_availability'
   | 'manage_tables'
   | 'manage_floor_plan'
   | 'assign_waiters'
@@ -50,6 +51,9 @@ export type PermissionSlug =
   | 'manage_staff_reviews'
   | 'view_customer_feedback'
   | 'view_activity'
+  | 'open_daily_operation'
+  | 'close_daily_operation'
+  | 'view_daily_closes'
   | (string & {})
 
 /**

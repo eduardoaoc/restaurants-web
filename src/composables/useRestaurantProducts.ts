@@ -1,6 +1,7 @@
 import { onBeforeUnmount, ref, watch } from 'vue'
 
 import { normalizeApiError, type ApiError } from '@/api/errors'
+import { useCatalogRefresh } from '@/composables/useCatalogRefresh'
 import { usePermissions } from '@/composables/usePermissions'
 import { productService } from '@/services/product.service'
 import { restaurantProductService } from '@/services/restaurant-product.service'
@@ -63,16 +64,16 @@ export function useRestaurantProducts(enabled: () => boolean = () => true) {
   let controller: AbortController | null = null
   let catalogController: AbortController | null = null
 
-  async function fetch(restaurantId: number | null): Promise<void> {
+  async function fetch(restaurantId: number | null, background = false): Promise<void> {
     controller?.abort()
-    restaurantProducts.value = []
+    if (!background) restaurantProducts.value = []
     error.value = null
 
     if (restaurantId === null) return
 
     controller = new AbortController()
     const { signal } = controller
-    loading.value = true
+    if (!background) loading.value = true
 
     try {
       const result = await restaurantProductService.list(restaurantId, signal)
@@ -283,6 +284,11 @@ export function useRestaurantProducts(enabled: () => boolean = () => true) {
 
     return errors
   }
+
+  useCatalogRefresh(async () => {
+    if (enabled()) await fetch(restaurantStore.currentRestaurantId, true)
+    return [error.value]
+  })
 
   onBeforeUnmount(() => {
     controller?.abort()

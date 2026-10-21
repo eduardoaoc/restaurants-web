@@ -16,7 +16,12 @@ import DayCloseStatusCard from '@/components/day-close/DayCloseStatusCard.vue'
 import DayCloseSuccessCard from '@/components/day-close/DayCloseSuccessCard.vue'
 import DayCloseVoidSessionDialog from '@/components/day-close/DayCloseVoidSessionDialog.vue'
 import DayCloseWarningsCard from '@/components/day-close/DayCloseWarningsCard.vue'
+import DailyOperationCard from '@/components/day-close/DailyOperationCard.vue'
+import ProductAvailabilityPanel from '@/components/service/ProductAvailabilityPanel.vue'
 import { useCashMovements } from '@/composables/useCashMovements'
+import { useDailyOperation } from '@/composables/useDailyOperation'
+import { useProductAvailability } from '@/composables/useProductAvailability'
+import { useRestaurantRealtime } from '@/composables/useRestaurantRealtime'
 import { useDayCloseHistory, type DayCloseHistoryFilters } from '@/composables/useDayCloseHistory'
 import { useDayClosePreview } from '@/composables/useDayClosePreview'
 import { useDayCloseSubmit } from '@/composables/useDayCloseSubmit'
@@ -26,6 +31,7 @@ import { tableSessionsService } from '@/services/table-sessions.service'
 import type { CreateCashMovementPayload } from '@/types/cash-movement'
 import type { CreateDayClosePayload, DayClose } from '@/types/day-close'
 import { describeApiError } from '@/utils/error-message'
+import { parseMoneyInput } from '@/utils/price'
 
 /**
  * CARTA 9.1B — "Cierre Diario". Single-screen (non-wizard) orchestration of
@@ -40,8 +46,10 @@ const restaurantStore = useRestaurantStore()
 const { can } = usePermissions()
 
 const canCloseNormal = computed(() => can('close_daily_operation'))
+const canOpenDay = computed(() => can('open_daily_operation'))
 const canViewHistory = computed(() => can('view_daily_closes'))
-const canShowToday = computed(() => canCloseNormal.value)
+const canShowToday = computed(() => canCloseNormal.value || canOpenDay.value)
+const canChangeAvailability = computed(() => can('manage_product_availability') || can('manage_products'))
 
 type Tab = 'today' | 'history'
 const activeTab = ref<Tab>(canViewHistory.value && route.query.tab === 'history' ? 'history' : canShowToday.value ? 'today' : 'history')
@@ -50,8 +58,25 @@ const restaurantId = () => restaurantStore.currentRestaurantId
 const todayEnabled = () => activeTab.value === 'today' && canShowToday.value
 const historyEnabled = () => activeTab.value === 'history' && canViewHistory.value
 
-const preview = useDayClosePreview(restaurantId, todayEnabled)
-const cashMovements = useCashMovements(restaurantId, todayEnabled)
+// Operational day first: the existing close flow only runs on an open day
+// (opening float, then service, then this close finishes the day).
+const daily = useDailyOperation(restaurantId, todayEnabled)
+const dayOpen = computed(() => daily.state.value?.status === 'open')
+const closeEnabled = () => todayEnabled() && canCloseNormal.value && dayOpen.value
+const availability = useProductAvailability(
+  () => todayEnabled() && canChangeAvailability.value && daily.state.value?.status === 'not_open',
+  () => realtime.refresh(),
+)
+// Same realtime/fallback cycle as Service/Dashboard — no extra timer here.
+const realtime = useRestaurantRealtime(restaurantId, todayEnabled, {
+  refresh: async () => {
+    await Promise.all([daily.refetch(), availability.refetch()])
+    return [daily.error.value, availability.error.value]
+  },
+})
+
+const preview = useDayClosePreview(restaurantId, closeEnabled)
+const cashMovements = useCashMovements(restaurantId, closeEnabled)
 const history = useDayCloseHistory(restaurantId, historyEnabled)
 const submit = useDayCloseSubmit(restaurantId, () => canCloseNormal.value)
 
@@ -109,7 +134,7 @@ watch(activeTab, () => {
 watch([openingFloatInput, countedCash, cashLeftForNextDay, cashDifferenceNote, notes], () => submit.resetAttempt())
 
 function onOpeningFloatBlur(): void {
-  const value = openingFloatInput.value.trim()
+  const value = parseMoneyInput(openingFloatInput.value)
   if (preview.preview.value?.cash.opening_float_source === 'required' && value) {
     void preview.refetchWithOpeningFloat(value)
   }
@@ -123,7 +148,7 @@ function onOpeningFloatBlur(): void {
  * the field still shows the value the user already typed.
  */
 function refreshPreview(): void {
-  const value = openingFloatInput.value.trim()
+  const value = parseMoneyInput(openingFloatInput.value)
   if (preview.preview.value?.cash.opening_float_source === 'required' && value) {
     void preview.refetchWithOpeningFloat(value)
   } else {
@@ -131,15 +156,27 @@ function refreshPreview(): void {
   }
 }
 
+/**
+ * Typed amounts as the canonical decimal strings the contract expects
+ * ("100,00" and "100.00" → "100.00"); null = empty or invalid, never zero.
+ * The same values feed the preview, the visible difference and the POST.
+ */
+const parsedCounted = computed(() => parseMoneyInput(countedCash.value))
+const parsedCashLeft = computed(() => parseMoneyInput(cashLeftForNextDay.value))
+const parsedOpeningFloat = computed(() => parseMoneyInput(openingFloatInput.value))
+const amountsValid = computed(() => parsedCounted.value !== null
+  && (cashLeftForNextDay.value.trim() === '' || parsedCashLeft.value !== null)
+  && (preview.preview.value?.cash.opening_float_source !== 'required' || parsedOpeningFloat.value !== null))
+
 function buildPayload(): CreateDayClosePayload | null {
   const p = preview.preview.value
-  if (!p || p.cash.expected_cash === null) return null
+  if (!p || p.cash.expected_cash === null || !amountsValid.value) return null
   return {
     period_started_at: p.period.period_started_at,
     expected_cash_seen: p.cash.expected_cash,
-    opening_float: p.cash.opening_float_source === 'required' ? openingFloatInput.value.trim() : undefined,
-    counted_cash: countedCash.value.trim(),
-    cash_left_for_next_day: cashLeftForNextDay.value.trim() || undefined,
+    opening_float: p.cash.opening_float_source === 'required' ? parsedOpeningFloat.value! : undefined,
+    counted_cash: parsedCounted.value!,
+    cash_left_for_next_day: parsedCashLeft.value ?? undefined,
     cash_difference_note: cashDifferenceNote.value.trim() || undefined,
     notes: notes.value.trim() || undefined,
   }
@@ -183,6 +220,7 @@ async function onConfirmReview(): Promise<void> {
   if (result) {
     successDayClose.value = result
     showReviewDialog.value = false
+    void daily.refetch()
     return
   }
   handleSubmitError()
@@ -227,7 +265,7 @@ function onHistoryFiltersChanged(filters: DayCloseHistoryFilters): void {
   void history.setFilters(filters)
 }
 
-const canSubmitClose = computed(() => countedCash.value.trim() !== '' && preview.preview.value?.cash.expected_cash !== null)
+const canSubmitClose = computed(() => amountsValid.value && preview.preview.value?.cash.expected_cash !== null)
 </script>
 
 <template>
@@ -237,7 +275,7 @@ const canSubmitClose = computed(() => countedCash.value.trim() !== '' && preview
         type="button"
         role="tab"
         :aria-selected="activeTab === 'today'"
-        class="rounded-md px-3 py-1.5 text-label-lg font-medium transition-colors duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        class="min-h-11 rounded-md px-3 py-1.5 text-label-lg font-medium transition-colors duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         :class="activeTab === 'today' ? 'bg-surface-container-highest text-on-surface' : 'text-on-surface-variant hover:text-on-surface'"
         @click="activeTab = 'today'"
       >
@@ -248,7 +286,7 @@ const canSubmitClose = computed(() => countedCash.value.trim() !== '' && preview
         type="button"
         role="tab"
         :aria-selected="activeTab === 'history'"
-        class="rounded-md px-3 py-1.5 text-label-lg font-medium transition-colors duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        class="min-h-11 rounded-md px-3 py-1.5 text-label-lg font-medium transition-colors duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         :class="activeTab === 'history' ? 'bg-surface-container-highest text-on-surface' : 'text-on-surface-variant hover:text-on-surface'"
         @click="activeTab = 'history'"
       >
@@ -265,7 +303,49 @@ const canSubmitClose = computed(() => countedCash.value.trim() !== '' && preview
         <DayCloseSuccessCard :day-close="successDayClose" @view-detail="goToDetail" />
       </template>
 
+      <template v-else-if="!dayOpen">
+        <DailyOperationCard
+          :state="daily.state.value"
+          :loading="daily.loading.value"
+          :error="daily.error.value"
+          :opening="daily.opening.value"
+          :open-error="daily.openError.value"
+          @open="daily.open($event)"
+          @refresh="daily.refetch()"
+        />
+        <ProductAvailabilityPanel
+          v-if="canChangeAvailability && daily.state.value?.status === 'not_open'"
+          :key="restaurantStore.currentRestaurantId ?? 0"
+          :products="availability.products.value"
+          :loading="availability.loading.value"
+          :error="availability.error.value"
+          :busy="availability.busy"
+          :errors="availability.errors"
+          @toggle="availability.toggle"
+          @refresh="realtime.refresh"
+        />
+      </template>
+
+      <template v-else-if="!canCloseNormal">
+        <DailyOperationCard
+          :state="daily.state.value"
+          :loading="daily.loading.value"
+          :error="daily.error.value"
+          :opening="daily.opening.value"
+          :open-error="daily.openError.value"
+          @refresh="daily.refetch()"
+        />
+      </template>
+
       <template v-else>
+        <DailyOperationCard
+          :state="daily.state.value"
+          :loading="daily.loading.value"
+          :error="daily.error.value"
+          :opening="daily.opening.value"
+          :open-error="daily.openError.value"
+          @refresh="daily.refetch()"
+        />
         <div v-if="preview.loading.value && !preview.preview.value" class="flex items-center justify-center py-16">
           <AProgress />
         </div>

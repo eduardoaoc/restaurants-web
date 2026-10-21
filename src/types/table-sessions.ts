@@ -25,6 +25,7 @@ export interface TableSession {
   paid_at: string | null
   opened_by_user_id: number | null
   closed_by_user_id: number | null
+  assignment_status?: 'assigned' | 'pending'
   assigned_waiter: TableSessionAssignedWaiter | null
   created_at: string
   updated_at: string
@@ -54,6 +55,8 @@ export interface BillPayment {
 }
 
 export interface BillOrderSummary {
+  billable: boolean
+  items: import('./orders').OrderItem[]
   id: number
   status: string
   total: string

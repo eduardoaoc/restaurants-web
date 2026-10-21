@@ -33,11 +33,12 @@ export function useOperationalTableDeepLink(
 ) {
   const restaurantStore = useRestaurantStore()
   const pendingTableId = ref<number | null>(null)
+  const pendingSessionId = ref<number | null>(null)
   let sequence = 0
 
   function clearDeepLinkQuery(): void {
-    if (route.query.table === undefined && route.query.restaurant === undefined) return
-    const { table: _table, restaurant: _restaurant, ...rest } = route.query
+    if (route.query.table === undefined && route.query.restaurant === undefined && route.query.session === undefined) return
+    const { table: _table, restaurant: _restaurant, session: _session, ...rest } = route.query
     void router.replace({ query: rest })
   }
 
@@ -74,11 +75,14 @@ export function useOperationalTableDeepLink(
       }
     }
 
+    const sessionId = Number(route.query.session)
+    pendingSessionId.value = Number.isSafeInteger(sessionId) && sessionId > 0 ? sessionId : null
     pendingTableId.value = tableId
   }
 
   function onPendingTableConsumed(): void {
     pendingTableId.value = null
+    pendingSessionId.value = null
     clearDeepLinkQuery()
   }
 
@@ -87,7 +91,7 @@ export function useOperationalTableDeepLink(
   // second deep-link while already on this screen — e.g. scanning another
   // table's QR without leaving the tab — only changes `route.query`, it
   // doesn't remount. `immediate` covers the normal fresh-mount case too.
-  watch(() => [route.query.table, route.query.restaurant] as const, () => void consume(), { immediate: true })
+  watch(() => [route.query.table, route.query.restaurant, route.query.session] as const, () => void consume(), { immediate: true })
 
-  return { pendingTableId, onPendingTableConsumed }
+  return { pendingTableId, pendingSessionId, onPendingTableConsumed }
 }

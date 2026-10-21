@@ -22,6 +22,7 @@ const props = defineProps<{
   currency: string
   submitting: boolean
   submitError: ApiError | null
+  unavailableIds?: number[]
 }>()
 
 const emit = defineEmits<{
@@ -49,6 +50,7 @@ function lineUnitTotal(line: StaffCartLine): number {
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <p class="text-body-lg font-medium text-on-surface">{{ line.name }}</p>
+            <p v-if="unavailableIds?.includes(line.restaurant_product_id)" role="status" class="text-label-lg text-error">{{ t('availability.itemUnavailable') }}</p>
             <p v-if="line.modifiers.length > 0" class="mt-0.5 text-label-md text-on-surface-variant">
               {{ line.modifiers.map((m) => m.option_name).join(', ') }}
             </p>
@@ -64,7 +66,7 @@ function lineUnitTotal(line: StaffCartLine): number {
             <button
               type="button"
               :aria-label="t('publicMenu.product.decrease')"
-              class="flex h-9 w-9 items-center justify-center rounded-full border border-outline text-on-surface hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              class="flex h-11 w-11 items-center justify-center rounded-full border border-outline text-on-surface hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               @click="emit('setQuantity', line.key, line.quantity - 1)"
             >
               <PhMinus :size="16" />
@@ -73,7 +75,7 @@ function lineUnitTotal(line: StaffCartLine): number {
             <button
               type="button"
               :aria-label="t('publicMenu.product.increase')"
-              class="flex h-9 w-9 items-center justify-center rounded-full border border-outline text-on-surface hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-[0.38]"
+              class="flex h-11 w-11 items-center justify-center rounded-full border border-outline text-on-surface hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-[0.38]"
               :disabled="line.quantity >= 50"
               @click="emit('setQuantity', line.key, line.quantity + 1)"
             >
@@ -83,7 +85,7 @@ function lineUnitTotal(line: StaffCartLine): number {
           <button
             type="button"
             :aria-label="t('publicMenu.cart.remove')"
-            class="flex h-9 w-9 items-center justify-center rounded-full text-error hover:bg-error-container focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            class="flex h-11 w-11 items-center justify-center rounded-full text-error hover:bg-error-container focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             @click="emit('remove', line.key)"
           >
             <PhTrash :size="16" />
@@ -102,7 +104,8 @@ function lineUnitTotal(line: StaffCartLine): number {
           <span>{{ t('publicMenu.cart.total') }}</span>
           <span class="tabular-nums">{{ formatMoney(String(total), locale, currency) }}</span>
         </div>
-        <AButton full-width :disabled="lines.length === 0" :loading="submitting" @click="emit('confirm')">
+        <p v-if="unavailableIds?.length" role="status" class="text-body-md text-error">{{ t('availability.cartBlocked') }}</p>
+        <AButton full-width :disabled="lines.length === 0 || !!unavailableIds?.length" :loading="submitting" @click="emit('confirm')">
           {{ submitting ? t('publicMenu.cart.confirming') : t('service.order.confirmOrder') }}
         </AButton>
       </div>

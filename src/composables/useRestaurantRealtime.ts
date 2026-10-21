@@ -1,172 +1,229 @@
 import { onBeforeUnmount, ref, watch } from 'vue'
-import type { Channel } from 'laravel-echo'
-
-import { getEcho } from '@/realtime/echo'
-import {
-  EVENTS_REQUIRING_OPERATIONS_REFRESH,
-  REALTIME_EVENT_NAMES,
-  type RealtimeConnectionState,
-  type RealtimeEventEnvelope,
-  type RealtimeEventName,
-} from '@/types/realtime'
+import { normalizeApiError, type ApiError } from '@/api/errors'
+import { getChannelAuthorizationFailure, getEcho } from '@/realtime/echo'
+import { EVENTS_REQUIRING_OPERATIONS_REFRESH, REALTIME_EVENT_NAMES,
+  type RealtimeConnectionState, type RealtimeEventEnvelope, type RealtimeEventName } from '@/types/realtime'
 
 const REFRESH_DEBOUNCE_MS = 250
+const DIAGNOSTIC_TIMEOUT_MS = 10_000
+const FALLBACK_INTERVAL_MS = 15_000
 
-export interface ReceivedRealtimeEvent extends RealtimeEventEnvelope {
-  name: RealtimeEventName
+type RefreshSource = 'event' | 'subscription' | 'fallback' | 'resume' | 'mutation'
+export interface ReceivedRealtimeEvent extends RealtimeEventEnvelope { name: RealtimeEventName }
+interface RefreshOptions {
+  /** Await the authoritative reads so polling never overlaps itself. */
+  refresh?: () => Promise<readonly (ApiError | null)[]>
 }
 
-/**
- * Reads pusher-js's own raw connection state directly — NOT
- * laravel-echo's `connectionStatus()`/`onConnectionChange()` wrapper,
- * which collapses `unavailable` (a temporary drop pusher-js is already
- * retrying with its own backoff) into the same bucket as `failed` (a
- * genuinely terminal state, e.g. no supported transport at all).
- * Verified live (Passo 1.3 §40 reconnection test): killing Reverb put the
- * raw connection in `unavailable` for ~20-25s while pusher-js retried on
- * its own, then it recovered to `connected` with zero app-level
- * intervention — collapsing that window into "error" would tell the user
- * something is broken when it's actually just reconnecting.
- */
-function mapPusherState(state: string): RealtimeConnectionState {
-  switch (state) {
-    case 'connected':
-      return 'connected'
-    case 'connecting':
-      return 'connecting'
-    case 'unavailable':
-      return 'reconnecting'
-    case 'failed':
-      return 'error'
-    case 'disconnected':
-      return 'disconnected'
-    default:
-      // 'initialized' and any future pusher-js state.
-      return 'connecting'
-  }
-}
-
-/**
- * Subscribes to the current restaurant's private Reverb channel
- * (`restaurant.{id}`, see routes/channels.php + docs/realtime.md) and
- * turns incoming domain events into a debounced signal the caller uses to
- * refetch GET /operations/live — never a second way to mutate/derive
- * domain state on the frontend (Passo 1.3 §5).
- *
- * `restaurantId`/`enabled` mirror useRestaurantOperations' own reactive
- * gate exactly: switching restaurants leaves the old channel and joins
- * the new one, and `enabled() === false` (no view_operations on the
- * current restaurant) never subscribes at all — see the docblock on
- * `can()`'s gate in DashboardView for why that's a deliberate frontend
- * choice, not something the channel's own authorization rule requires
- * (routes/channels.php reuses RestaurantPolicy::view()'s broader
- * reachability, not view_operations — a waiter could technically
- * subscribe, but this app never opens a socket it has no UI to feed).
- *
- * `lastEvent` is the raw, non-debounced envelope of the most recent event
- * — for a consumer that needs to react to one SPECIFIC event name
- * immediately (e.g. the Floor Plan Editor's own conflict handling for
- * `floor_plan.updated`, Passo 1.3 §20) without waiting on the coalesced
- * operational refresh below.
- *
- * `refreshTick` increments (debounced/coalesced — Passo 1.3 §17) whenever
- * one-or-more events in EVENTS_REQUIRING_OPERATIONS_REFRESH arrive within
- * a 250ms window, and once more right after every successful channel
- * subscription (including Pusher/Reverb's own automatic resubscribe after
- * a reconnect) — closing the small race window docs/realtime.md calls out
- * between fetching the snapshot and the subscription actually taking
- * effect, and doubling as the reconnect "catch-up" refetch (Passo 1.3
- * §27) for free, since a resubscribe re-fires the same success callback.
- */
-export function useRestaurantRealtime(restaurantId: () => number | null, enabled: () => boolean) {
+/** One active screen subscription, using the session's singleton Echo. Socket
+ * connectivity alone is insufficient: only subscription success means live.
+ * Events invalidate REST snapshots; they never patch order status locally. */
+export function useRestaurantRealtime(restaurantId: () => number | null, enabled: () => boolean, options: RefreshOptions = {}) {
   const connectionState = ref<RealtimeConnectionState>('disconnected')
   const lastEvent = ref<ReceivedRealtimeEvent | null>(null)
   const refreshTick = ref(0)
+  const lastRefreshSource = ref<RefreshSource | null>(null)
+  let generation = 0
+  let disposed = false
+  let cleanupSubscription: (() => void) | null = null
+  let resumeSubscription: (() => void) | null = null
+  let diagnosticTimer: ReturnType<typeof setTimeout> | null = null
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null
+  let authRetryTimer: ReturnType<typeof setTimeout> | null = null
+  let refreshing = false
+  let queuedSource: RefreshSource | null = null
+  let retryDelay = FALLBACK_INTERVAL_MS
+  let retryAt = 0
+  let readDenied = false
 
-  let joinedRestaurantId: number | null = null
-  let unbindConnectionChange: (() => void) | null = null
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null
+  const active = () => !disposed && restaurantId() !== null && enabled()
+  const visibleOnline = () => !document.hidden && navigator.onLine
+  const clearRefreshTimer = () => { if (refreshTimer) clearTimeout(refreshTimer); refreshTimer = null }
+  const clearDiagnostic = () => { if (diagnosticTimer) clearTimeout(diagnosticTimer); diagnosticTimer = null }
 
-  function scheduleRefresh(): void {
-    if (debounceTimer) clearTimeout(debounceTimer)
-    debounceTimer = setTimeout(() => {
-      debounceTimer = null
-      refreshTick.value += 1
-    }, REFRESH_DEBOUNCE_MS)
+  function armDiagnostic(epoch: number): void {
+    if (diagnosticTimer) return // Retry transitions must not reset the deadline.
+    diagnosticTimer = setTimeout(() => {
+      diagnosticTimer = null
+      if (epoch === generation && connectionState.value !== 'connected' && connectionState.value !== 'error') {
+        connectionState.value = 'unavailable'
+      }
+    }, DIAGNOSTIC_TIMEOUT_MS)
   }
 
-  function leaveCurrentChannel(): void {
-    if (joinedRestaurantId === null) return
-    getEcho()?.leave(`restaurant.${joinedRestaurantId}`)
-    joinedRestaurantId = null
+  function schedule(source: RefreshSource, delay = REFRESH_DEBOUNCE_MS): void {
+    if (!active() || !visibleOnline() || readDenied) return
+    if (refreshing) { queuedSource = source; return }
+    // A domain event supersedes a future fallback, but not Retry-After.
+    clearRefreshTimer()
+    refreshTimer = setTimeout(() => { refreshTimer = null; void refresh(source) }, Math.max(delay, retryAt - Date.now()))
   }
 
-  function subscribeTo(id: number): void {
+  function scheduleFallback(): void {
+    if (connectionState.value !== 'connected' && options.refresh && !refreshTimer) schedule('fallback', retryDelay)
+  }
+
+  async function refresh(source: RefreshSource): Promise<void> {
+    if (!active() || !visibleOnline() || readDenied) return
+    if (refreshing) { queuedSource = source; return }
+    const epoch = generation
+    refreshing = true
+    lastRefreshSource.value = source
+    refreshTick.value++
+    try {
+      const errors = await options.refresh?.() ?? []
+      if (epoch !== generation) return
+      const rateLimited = errors.find(error => error?.kind === 'rate_limited')
+      readDenied = errors.some(error => error && ['forbidden', 'unauthenticated'].includes(error.kind))
+      retryDelay = errors.some(Boolean) ? Math.min(retryDelay * 2, 120_000) : FALLBACK_INTERVAL_MS
+      retryAt = rateLimited ? Date.now() + Math.max(retryDelay, (rateLimited.retryAfterSeconds ?? 0) * 1000) : 0
+    } catch {
+      if (epoch === generation) retryDelay = Math.min(retryDelay * 2, 120_000)
+    } finally {
+      refreshing = false
+      if (!disposed) {
+        const next = queuedSource
+        queuedSource = null
+        if (next) schedule(next)
+        else scheduleFallback()
+      }
+    }
+  }
+
+  function subscribeTo(id: number, epoch: number, authRetryDelay = FALLBACK_INTERVAL_MS): void {
     const echo = getEcho()
-    if (!echo) {
-      connectionState.value = 'unavailable'
-      return
+    if (!echo) { connectionState.value = 'unavailable'; scheduleFallback(); return }
+    const connection = echo.connector.pusher.connection
+    let subscribed = false
+    let previouslySubscribed = false
+    let authFailed = false
+    let timedOut = false
+    let released = false
+    let retryAuthOnResume: (() => void) | null = null
+    const current = () => !released && active() && epoch === generation && restaurantId() === id
+    const updateState = ({ current: state }: { current: string }): void => {
+      if (!current()) return
+      if (state !== 'connected') { subscribed = false; authFailed = false }
+      if (!navigator.onLine) connectionState.value = 'unavailable'
+      else if (subscribed && state === 'connected') connectionState.value = 'connected'
+      else if (authFailed) connectionState.value = 'error'
+      else if (state === 'unavailable' || state === 'failed' || state === 'disconnected' || timedOut) connectionState.value = 'unavailable'
+      else connectionState.value = previouslySubscribed ? 'reconnecting' : 'connecting'
+      if (connectionState.value !== 'connected') armDiagnostic(epoch)
+      else clearDiagnostic()
+      scheduleFallback()
     }
-
-    joinedRestaurantId = id
-    const pusherConnection = echo.connector.pusher.connection
-    connectionState.value = mapPusherState(pusherConnection.state)
-
-    // One connection-level listener is enough for the whole session — it
-    // doesn't need to be re-bound per restaurant switch, only ever torn
-    // down on unmount.
-    if (!unbindConnectionChange) {
-      const onStateChange = ({ current }: { previous: string; current: string }): void => {
-        connectionState.value = mapPusherState(current)
-      }
-      pusherConnection.bind('state_change', onStateChange)
-      unbindConnectionChange = () => pusherConnection.unbind('state_change', onStateChange)
+    updateState({ current: connection.state })
+    connection.bind('state_change', updateState)
+    const channel = echo.private(`restaurant.${id}`)
+    const seen = new Set<string>()
+    const onSubscribed = (): void => {
+      if (!current() || connection.state !== 'connected') return
+      subscribed = true
+      previouslySubscribed = true
+      authFailed = false
+      retryAuthOnResume = null
+      timedOut = false
+      connectionState.value = 'connected'
+      clearDiagnostic()
+      if (authRetryTimer) clearTimeout(authRetryTimer)
+      authRetryTimer = null
+      clearRefreshTimer()
+      schedule('subscription') // Catch up after initial join AND reconnect.
     }
-
-    const channel: Channel = echo.private(`restaurant.${id}`)
-
-    channel.subscribed(() => scheduleRefresh())
-    channel.error(() => {
+    const onError = (failure: unknown): void => {
+      if (!current()) return
+      subscribed = false
+      authFailed = true
       connectionState.value = 'error'
-    })
-
-    // A leading "." tells laravel-echo's EventFormatter to use this exact
-    // wire name verbatim instead of namespacing/mangling it as a Laravel
-    // event class name — required for every custom broadcastAs() name.
-    for (const name of REALTIME_EVENT_NAMES) {
-      channel.listen(`.${name}`, (payload: RealtimeEventEnvelope) => {
-        lastEvent.value = { ...payload, name }
-        if (EVENTS_REQUIRING_OPERATIONS_REFRESH.includes(name)) scheduleRefresh()
-      })
+      clearDiagnostic()
+      scheduleFallback()
+      const detail = failure as { status?: number; error?: unknown }
+      const error = getChannelAuthorizationFailure(`private-restaurant.${id}`) ?? normalizeApiError(detail?.error ?? failure)
+      const status = detail?.status ?? error.status
+      if (status && [401, 403, 419].includes(status)) { retryAuthOnResume = null; return }
+      const retryAuthAt = Date.now() + Math.max(authRetryDelay, (error.retryAfterSeconds ?? 0) * 1000)
+      retryAuthOnResume = () => {
+        if (authRetryTimer || !current() || !visibleOnline()) return
+        authRetryTimer = setTimeout(() => {
+          authRetryTimer = null
+          if (!current() || !visibleOnline()) return
+          cleanupSubscription?.()
+          subscribeTo(id, epoch, Math.min(authRetryDelay * 2, 120_000))
+        }, Math.max(0, retryAuthAt - Date.now()))
+      }
+      retryAuthOnResume()
     }
+    channel.subscribed(onSubscribed)
+    channel.error(onError)
+    const listeners = REALTIME_EVENT_NAMES.map(name => {
+      const listener = (payload: RealtimeEventEnvelope): void => {
+        if (!current() || !subscribed || payload.restaurant_id !== id || payload.schema_version !== 1 || !payload.event_id || seen.has(payload.event_id)) return
+        seen.add(payload.event_id)
+        if (seen.size > 500) seen.delete(seen.values().next().value!)
+        lastEvent.value = { ...payload, name }
+        if (EVENTS_REQUIRING_OPERATIONS_REFRESH.includes(name)) schedule('event')
+      }
+      channel.listen(`.${name}`, listener)
+      return { name, listener }
+    })
+    // The diagnostic deadline is sticky throughout a failed attempt, including
+    // transports that repeatedly cycle connecting without reaching unavailable.
+    const stopDiagnosticWatch = watch(connectionState, state => {
+      if (state === 'unavailable') timedOut = true
+    }, { flush: 'sync' })
+    cleanupSubscription = () => {
+      released = true
+      resumeSubscription = null
+      connection.unbind('state_change', updateState)
+      stopDiagnosticWatch()
+      for (const { name, listener } of listeners) channel.stopListening(`.${name}`, listener)
+      echo.leave(`restaurant.${id}`)
+    }
+    resumeSubscription = () => { updateState({ current: connection.state }); retryAuthOnResume?.() }
   }
 
-  watch(
-    () => [restaurantId(), enabled()] as const,
-    ([id, isEnabled]) => {
-      // Always leave before joining anything else — including a same-id
-      // re-evaluation — so A → B → A → B never leaves stale listeners
-      // bound to an earlier channel instance (Passo 1.3 §29).
-      leaveCurrentChannel()
-      if (debounceTimer) {
-        clearTimeout(debounceTimer)
-        debounceTimer = null
-      }
+  watch(() => [restaurantId(), enabled()] as const, ([id, isEnabled]) => {
+    generation++
+    cleanupSubscription?.()
+    cleanupSubscription = null
+    clearDiagnostic()
+    clearRefreshTimer()
+    if (authRetryTimer) clearTimeout(authRetryTimer)
+    authRetryTimer = null
+    queuedSource = null
+    lastEvent.value = null
+    retryDelay = FALLBACK_INTERVAL_MS
+    retryAt = 0
+    readDenied = false
+    connectionState.value = 'disconnected'
+    if (id !== null && isEnabled) subscribeTo(id, generation)
+  }, { immediate: true, flush: 'sync' })
 
-      if (id !== null && isEnabled) {
-        subscribeTo(id)
-      } else {
-        connectionState.value = 'disconnected'
-      }
-    },
-    { immediate: true },
-  )
-
+  const resume = (): void => {
+    if (active() && visibleOnline()) { resumeSubscription?.(); schedule('resume') }
+    else clearRefreshTimer()
+  }
+  const offline = (): void => {
+    clearRefreshTimer()
+    if (active()) connectionState.value = 'unavailable'
+  }
+  document.addEventListener('visibilitychange', resume)
+  window.addEventListener('focus', resume)
+  window.addEventListener('online', resume)
+  window.addEventListener('offline', offline)
   onBeforeUnmount(() => {
-    leaveCurrentChannel()
-    unbindConnectionChange?.()
-    if (debounceTimer) clearTimeout(debounceTimer)
+    disposed = true
+    generation++
+    cleanupSubscription?.()
+    clearDiagnostic()
+    clearRefreshTimer()
+    if (authRetryTimer) clearTimeout(authRetryTimer)
+    document.removeEventListener('visibilitychange', resume)
+    window.removeEventListener('focus', resume)
+    window.removeEventListener('online', resume)
+    window.removeEventListener('offline', offline)
   })
 
-  return { connectionState, lastEvent, refreshTick }
+  return { connectionState, lastEvent, refreshTick, lastRefreshSource, refresh: () => schedule('mutation') }
 }

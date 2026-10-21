@@ -7,7 +7,9 @@ import DashboardPageHead from '@/components/dashboard/DashboardPageHead.vue'
 import type { DashboardTab } from '@/components/dashboard/DashboardTabs.vue'
 import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
+import DailyOperationBanner from '@/components/shared/DailyOperationBanner.vue'
 import { useOperationalTableDeepLink } from '@/composables/useOperationalTableDeepLink'
+import { provideCatalogRefresh } from '@/composables/useCatalogRefresh'
 import { usePermissions } from '@/composables/usePermissions'
 import { useRestaurantAnalytics } from '@/composables/useRestaurantAnalytics'
 import { useRestaurantOperations } from '@/composables/useRestaurantOperations'
@@ -21,6 +23,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const restaurantStore = useRestaurantStore()
+const refreshCatalog = provideCatalogRefresh()
 const { can, isPlatformAdmin } = usePermissions()
 
 const tab = ref<DashboardTab>('operation')
@@ -52,11 +55,9 @@ watch(pendingTableId, (id) => {
 // composable's own docblock): every bump here means "call
 // operations.refetch()", never a manual snapshot mutation, so no domain
 // logic is duplicated on the frontend (docs/realtime.md).
-const realtime = useRestaurantRealtime(() => restaurantStore.currentRestaurantId, () => canViewOperations.value)
-watch(
-  () => realtime.refreshTick.value,
-  () => operations.refetch(),
-)
+const realtime = useRestaurantRealtime(() => restaurantStore.currentRestaurantId, () => canViewOperations.value, {
+  refresh: async () => { const errors = await refreshCatalog(); await operations.refetch(); return [operations.refreshError.value, ...errors] },
+})
 // Passo 1.2C-B: GET /analytics reuses RestaurantPolicy::viewReports ->
 // view_reports (verified against the real backend Policy) — a distinct
 // permission from view_operations. Same proactive-gate treatment: never
@@ -117,6 +118,13 @@ const attentionCount = computed(() => operations.snapshot.value?.alerts.length ?
         :attention-count="attentionCount"
         :refreshing="operations.refreshing.value"
         :connection-state="realtime.connectionState.value"
+      />
+
+      <DailyOperationBanner
+        v-if="tab === 'operation' && canViewOperations && operations.snapshot.value?.daily_operation"
+        class="mb-4"
+        :daily-operation="operations.snapshot.value.daily_operation"
+        :can-manage="can('open_daily_operation') || can('close_daily_operation')"
       />
 
       <!-- view_operations missing for the current restaurant: never call

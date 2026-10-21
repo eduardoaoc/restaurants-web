@@ -3,6 +3,7 @@ import Pusher from 'pusher-js'
 import type { ChannelAuthorizerGenerator } from 'pusher-js'
 
 import { http } from '@/api/http'
+import { normalizeApiError, type ApiError } from '@/api/errors'
 import { appConfig } from '@/config/runtime'
 
 /**
@@ -15,6 +16,15 @@ import { appConfig } from '@/config/runtime'
  * bootstrap.php/routes/channels.php — see docs/realtime.md).
  */
 let echoInstance: Echo<'reverb'> | null = null
+const authorizationAttempts = new Map<string, symbol>()
+const authorizationFailures = new Map<string, ApiError>()
+
+// Pusher's custom-authorizer path strips AxiosError.status from its
+// subscription_error event. Preserve the normalized result out of band so
+// consumers can distinguish a denied channel from a temporary auth outage.
+export function getChannelAuthorizationFailure(name: string): ApiError | undefined {
+  return authorizationFailures.get(name)
+}
 
 /** Optional locally; partial realtime configuration fails protected builds. */
 export function isRealtimeConfigured(): boolean {
@@ -45,10 +55,21 @@ export function getEcho(): Echo<'reverb'> | null {
     // instance every other request already goes through.
     authorizer: ((channel) => ({
       authorize(socketId, callback) {
+        const attempt = Symbol()
+        authorizationAttempts.set(channel.name, attempt)
+        authorizationFailures.delete(channel.name)
         http
           .post('/broadcasting/auth', { socket_id: socketId, channel_name: channel.name })
-          .then((response) => callback(null, response.data))
-          .catch((error: Error) => callback(error, null))
+          .then((response) => {
+            if (authorizationAttempts.get(channel.name) !== attempt) return
+            authorizationFailures.delete(channel.name)
+            callback(null, response.data)
+          })
+          .catch((error: unknown) => {
+            if (authorizationAttempts.get(channel.name) !== attempt) return
+            authorizationFailures.set(channel.name, normalizeApiError(error))
+            callback(new Error('Private channel authorization failed'), null)
+          })
       },
     })) satisfies ChannelAuthorizerGenerator,
     // laravel-echo auto-registers a global axios request interceptor when
@@ -69,6 +90,29 @@ export function getEcho(): Echo<'reverb'> | null {
  * session's first subscribe always starts from a clean connection.
  */
 export function disconnectEcho(): void {
+  privateChannelReferences.clear()
   echoInstance?.disconnect()
   echoInstance = null
+  authorizationAttempts.clear()
+  authorizationFailures.clear()
+}
+
+// Consumers remove only their own listeners; the final consumer leaves.
+const privateChannelReferences = new Map<string, number>()
+export function retainPrivateChannel(name: string) {
+  const echo = getEcho()
+  if (!echo) return null
+  privateChannelReferences.set(name, (privateChannelReferences.get(name) ?? 0) + 1)
+  let released = false
+  return {
+    channel: echo.private(name),
+    release() {
+      if (released) return
+      released = true
+      if (echoInstance !== echo) return
+      const remaining = (privateChannelReferences.get(name) ?? 1) - 1
+      if (remaining > 0) privateChannelReferences.set(name, remaining)
+      else { privateChannelReferences.delete(name); echo.leave(name) }
+    },
+  }
 }

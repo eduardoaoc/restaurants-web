@@ -199,7 +199,7 @@ export interface DayCloseSections {
 
 export interface DayCloseCashPreview {
   suggested_opening_float: string | null
-  opening_float_source: 'previous_close' | 'restaurant_default' | 'required'
+  opening_float_source: 'daily_operation' | 'previous_close' | 'restaurant_default' | 'required'
   cash_received: string
   cash_pay_ins: string
   cash_pay_outs: string
@@ -256,7 +256,7 @@ export interface DayCloseSummary {
 
 export interface DayCloseCashReport {
   opening_float: string
-  opening_float_source: 'previous_close' | 'restaurant_default' | 'required'
+  opening_float_source: 'daily_operation' | 'previous_close' | 'restaurant_default' | 'required'
   cash_received: string
   cash_pay_ins: string
   cash_pay_outs: string

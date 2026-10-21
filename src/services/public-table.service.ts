@@ -1,10 +1,12 @@
 import { publicHttp } from '@/api/public-http'
+import { publicVisitHeaders, storePublicVisitToken } from '@/utils/public-visit-context'
 import type {
   PublicMenu,
   PublicOrderCreateRequest,
   PublicOrderCreated,
   PublicTableRequest,
   PublicTableResolution,
+  PublicTrackedOrder,
 } from '@/types/public-menu'
 
 /**
@@ -26,9 +28,32 @@ import type {
  * admin Restaurant/Settings endpoints (CLAUDE.md Passo 3.1 §5).
  */
 export const publicTableService = {
+  async orders(publicToken: string, beforeId: number | null, signal?: AbortSignal) {
+    const { data } = await publicHttp.get<{ data: { orders: PublicTrackedOrder[] }; meta: { next_before_id: number | null } }>(
+      `/api/v1/public/tables/${publicToken}/orders`, {
+        headers: publicVisitHeaders(publicToken), signal,
+        params: beforeId === null ? undefined : { before_id: beforeId },
+      },
+    )
+    return { orders: data.data.orders, nextBeforeId: data.meta.next_before_id }
+  },
+
+  async enterTable(publicToken: string): Promise<PublicTableResolution> {
+    const { data } = await publicHttp.post<{ data: PublicTableResolution }>(
+      `/api/v1/public/tables/${publicToken}/enter`,
+      undefined,
+      { headers: publicVisitHeaders(publicToken) },
+    )
+    const token = data.data.session.feedback.token
+    if (!token) throw new Error('Missing public visit context')
+    storePublicVisitToken(publicToken, token)
+    return data.data
+  },
+
   async resolveTable(publicToken: string, signal?: AbortSignal): Promise<PublicTableResolution> {
     const { data } = await publicHttp.get<{ data: PublicTableResolution }>(`/api/v1/public/tables/${publicToken}`, {
       signal,
+      headers: publicVisitHeaders(publicToken),
     })
     return data.data
   },
@@ -42,6 +67,7 @@ export const publicTableService = {
     const { data } = await publicHttp.get<{ data: PublicMenu }>(`/api/v1/public/tables/${publicToken}/menu`, {
       params: locale ? { locale } : undefined,
       signal,
+      headers: publicVisitHeaders(publicToken),
     })
     return data.data
   },
@@ -61,7 +87,7 @@ export const publicTableService = {
     const { data } = await publicHttp.post<{ data: PublicOrderCreated }>(
       `/api/v1/public/tables/${publicToken}/orders`,
       payload,
-      { headers: { 'Idempotency-Key': idempotencyKey } },
+      { headers: { ...publicVisitHeaders(publicToken), 'Idempotency-Key': idempotencyKey } },
     )
     return data.data
   },
@@ -79,6 +105,7 @@ export const publicTableService = {
     const { data } = await publicHttp.post<{ data: PublicTableRequest }>(
       `/api/v1/public/tables/${publicToken}/requests/bill`,
       note ? { note } : undefined,
+      { headers: publicVisitHeaders(publicToken) },
     )
     return data.data
   },
@@ -91,6 +118,7 @@ export const publicTableService = {
     const { data } = await publicHttp.post<{ data: PublicTableRequest }>(
       `/api/v1/public/tables/${publicToken}/requests/call-waiter`,
       note ? { note } : undefined,
+      { headers: publicVisitHeaders(publicToken) },
     )
     return data.data
   },

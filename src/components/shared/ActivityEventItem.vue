@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useRouter } from 'vue-router'
+import AButton from '@/components/ui/AButton.vue'
+import { useRestaurantStore } from '@/stores/restaurant'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -24,7 +27,14 @@ const props = defineProps<{
   isLast: boolean
 }>()
 
+const emit = defineEmits<{ 'open-table': [] }>()
 const { t } = useI18n()
+const router = useRouter()
+const restaurantStore = useRestaurantStore()
+function openTable(): void {
+  void router.push({ name: 'app-service', query: { restaurant: restaurantStore.currentRestaurantId, table: props.event.target_table_id, session: props.event.table_session_id } })
+  emit('open-table')
+}
 
 const presentation = computed(() => ACTIVITY_TYPE_PRESENTATION[props.event.type])
 const tone = computed(() => ACTIVITY_TONE_PRESENTATION[props.event.tone])
@@ -100,6 +110,7 @@ const detailParts = computed<string[]>(() => {
         <time :datetime="event.occurred_at" class="shrink-0 text-label-md tabular-nums text-on-surface-variant">{{ time }}</time>
       </div>
       <p v-if="contextParts.length" class="mt-0.5 text-label-lg text-on-surface-variant">{{ contextParts.join(' · ') }}</p>
+      <AButton v-if="event.target_table_id" variant="text" class="mt-2" @click="openTable">{{ t('activity.openTable') }}</AButton>
       <p v-if="detailParts.length" class="mt-0.5 text-label-md text-on-surface-variant">{{ detailParts.join(' · ') }}</p>
     </div>
   </li>

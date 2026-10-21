@@ -13,13 +13,8 @@ import { describeApiError } from '@/utils/error-message'
 import { formatMoney } from '@/utils/format'
 
 /**
- * "Conta da mesa" (Passo 3.4 §6/§7/§8) — the bill total/breakdown +
- * payment recording, split out of TableDetailsDrawer the same way
- * TableOrdersList already is. Item/modifier-level detail for each order
- * lives in the sibling "Ver pedidos" panel (TableOrdersList already fetches
- * full Order objects with items) — this panel is deliberately totals/
- * payments-only, matching the task's own "separar claramente: ver pedidos /
- * pagar" split.
+ * Session bill using authoritative totals, payments and historical item/
+ * modifier snapshots. Reading the account never invokes a financial action.
  *
  * `bill.can_close` is the ONLY signal TableDetailsDrawer uses to gate its
  * Close button (via the `bill-loaded` emit) — verified live against the
@@ -52,8 +47,9 @@ async function fetchBill(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const result = await tableSessionsService.bill(props.tableSessionId)
+    const result = await tableSessionsService.bill(props.tableSessionId, request.signal)
     if (request.signal.aborted) return
+    if (result.table_session_id !== props.tableSessionId) return
     bill.value = result
     emit('bill-loaded', result)
   } catch (err) {
@@ -117,9 +113,30 @@ async function confirmPayment(): Promise<void> {
     <div v-if="loading && !bill" class="flex justify-center py-4">
       <AProgress size="sm" />
     </div>
-    <p v-else-if="error" class="text-label-md text-error" role="alert">{{ describeApiError(error, t) }}</p>
+    <div v-else-if="error" class="flex flex-col items-start gap-2">
+      <p class="text-label-md text-error" role="alert">{{ describeApiError(error, t) }}</p>
+      <AButton variant="outlined" @click="fetchBill">{{ t('sessionHistory.retry') }}</AButton>
+    </div>
 
     <template v-else-if="bill">
+      <p class="text-label-lg text-on-surface">{{ t(`sessionHistory.payment.${bill.payment_status}`) }}</p>
+      <p class="text-label-md text-on-surface-variant">{{ t('sessionHistory.billingRule') }}</p>
+      <ul class="flex flex-col gap-3">
+        <li v-for="order in bill.orders.filter(order => order.billable)" :key="order.id" class="rounded-lg bg-surface-container p-3">
+          <p class="text-label-lg font-medium text-on-surface">#{{ order.id }} · {{ t(`tableDrawer.orders.status.${order.status}`) }}</p>
+          <ul class="mt-2 flex flex-col gap-2">
+            <li v-for="(item, index) in order.items" :key="index">
+              <div class="flex items-start justify-between gap-3 text-body-md text-on-surface">
+                <span class="min-w-0 break-words">{{ item.quantity }} × {{ item.name }}</span>
+                <span class="shrink-0 tabular-nums">{{ formatMoney(item.line_total, locale, currency) }}</span>
+              </div>
+              <p v-for="(modifier, mi) in item.modifiers" :key="mi" class="text-label-md text-on-surface-variant">
+                {{ modifier.group_name }} · {{ modifier.name }} ({{ formatMoney(modifier.price_delta, locale, currency) }})
+              </p>
+            </li>
+          </ul>
+        </li>
+      </ul>
       <div class="flex flex-col gap-1.5 rounded-lg bg-surface-container p-3">
         <div class="flex items-center justify-between text-body-md text-on-surface-variant">
           <span>{{ t('tableDrawer.bill.ordersTotal') }}</span>
@@ -130,7 +147,7 @@ async function confirmPayment(): Promise<void> {
           <span class="tabular-nums">{{ formatMoney(bill.paid_total, locale, currency) }}</span>
         </div>
         <div class="mt-1 flex items-center justify-between border-t border-outline-variant pt-2 text-title-md font-semibold text-on-surface">
-          <span>{{ hasBalance ? t('tableDrawer.bill.dueNow') : t('tableDrawer.bill.paidInFull') }}</span>
+          <span>{{ t('sessionHistory.balance') }}</span>
           <span class="tabular-nums" :class="hasBalance ? 'text-error' : 'text-on-surface'">
             {{ formatMoney(bill.balance, locale, currency) }}
           </span>

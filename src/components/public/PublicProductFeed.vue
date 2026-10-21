@@ -135,7 +135,22 @@ function scrollToCategory(categoryId: number): void {
   cardEls.get(index)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-defineExpose({ scrollToCategory })
+/**
+ * Catálogo → Reel (CARTA catalog+reels §9) — opens the Reel directly on one
+ * specific product, identified by `restaurant_product_id` (never a
+ * persisted index: a locale switch rebuilds `items` wholesale, same reason
+ * `itemsIdentityKey` above never trusts object identity either). Deliberately
+ * `behavior: 'auto'` (instant), not `scrollToCategory`'s `'smooth'` — jumping
+ * through every card in between on the way there would defeat the entire
+ * point of "opens exactly on the product tapped".
+ */
+function scrollToProduct(restaurantProductId: number): void {
+  const index = props.items.findIndex((item) => item.product.restaurant_product_id === restaurantProductId)
+  if (index === -1) return
+  cardEls.get(index)?.scrollIntoView({ behavior: 'auto', block: 'start' })
+}
+
+defineExpose({ scrollToCategory, scrollToProduct })
 </script>
 
 <template>

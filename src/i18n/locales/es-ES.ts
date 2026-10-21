@@ -1,4 +1,74 @@
 export default {
+  dailyOperation: {
+    salesClosed: 'Cobrado · último día cerrado',
+    salesContextOpen: 'Día operativo {date} · abierto',
+    salesContextClosed: 'Día operativo {date} · cerrado',
+    salesNone: 'Todavía no se ha abierto ningún día.',
+    openingFloatSourceLabel: 'Declarado al abrir el día',
+    salesMetric: 'Cobrado en la operación',
+    title: 'Día operativo',
+    openTitle: 'Abrir el día',
+    businessDate: 'Fecha operativa: {date}',
+    lastClose: 'Último cierre: {date}',
+    openingFloat: 'Fondo inicial de caja',
+    openingFloatHelp: 'Efectivo con el que empieza la caja. Usa 0 si no hay. No cuenta como venta.',
+    suggested: 'Sugerido: {amount}',
+    suggestedSources: { previous_close: 'dejado en el último cierre', restaurant_default: 'valor por defecto del restaurante', required: '' },
+    invalidAmount: 'Introduce un importe válido (máx. 2 decimales, sin negativos).',
+    tooHigh: 'El fondo inicial no puede superar {max}.',
+    reviewAvailability: 'Revisa los productos agotados antes de abrir. No se restablecen automáticamente.',
+    openCta: 'Abrir día',
+    opening: 'Abriendo…',
+    openState: 'Día abierto · {date}',
+    openedBy: 'Abierto por {name} · {time}',
+    openingFloatValue: 'Fondo inicial: {amount}',
+    received: 'Cobrado en esta operación: {amount}',
+    floatNotSales: 'El fondo inicial no se suma a las ventas.',
+    readOnlyFloat: 'El fondo inicial no se puede editar tras la apertura; las diferencias se ven en el recuento del cierre.',
+    notOpen: 'El día no está abierto',
+    notOpenStaff: 'No se pueden abrir mesas ni tomar pedidos hasta que un responsable abra el día.',
+    goToOpen: 'Abrir el día',
+    closeHint: 'Para terminar el día, cierra todas las mesas y haz el cierre diario.',
+    retry: 'Reintentar',
+    errors: {
+      notOpen: 'El restaurante todavía no ha abierto el día. Inténtalo más tarde.',
+      alreadyOpen: 'El día ya estaba abierto. Se muestra el estado actual.',
+      dateClosed: 'Esta fecha operativa ya está cerrada. Podrás abrir el siguiente día después de la hora de corte.',
+    },
+    public: {
+      closedTitle: 'Todavía no estamos atendiendo',
+      closedText: 'Puedes consultar la carta. Para pedir, espera a que el restaurante abra o pregunta al personal.',
+      checkAgain: 'Comprobar de nuevo',
+    },
+  },
+  availability: {
+    title: 'Disponibilidad de productos',
+    search: 'Buscar producto',
+    available: 'Disponible',
+    soldOut: 'Agotado',
+    markSoldOut: 'Marcar agotado',
+    restore: 'Volver a disponer',
+    empty: 'No hay productos para mostrar.',
+    itemUnavailable: 'No disponible. Puedes eliminar este artículo.',
+    cartBlocked: 'Revisa o elimina los artículos no disponibles antes de confirmar.',
+    invalidOrderItem: 'Algún producto ya no está disponible. Revisa tu pedido.',
+    invalidModifiers: 'Alguna opción ya no está disponible. Revisa tu pedido.',
+  },
+  sessionHistory: {
+    retry: 'Reintentar',
+    "publicTitle": "Pedidos de la mesa",
+    "groupVisibility": "Los pedidos QR se comparten con quienes están vinculados a esta visita de la mesa.",
+    "empty": "Todavía no hay pedidos QR en esta visita.",
+    "loadMore": "Cargar pedidos anteriores",
+    "billingRule": "Se cobran los pedidos confirmados, aceptados, en preparación, listos y servidos. Se excluyen los pendientes de aprobación y cancelados.",
+    "balance": "Saldo pendiente",
+    "payment": {
+      "unpaid": "Sin pagar",
+      "partial": "Pago parcial",
+      "paid": "Pagado"
+    }
+  },
+
   kitchen: {
     title: 'Cocina', subtitle: 'Pedidos por orden de llegada. Los más antiguos primero.',
     columns: { dashboard: 'Panel', confirmed: 'Nuevos', accepted: 'Aceptados', preparing: 'En preparación', ready: 'Listos' },
@@ -14,7 +84,7 @@ export default {
     printDisabled: 'La impresión de comandas está desactivada en este restaurante.',
     notPrintable: 'Este pedido ya no se puede imprimir. Actualiza la cola.',
     limit: 'Se muestran los 100 pedidos más antiguos. Puede haber más pedidos pendientes.',
-    refreshHint: 'Puedes actualizar la cola manualmente.',
+    refreshHint: 'Los datos se actualizan automáticamente; también puedes actualizar manualmente.',
     connection: { connected: 'En directo', connecting: 'Conectando…', reconnecting: 'Reconectando…', disconnected: 'Sin conexión en directo', unavailable: 'Actualización en directo no disponible', error: 'No se ha podido conectar en directo' },
     dashboard: {
       sections: {
@@ -130,6 +200,7 @@ export default {
     closeMenu: 'Cerrar menú',
   },
   activity: {
+    openTable: 'Abrir mesa',
     title: 'Centro de actividad',
     bellLabel: 'Notificaciones',
     bellLabelUnread: '{count} notificaciones sin leer',
@@ -169,6 +240,8 @@ export default {
       billRequestAcknowledged: 'Cuenta en preparación',
       billRequestCompleted: 'Cuenta entregada',
       paymentRecorded: 'Pago registrado',
+      tableWaiterAssigned: 'Nueva mesa asignada',
+      tableAssignmentPending: 'Pendiente de asignación',
       tableSessionOpened: 'Mesa abierta',
       tableSessionClosed: 'Mesa cerrada',
       productMarkedUnavailable: 'Producto no disponible',
@@ -642,6 +715,7 @@ export default {
     },
   },
   tableDrawer: {
+    pendingAssignment: 'Pendiente de asignación',
     freeHint: 'Esta mesa está libre. Abre una sesión para empezar a tomar pedidos.',
     guestCount: 'Número de clientes',
     elapsed: 'Ocupada desde hace',
@@ -904,6 +978,7 @@ export default {
     loading: 'Cargando la carta…',
     languageLabel: 'Idioma',
     entry: {
+      newVisit: 'Iniciar una nueva visita',
       welcomeTo: 'Bienvenido a',
       readyTitle: 'Todo está listo.',
       readySubtitle: 'Descubre nuestra carta.',
@@ -915,6 +990,7 @@ export default {
       waiterCalledSubtitle: 'Enseguida estaremos contigo.',
     },
     errors: {
+      visitInvalid: 'Esta visita ya no está disponible. Vuelve a escanear el QR o avisa al personal.',
       tableNotFound: 'No hemos podido encontrar esta mesa. Comprueba el código QR o avisa al personal.',
       menuUnavailable: 'La carta no está disponible en este momento.',
       generic: 'Ha ocurrido un problema. Inténtalo de nuevo en unos segundos.',
@@ -929,6 +1005,16 @@ export default {
     },
     emptyMenu: 'Todavía no hay productos disponibles en la carta.',
     emptyCategoryProducts: 'No hay productos en esta categoría todavía.',
+    catalog: {
+      backToTable: 'Volver a la mesa',
+      searchLabel: 'Buscar en la carta',
+      searchPlaceholder: 'Buscar en la carta...',
+      all: 'Todos',
+      itemCount: '{count} platos',
+      tableSubtitle: 'Carta · {table}',
+      openReel: 'Ver vídeo de {name}',
+      noResults: 'No hemos encontrado productos con tu búsqueda.',
+    },
     product: {
       add: 'Añadir',
       addWithPrice: 'Añadir · {price}',
@@ -1032,6 +1118,7 @@ export default {
       noMediaAlt: 'Sin foto ni vídeo disponible',
       playVideo: 'Reproducir vídeo',
       actionsLabel: 'Más acciones',
+      backToCatalog: 'Carta',
     },
     postVisit: {
       paidBadge: 'Pagado',
@@ -1058,6 +1145,7 @@ export default {
     subtitle: 'Lo que necesita tu atención ahora mismo.',
     noAccess: 'No tienes permiso para ver esta pantalla.',
     pending: {
+      viewOrder: 'Ver pedido',
       title: 'Pedidos pendientes de aprobación',
       empty: 'No hay pedidos pendientes.',
       itemCount: '{count} productos',

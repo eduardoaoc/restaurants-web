@@ -36,10 +36,11 @@ const canView = computed(() => canAny(['update_kitchen_status', 'serve_orders'])
 const canManage = computed(() => can('update_kitchen_status'))
 const queue = useKitchenOrders(() => restaurant.currentRestaurantId, () => canView.value)
 const dashboard = useKitchenDashboard(() => restaurant.currentRestaurantId, () => canView.value)
-const realtime = useRestaurantRealtime(() => restaurant.currentRestaurantId, () => canView.value)
-watch(() => realtime.refreshTick.value, () => {
-  void queue.refetch()
-  void dashboard.refetch()
+const realtime = useRestaurantRealtime(() => restaurant.currentRestaurantId, () => canView.value, {
+  refresh: async () => {
+    await Promise.all([queue.refetch(), dashboard.refetch()])
+    return [queue.error.value, dashboard.error.value]
+  },
 })
 const tab = ref<KitchenStatus | 'dashboard'>('dashboard')
 const TABS = ['dashboard', ...KITCHEN_STATUSES] as const

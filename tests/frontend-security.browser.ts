@@ -66,7 +66,7 @@ export async function runSecurityBrowserChecks() {
     const doubles = [
       [analyticsService, 'get', (marker: string) => ({ marker })],
       [staffService, 'list', (marker: string) => [{ id: 1, name: marker }]],
-      [ordersService, 'list', (marker: string) => [{ id: 1, marker }]],
+      [ordersService, 'list', (marker: string) => [{ id: 1, marker, restaurant: { id: Number(marker.split(':')[0]) }, origin: 'customer_qr', status: 'waiting_approval' }]],
       [dayCloseService, 'preview', (marker: string) => ({ marker })],
       [dayCloseService, 'list', (marker: string) => ({ dayCloses: [{ id: 1, marker }], nextCursor: null })],
     ] as const

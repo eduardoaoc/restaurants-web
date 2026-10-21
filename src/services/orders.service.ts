@@ -22,6 +22,13 @@ interface OrderEnvelope {
  * invent a `reason` field the backend doesn't ask for).
  */
 export const ordersService = {
+  async history(query: { restaurant_id: number; table_session_id: number }, beforeId: number | null, signal?: AbortSignal) {
+    const { data } = await http.get<OrdersListEnvelope & { meta?: { next_before_id: number | null } }>('/api/v1/orders', {
+      params: { ...query, per_page: 20, ...(beforeId === null ? {} : { before_id: beforeId }) }, signal,
+    })
+    return { orders: data.data.orders, nextBeforeId: data.meta?.next_before_id ?? null }
+  },
+
   async list(query: OrdersQuery, signal?: AbortSignal): Promise<Order[]> {
     const { data } = await http.get<OrdersListEnvelope>('/api/v1/orders', { params: query, signal })
     return data.data.orders

@@ -28,6 +28,13 @@ export const restaurantProductService = {
     return data.data.restaurant_products
   },
 
+  async setAvailability(restaurantProductId: number, available: boolean): Promise<RestaurantProduct> {
+    const { data } = await http.patch<RestaurantProductEnvelope>(
+      `/api/v1/restaurant-products/${restaurantProductId}/availability`, { available },
+    )
+    return data.data.restaurant_product
+  },
+
   async attach(restaurantId: number, payload: AttachRestaurantProductPayload): Promise<RestaurantProduct> {
     const { data } = await http.post<RestaurantProductEnvelope>(
       `/api/v1/restaurants/${restaurantId}/products`,

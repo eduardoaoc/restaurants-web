@@ -8,7 +8,10 @@ import AButton from '@/components/ui/AButton.vue'
 import AProgress from '@/components/ui/AProgress.vue'
 import { normalizeApiError, type ApiError } from '@/api/errors'
 import { usePermissions } from '@/composables/usePermissions'
+import { useSessionOrderHistory } from '@/composables/useSessionOrderHistory'
+import { useOrderApprovals } from '@/composables/useOrderApprovals'
 import { ordersService } from '@/services/orders.service'
+import { useRestaurantStore } from '@/stores/restaurant'
 import type { Order, OrderItem, OrderModifier } from '@/types/orders'
 import { describeApiError } from '@/utils/error-message'
 import { formatMoney } from '@/utils/format'
@@ -18,15 +21,25 @@ const props = defineProps<{ tableSessionId: number; currency: string; timezone: 
 // primary_status/orders.ready count — READY -> SERVED can change both —
 // refetches from the same authoritative operations snapshot the rest of
 // the drawer already relies on, never a locally-guessed table state.
-const emit = defineEmits<{ served: [] }>()
+const emit = defineEmits<{ served: []; approved: [] }>()
 
 const { t, locale } = useI18n()
 const { can } = usePermissions()
+const restaurantStore = useRestaurantStore()
+const canApprove = computed(() => can('approve_customer_orders'))
 // serve_orders only (CLAUDE.md §9) — never a role check. Kitchen accounts
 // hold update_kitchen_status, not serve_orders, so KDS never sees this.
 const canServe = computed(() => can('serve_orders'))
-const orders = ref<Order[] | null>(null)
-const error = ref<ApiError | null>(null)
+const history = useSessionOrderHistory<Order>(
+  () => restaurantStore.currentRestaurantId === null ? null : `${restaurantStore.currentRestaurantId}:${props.tableSessionId}`,
+  async (beforeId, signal) => {
+    const restaurantId = restaurantStore.currentRestaurantId!
+    const result = await ordersService.history({ restaurant_id: restaurantId, table_session_id: props.tableSessionId }, beforeId, signal)
+    return { ...result, orders: result.orders.filter(order => order.restaurant.id === restaurantId) }
+  },
+)
+const { orders, error, loading, nextBeforeId } = history
+let contextEpoch = 0
 const servingId = ref<number | null>(null)
 const serveError = reactive<Record<number, ApiError | null>>({})
 
@@ -99,25 +112,22 @@ function modifierPrice(priceDelta: string): string | null {
   return value > 0 ? `+${formatted}` : formatted
 }
 
-let controller: AbortController | null = null
-async function fetchOrders(): Promise<void> {
-  controller?.abort()
-  const request = new AbortController()
-  controller = request
-  error.value = null
-  try {
-    const result = await ordersService.list({ table_session_id: props.tableSessionId }, request.signal)
-    if (!request.signal.aborted) orders.value = result
-  } catch (err) {
-    if (!request.signal.aborted) error.value = normalizeApiError(err)
-  }
-}
+async function fetchOrders(): Promise<void> { await history.refresh() }
 
 // §2/§4: the detail pane navigates INSIDE this same component (list <-> detail)
 // — never a second sheet/modal. `selectedOrderId` alone decides which half of
 // the template renders; the order's number is the only new interactive control.
 const selectedOrderId = ref<number | null>(null)
 const orderDetail = ref<Order | null>(null)
+const approvals = useOrderApprovals(() => canApprove.value, (updated) => {
+  history.cancelPending()
+  detailController?.abort()
+  detailLoading.value = false
+  detailError.value = null
+  if (orders.value) orders.value = orders.value.map(order => order.id === updated.id ? updated : order)
+  if (orderDetail.value?.id === updated.id) orderDetail.value = updated
+  emit('approved')
+}, () => props.tableSessionId)
 const detailLoading = ref(false)
 const detailError = ref<ApiError | null>(null)
 const detailRootRef = ref<HTMLElement | null>(null)
@@ -143,7 +153,7 @@ async function fetchOrderDetail(orderId: number): Promise<void> {
   try {
     const result = await ordersService.get(orderId, request.signal)
     if (request.signal.aborted) return
-    orderDetail.value = result
+    orderDetail.value = result.restaurant.id === restaurantStore.currentRestaurantId ? result : null
   } catch (err) {
     if (request.signal.aborted) return
     detailError.value = normalizeApiError(err)
@@ -177,7 +187,7 @@ function closeDetail(): void {
 }
 
 watch(
-  () => [props.tableSessionId, props.refreshKey],
+  () => props.refreshKey,
   () => {
     void fetchOrders()
     // §13: realtime never opens a new socket here — it reuses the same
@@ -185,10 +195,18 @@ watch(
     // pane stays in sync with a status change from elsewhere.
     if (selectedOrderId.value !== null) void fetchOrderDetail(selectedOrderId.value)
   },
-  { immediate: true },
 )
+watch(() => [restaurantStore.currentRestaurantId, props.tableSessionId], () => {
+  contextEpoch++
+  servingId.value = null
+  for (const id of Object.keys(serveError)) delete serveError[Number(id)]
+  orders.value = null
+  closeDetail()
+  void fetchOrders()
+}, { flush: 'sync' })
+// The parent owns the pending queue refresh. This drawer reads its session
+// history above and passes the authoritative Order to each mutation.
 onBeforeUnmount(() => {
-  controller?.abort()
   detailController?.abort()
 })
 
@@ -204,14 +222,18 @@ onBeforeUnmount(() => {
  */
 async function markServed(order: Order): Promise<void> {
   if (servingId.value !== null) return
+  const epoch = contextEpoch
   servingId.value = order.id
   serveError[order.id] = null
   try {
     const updated = await ordersService.markServed(order.id)
+    if (epoch !== contextEpoch) return
+    history.cancelPending()
     if (orders.value) orders.value = orders.value.map((o) => (o.id === updated.id ? updated : o))
     if (orderDetail.value?.id === updated.id) orderDetail.value = updated
     emit('served')
   } catch (err) {
+    if (epoch !== contextEpoch) return
     const normalized = normalizeApiError(err)
     serveError[order.id] = normalized
     if (normalized.kind === 'conflict' || normalized.kind === 'not_found') {
@@ -219,7 +241,19 @@ async function markServed(order: Order): Promise<void> {
       if (selectedOrderId.value === order.id) await fetchOrderDetail(order.id)
     }
   } finally {
-    servingId.value = null
+    if (epoch === contextEpoch) servingId.value = null
+  }
+}
+
+async function approveOrder(order: Order): Promise<void> {
+  if (!approvals.canAct(order) || approvals.actingOn[order.id]) return
+  const restaurantId = restaurantStore.currentRestaurantId
+  const sessionId = props.tableSessionId
+  const err = await approvals.approve(order)
+  if (restaurantId !== restaurantStore.currentRestaurantId || sessionId !== props.tableSessionId) return
+  if (err?.kind === 'conflict' || err?.kind === 'not_found') {
+    await fetchOrders()
+    if (selectedOrderId.value === order.id) await fetchOrderDetail(order.id)
   }
 }
 </script>
@@ -230,7 +264,10 @@ async function markServed(order: Order): Promise<void> {
       <div v-if="orders === null && !error" class="flex justify-center py-4">
         <AProgress size="sm" />
       </div>
-      <p v-else-if="error" class="text-label-md text-error">{{ t('tableDrawer.orders.error') }}</p>
+      <div v-else-if="error" class="flex flex-col items-start gap-2">
+        <p class="text-label-md text-error" role="alert">{{ describeApiError(error, t) }}</p>
+        <AButton variant="outlined" @click="fetchOrders">{{ t('sessionHistory.retry') }}</AButton>
+      </div>
       <EmptyState v-else-if="orders && orders.length === 0" :icon="PhReceipt" :message="t('tableDrawer.orders.empty')" />
       <ul v-else-if="orders" class="flex flex-col divide-y divide-outline-variant">
         <li v-for="order in orders" :key="order.id" class="flex flex-col gap-2 py-2">
@@ -248,6 +285,15 @@ async function markServed(order: Order): Promise<void> {
               <p class="text-label-md text-on-surface-variant">{{ statusLabel(order.status) }}</p>
             </div>
             <span class="shrink-0 text-body-md font-medium text-on-surface">{{ formatMoney(order.total, locale, currency) }}</span>
+          </div>
+
+          <div v-if="approvals.canAct(order)" class="flex flex-col items-start gap-1.5">
+            <AButton :loading="approvals.actingOn[order.id] === 'approve'" :disabled="!!approvals.actingOn[order.id]" @click="approveOrder(order)">
+              {{ t('service.order.approve') }}
+            </AButton>
+            <p v-if="approvals.actionError[order.id]" class="text-label-md text-error" role="alert">
+              {{ describeApiError(approvals.actionError[order.id]!, t) }}
+            </p>
           </div>
 
           <div v-if="order.status === 'ready' && canServe" class="flex flex-col items-start gap-1.5">
@@ -268,6 +314,9 @@ async function markServed(order: Order): Promise<void> {
           </div>
         </li>
       </ul>
+      <AButton v-if="nextBeforeId !== null" variant="outlined" :loading="loading" @click="history.loadMore">
+        {{ t('sessionHistory.loadMore') }}
+      </AButton>
     </template>
 
     <!-- §2/§14: same drawer, internal navigation only — no ABottomSheet/second dialog here. -->
@@ -354,6 +403,15 @@ async function markServed(order: Order): Promise<void> {
             <span>{{ t('tableDrawer.orders.detail.total') }}</span>
             <span class="tabular-nums">{{ formatMoney(orderDetail.total, locale, currency) }}</span>
           </div>
+        </div>
+
+        <div v-if="approvals.canAct(orderDetail)" class="flex flex-col items-start gap-1.5">
+          <AButton :loading="approvals.actingOn[orderDetail.id] === 'approve'" :disabled="!!approvals.actingOn[orderDetail.id]" @click="approveOrder(orderDetail)">
+            {{ t('service.order.approve') }}
+          </AButton>
+          <p v-if="approvals.actionError[orderDetail.id]" class="text-label-md text-error" role="alert">
+            {{ describeApiError(approvals.actionError[orderDetail.id]!, t) }}
+          </p>
         </div>
 
         <div v-if="orderDetail.status === 'ready' && canServe" class="flex flex-col items-start gap-1.5">

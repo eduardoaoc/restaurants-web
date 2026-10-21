@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PhShoppingCart, PhWarningCircle } from '@phosphor-icons/vue'
 
@@ -46,7 +46,7 @@ const primaryLocale = computed<AppLocale>(() => {
 })
 
 const { categories, loading: categoriesLoading, error: categoriesError } = useRestaurantCategories(() => true)
-const { productsByCategory, loadingByCategory } = useCategoryProducts(() => categories.value, () => true)
+const { productsByCategory, loadingByCategory, refetch: refreshProducts } = useCategoryProducts(() => categories.value, () => true)
 
 function categoryName(category: (typeof categories.value)[number]): string {
   return resolveTranslatedName(category.translations, [locale.value, primaryLocale.value], category.slug)
@@ -57,8 +57,13 @@ function productName(cp: CategoryProduct): string {
   return resolveTranslatedName(product.translations, [locale.value, primaryLocale.value], product.internal_name)
 }
 
+const currentProducts = computed(() => Object.values(productsByCategory).flat())
 const cart = useStaffOrderCart()
+const unavailableIds = computed(() => cart.lines.value.filter(line => !currentProducts.value.some(cp => cp.restaurant_product_id === line.restaurant_product_id && cp.restaurant_product?.available)).map(line => line.restaurant_product_id))
 const selectedProduct = ref<CategoryProduct | null>(null)
+watch(currentProducts, () => {
+  if (selectedProduct.value) selectedProduct.value = currentProducts.value.find(cp => cp.id === selectedProduct.value?.id && cp.restaurant_product?.available) ?? null
+})
 const showCart = ref(false)
 const submitting = ref(false)
 const submitError = ref<ApiError | null>(null)
@@ -70,13 +75,13 @@ function openProduct(cp: CategoryProduct): void {
 
 function onAddToCart(payload: { quantity: number; selections: StaffCartModifierSelection[]; note: string | null }): void {
   const rp = selectedProduct.value?.restaurant_product
-  if (!rp) return
+  if (!rp || !rp.available) return
   cart.addItem({ restaurant_product_id: rp.id, name: productName(selectedProduct.value!), price: rp.price }, payload.quantity, payload.selections, payload.note)
   selectedProduct.value = null
 }
 
 async function confirmOrder(): Promise<void> {
-  if (submitting.value || cart.lines.value.length === 0) return
+  if (unavailableIds.value.length || submitting.value || cart.lines.value.length === 0) return
   submitting.value = true
   submitError.value = null
   try {
@@ -86,6 +91,7 @@ async function confirmOrder(): Promise<void> {
     emit('created', order)
   } catch (err) {
     submitError.value = normalizeApiError(err)
+    if (['INVALID_ORDER_ITEM', 'INVALID_MODIFIER_SELECTION'].includes(submitError.value.code ?? '')) await refreshProducts()
   } finally {
     submitting.value = false
   }
@@ -171,6 +177,7 @@ async function confirmOrder(): Promise<void> {
     :currency="currency"
     :submitting="submitting"
     :submit-error="submitError"
+    :unavailable-ids="unavailableIds"
     @close="showCart = false"
     @set-quantity="cart.setQuantity"
     @remove="cart.removeItem"

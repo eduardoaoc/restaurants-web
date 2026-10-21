@@ -34,6 +34,7 @@ export function useRestaurantOperations(enabled: () => boolean = () => true) {
   const loading = ref(false)
   const refreshing = ref(false)
   const error = ref<ApiError | null>(null)
+  const refreshError = ref<ApiError | null>(null)
 
   let controller: AbortController | null = null
 
@@ -51,6 +52,7 @@ export function useRestaurantOperations(enabled: () => boolean = () => true) {
     }
 
     controller = new AbortController()
+    refreshError.value = null
     const { signal } = controller
     if (isSwitch) loading.value = true
     else refreshing.value = true
@@ -62,6 +64,7 @@ export function useRestaurantOperations(enabled: () => boolean = () => true) {
       error.value = null
     } catch (err) {
       if (signal.aborted) return
+      refreshError.value = normalizeApiError(err)
       // A background refresh failing keeps the last-known-good snapshot on
       // screen rather than replacing working content with an error banner —
       // only a real switch/first-load failure is surfaced that way.
@@ -74,9 +77,9 @@ export function useRestaurantOperations(enabled: () => boolean = () => true) {
     }
   }
 
-  function refetch(): void {
+  async function refetch(): Promise<void> {
     if (!enabled()) return
-    void fetch(restaurantStore.currentRestaurantId, false)
+    await fetch(restaurantStore.currentRestaurantId, false)
   }
 
   watch(
@@ -97,5 +100,5 @@ export function useRestaurantOperations(enabled: () => boolean = () => true) {
 
   onBeforeUnmount(() => controller?.abort())
 
-  return { snapshot, loading, refreshing, error, refetch }
+  return { snapshot, loading, refreshing, error, refreshError, refetch }
 }

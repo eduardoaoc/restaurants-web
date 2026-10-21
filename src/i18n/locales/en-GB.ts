@@ -1,4 +1,74 @@
 export default {
+  dailyOperation: {
+    salesClosed: 'Received · last closed day',
+    salesContextOpen: 'Operational day {date} · open',
+    salesContextClosed: 'Operational day {date} · closed',
+    salesNone: 'No day has been opened yet.',
+    openingFloatSourceLabel: 'Declared when the day was opened',
+    salesMetric: 'Received this operation',
+    title: 'Operational day',
+    openTitle: 'Open the day',
+    businessDate: 'Business date: {date}',
+    lastClose: 'Last close: {date}',
+    openingFloat: 'Opening cash float',
+    openingFloatHelp: 'Cash the drawer starts with. Use 0 if there is none. It does not count as a sale.',
+    suggested: 'Suggested: {amount}',
+    suggestedSources: { previous_close: 'left at the last close', restaurant_default: 'restaurant default', required: '' },
+    invalidAmount: 'Enter a valid amount (max. 2 decimals, no negatives).',
+    tooHigh: 'The opening float cannot exceed {max}.',
+    reviewAvailability: 'Review sold-out products before opening. They are not reset automatically.',
+    openCta: 'Open day',
+    opening: 'Opening…',
+    openState: 'Day open · {date}',
+    openedBy: 'Opened by {name} · {time}',
+    openingFloatValue: 'Opening float: {amount}',
+    received: 'Received in this operation: {amount}',
+    floatNotSales: 'The opening float is not added to sales.',
+    readOnlyFloat: 'The opening float cannot be edited after opening; differences show up in the closing count.',
+    notOpen: 'The day is not open',
+    notOpenStaff: 'Tables cannot be opened and orders cannot be taken until a manager opens the day.',
+    goToOpen: 'Open the day',
+    closeHint: 'To finish the day, close every table and run the daily close.',
+    retry: 'Try again',
+    errors: {
+      notOpen: 'The restaurant has not opened for the day yet. Please try again later.',
+      alreadyOpen: 'The day was already open. Showing the current state.',
+      dateClosed: 'This business date is already closed. You can open the next day after the cut-off time.',
+    },
+    public: {
+      closedTitle: 'We are not serving yet',
+      closedText: 'You can browse the menu. To order, wait until the restaurant opens or ask the staff.',
+      checkAgain: 'Check again',
+    },
+  },
+  availability: {
+    title: 'Product availability',
+    search: 'Search products',
+    available: 'Available',
+    soldOut: 'Sold out',
+    markSoldOut: 'Mark sold out',
+    restore: 'Make available',
+    empty: 'No products to show.',
+    itemUnavailable: 'Unavailable. You can remove this item.',
+    cartBlocked: 'Review or remove unavailable items before confirming.',
+    invalidOrderItem: 'A product is no longer available. Review your order.',
+    invalidModifiers: 'An option is no longer available. Review your order.',
+  },
+  sessionHistory: {
+    retry: 'Retry',
+    "publicTitle": "Table orders",
+    "groupVisibility": "QR orders are shared by everyone linked to this table visit.",
+    "empty": "No QR orders for this visit yet.",
+    "loadMore": "Load earlier orders",
+    "billingRule": "Confirmed, accepted, preparing, ready and served orders are charged. Pending approval and cancelled orders are excluded.",
+    "balance": "Outstanding balance",
+    "payment": {
+      "unpaid": "Unpaid",
+      "partial": "Partially paid",
+      "paid": "Paid"
+    }
+  },
+
   kitchen: {
     title: 'Kitchen', subtitle: 'Orders in arrival order. Oldest first.',
     columns: { dashboard: 'Dashboard', confirmed: 'New', accepted: 'Accepted', preparing: 'Preparing', ready: 'Ready' },
@@ -14,7 +84,7 @@ export default {
     printDisabled: 'Kitchen ticket printing is disabled for this restaurant.',
     notPrintable: 'This order can no longer be printed. Refresh the queue.',
     limit: 'Showing the 100 oldest orders. More orders may be waiting.',
-    refreshHint: 'You can refresh the queue manually.',
+    refreshHint: 'Data refreshes automatically; you can also refresh manually.',
     connection: { connected: 'Live', connecting: 'Connecting…', reconnecting: 'Reconnecting…', disconnected: 'Live connection offline', unavailable: 'Live updates unavailable', error: 'Could not connect to live updates' },
     dashboard: {
       sections: {
@@ -130,6 +200,7 @@ export default {
     closeMenu: 'Close menu',
   },
   activity: {
+    openTable: 'Open table',
     title: 'Activity centre',
     bellLabel: 'Notifications',
     bellLabelUnread: '{count} unread notifications',
@@ -169,6 +240,8 @@ export default {
       billRequestAcknowledged: 'Bill being prepared',
       billRequestCompleted: 'Bill delivered',
       paymentRecorded: 'Payment recorded',
+      tableWaiterAssigned: 'New table assigned',
+      tableAssignmentPending: 'Pending assignment',
       tableSessionOpened: 'Table opened',
       tableSessionClosed: 'Table closed',
       productMarkedUnavailable: 'Product unavailable',
@@ -642,6 +715,7 @@ export default {
     },
   },
   tableDrawer: {
+    pendingAssignment: 'Pending assignment',
     freeHint: 'This table is free. Open a session to start taking orders.',
     guestCount: 'Number of guests',
     elapsed: 'Occupied for',
@@ -904,6 +978,7 @@ export default {
     loading: 'Loading the menu…',
     languageLabel: 'Language',
     entry: {
+      newVisit: 'Start a new visit',
       welcomeTo: 'Welcome to',
       readyTitle: 'Everything is ready.',
       readySubtitle: 'Discover our menu.',
@@ -915,6 +990,7 @@ export default {
       waiterCalledSubtitle: "We'll be with you shortly.",
     },
     errors: {
+      visitInvalid: 'This visit is no longer available. Scan the QR again or ask a member of staff.',
       tableNotFound: "We couldn't find this table. Check the QR code or ask a member of staff.",
       menuUnavailable: 'The menu is not available right now.',
       generic: 'Something went wrong. Please try again in a moment.',
@@ -929,6 +1005,16 @@ export default {
     },
     emptyMenu: 'There are no products available on the menu yet.',
     emptyCategoryProducts: 'There are no products in this category yet.',
+    catalog: {
+      backToTable: 'Back to the table',
+      searchLabel: 'Search the menu',
+      searchPlaceholder: 'Search the menu...',
+      all: 'All',
+      itemCount: '{count} dishes',
+      tableSubtitle: 'Menu · {table}',
+      openReel: 'Watch video for {name}',
+      noResults: "We couldn't find any products matching your search.",
+    },
     product: {
       add: 'Add',
       addWithPrice: 'Add · {price}',
@@ -1032,6 +1118,7 @@ export default {
       noMediaAlt: 'No photo or video available',
       playVideo: 'Play video',
       actionsLabel: 'More actions',
+      backToCatalog: 'Menu',
     },
     postVisit: {
       paidBadge: 'Paid',
@@ -1058,6 +1145,7 @@ export default {
     subtitle: 'What needs your attention right now.',
     noAccess: "You don't have permission to view this screen.",
     pending: {
+      viewOrder: 'View order',
       title: 'Orders waiting for approval',
       empty: 'No orders are waiting for approval.',
       itemCount: '{count} items',

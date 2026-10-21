@@ -42,6 +42,8 @@ export type RestaurantActivityType =
   | 'bill_request.acknowledged'
   | 'bill_request.completed'
   | 'payment.recorded'
+  | 'table_session.waiter_assigned'
+  | 'table_session.assignment_pending'
   | 'table_session.opened'
   | 'table_session.closed'
   | 'product.marked_unavailable'
@@ -83,6 +85,9 @@ export interface RestaurantActivityOrderRef {
  * `type`, never assumes a key exists.
  */
 export interface RestaurantActivityMetadata {
+  recipient_user_id?: number
+  previous_waiter_user_id?: number | null
+  source?: string
   origin?: 'customer_qr' | 'waiter'
   initial_status?: string
   item_count?: number
@@ -105,6 +110,7 @@ export interface RestaurantActivityEvent {
   occurred_at: string
   actor: RestaurantActivityActor
   table: RestaurantActivityTableRef | null
+  target_table_id?: number | null
   table_session_id: number | null
   order: RestaurantActivityOrderRef | null
   table_request_id: number | null
@@ -130,6 +136,7 @@ export interface RestaurantActivityReadState {
  * per_page 1-100).
  */
 export interface RestaurantActivityListParams {
+  scope?: 'assignments'
   category?: RestaurantActivityCategory
   type?: RestaurantActivityType
   from?: string

@@ -12,6 +12,11 @@ import type { ApiError } from '@/api/errors'
  * real reason an action failed).
  */
 const KNOWN_ERROR_CODES: Record<string, string> = {
+  RESTAURANT_DAY_NOT_OPEN: 'dailyOperation.errors.notOpen',
+  DAILY_OPERATION_ALREADY_OPEN: 'dailyOperation.errors.alreadyOpen',
+  INVALID_ORDER_ITEM: 'availability.invalidOrderItem',
+  INVALID_MODIFIER_SELECTION: 'availability.invalidModifiers',
+  PUBLIC_VISIT_INVALID: 'publicMenu.errors.visitInvalid',
   TABLE_SESSION_HAS_NO_BILLABLE_ORDERS: 'common.errors.codes.tableSessionHasNoBillableOrders',
   ZONE_HAS_TABLES: 'common.errors.codes.zoneHasTables',
   FLOOR_HAS_ZONES: 'common.errors.codes.floorHasZones',

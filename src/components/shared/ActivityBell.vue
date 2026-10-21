@@ -10,29 +10,25 @@ import { usePermissions } from '@/composables/usePermissions'
 import { useRestaurantActivity } from '@/composables/useRestaurantActivity'
 import { useRestaurantStore } from '@/stores/restaurant'
 
-/**
- * The AppShell's notification bell (Carta 6.1B §2/§3) — exists, subscribes
- * and fetches ONLY for a user with `view_activity` on the current
- * restaurant. `enabled` below is read by `useRestaurantActivity` itself
- * (the same reactive gate pattern as useRestaurantRealtime/
- * useRestaurantSettings), so a waiter/kitchen/cashier account never joins
- * `restaurant.{id}.activity` and never calls GET .../activity — not merely
- * a hidden button (§45), the composable's own `watch` never subscribes at
- * all when this is false.
+/** Full activity needs view_activity. Service staff see only their own
+ * assignment notices; assign_waiters also grants pending-assignment notices.
+ * REST enforces this scope independently of the bell's presentation gate.
  */
 const { can } = usePermissions()
 const restaurantStore = useRestaurantStore()
 const { t } = useI18n()
 
-const hasAccess = computed(() => can('view_activity'))
+const hasAccess = computed(() => can('view_activity') || can('serve_orders') || can('assign_waiters'))
 
 const activity = useRestaurantActivity(
   () => restaurantStore.currentRestaurantId,
   () => hasAccess.value,
+  () => can('view_activity'),
 )
 
 const panelToggle = useActivityPanelToggle()
 const isOpen = panelToggle.isOpen
+watch(() => restaurantStore.currentRestaurantId, () => panelToggle.close())
 
 // A Dashboard "Ver actividad" CTA (Carta 6.2) flips `isOpen` externally via
 // the same singleton — this watch is what actually fetches/marks-read in

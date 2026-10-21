@@ -69,6 +69,7 @@ const canCreateOrders = computed(() => can('create_orders'))
 // charge) and close_bill (can close, which needs to see what's owed first).
 // Never gated on manage_tables here: viewing/recording money is a distinct
 // grant from configuring the floor plan, even though both may close a table.
+const canViewReceipt = computed(() => can('record_payments') || can('close_bill'))
 const canViewBilling = computed(() => can('record_payments') || can('close_bill'))
 const canRecordPayments = computed(() => can('record_payments'))
 const canHandleTableRequests = computed(() => can('handle_table_requests'))
@@ -91,7 +92,7 @@ const feedback = ref<{ kind: 'success' | 'error'; message: string } | null>(null
 const bill = ref<SessionBill | null>(null)
 
 watch(
-  () => props.table?.id,
+  () => `${restaurantStore.currentRestaurantId}:${props.table?.id}:${props.table?.session?.id}`,
   () => {
     // Carta 8.1B §2: a session's orders are no longer an extra click away —
     // they're visible the moment a table with an active session opens, same
@@ -286,7 +287,7 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
           <div class="rounded-lg bg-surface-container p-3">
             <span class="block text-label-md text-on-surface-variant">{{ t('tableDrawer.waiter') }}</span>
             <span class="mt-1 block truncate text-title-md font-semibold text-on-surface">
-              {{ table.session.assigned_waiter?.name ?? t('tableDrawer.unassigned') }}
+              {{ table.session.assigned_waiter?.name ?? t('tableDrawer.pendingAssignment') }}
             </span>
           </div>
           <div class="rounded-lg bg-surface-container p-3">
@@ -352,7 +353,7 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
           </AButton>
           <AButton v-if="canTransferTables" variant="outlined" @click="showTransfer = true">{{ t('tableDrawer.actions.transfer') }}</AButton>
           <AButton v-if="canViewBilling" variant="tonal" @click="showBill = !showBill">{{ t('tableDrawer.actions.viewBill') }}</AButton>
-          <AButton v-if="canViewBilling" variant="outlined" @click="showReceipt = true">{{ t('tableDrawer.actions.viewReceipt') }}</AButton>
+          <AButton v-if="canViewReceipt" variant="outlined" @click="showReceipt = true">{{ t('tableDrawer.actions.viewReceipt') }}</AButton>
         </div>
 
         <div v-show="table.session && canViewBilling && showBill" class="mt-4 border-t border-outline-variant pt-4">
@@ -402,7 +403,7 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
           {{ t('tableDrawer.closeDisabledHint') }}
         </p>
 
-        <div v-if="showOrders" class="mt-4 border-t border-outline-variant pt-4">
+        <div v-if="showOrders && canViewOrders" class="mt-4 border-t border-outline-variant pt-4">
           <TableOrdersList
             :key="table.session.id"
             :table-session-id="table.session.id"
@@ -410,6 +411,7 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
             :timezone="restaurantStore.currentSettings?.timezone ?? 'Europe/Madrid'"
             :refresh-key="table"
             @served="emit('refresh')"
+            @approved="emit('refresh')"
           />
         </div>
       </template>

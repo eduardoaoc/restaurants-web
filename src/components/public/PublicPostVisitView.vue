@@ -41,6 +41,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   retry: []
+  'new-visit': []
   'open-feedback': []
   'call-waiter': []
 }>()
@@ -117,6 +118,9 @@ const googleReviewUrl = computed(() =>
         </AButton>
 
         <PublicGoogleReviewCta v-if="googleReviewUrl" :url="googleReviewUrl" />
+        <AButton v-if="!visit.visit.active" full-width variant="outlined" @click="emit('new-visit')">
+          {{ t('publicMenu.entry.newVisit') }}
+        </AButton>
 
         <template v-if="visit.visit.active && waiterCallCapable">
           <p v-if="waiterCalled" class="flex items-center justify-center gap-2 rounded-lg bg-surface-container-low px-3 py-2.5 text-label-lg text-on-surface-variant">
