@@ -3,7 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { usePermissions } from '@/composables/usePermissions'
 import { useAuthStore } from '@/stores/auth'
 import { useRestaurantStore } from '@/stores/restaurant'
-import { SERVICE_ACCESS_PERMISSIONS, type PermissionSlug } from '@/types/auth-context'
+import { SERVICE_ACCESS_PERMISSIONS, type PermissionSlug, type PlatformPermissionSlug } from '@/types/auth-context'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -32,6 +32,25 @@ declare module 'vue-router' {
      * session stack succeeding, failing, or even existing.
      */
     public?: boolean
+    /**
+     * Platform-admin area (onboarding). Never loads restaurant context — a
+     * platform admin usually has no organization at all. Guarded by
+     * `platformPermission` against GET /auth/context; the backend's
+     * platform permissions stay the real authority.
+     */
+    platform?: boolean
+    platformPermission?: PlatformPermissionSlug
+    /**
+     * Invitation acceptance (/invitation#token=...): reachable signed in or
+     * not — never bounced by guestOnly/requiresAuth, the backend decides
+     * whether the current session may accept.
+     */
+    invitation?: boolean
+    /**
+     * Password recovery pages: reachable signed in or not, like
+     * `invitation` (a signed-in person may also reset a password).
+     */
+    authFlow?: boolean
   }
 }
 
@@ -54,6 +73,42 @@ const router = createRouter({
       name: 'public-table',
       component: () => import('@/views/public/PublicTableView.vue'),
       meta: { public: true },
+    },
+    {
+      // The e-mail link carries the token in the fragment (#token=...), which
+      // never reaches any server; the view reads it once and strips it.
+      path: '/invitation',
+      name: 'invitation-accept',
+      component: () => import('@/views/invitations/InvitationAcceptView.vue'),
+      meta: { invitation: true },
+    },
+    {
+      path: '/forgot-password',
+      name: 'forgot-password',
+      component: () => import('@/views/auth/ForgotPasswordView.vue'),
+      meta: { authFlow: true },
+    },
+    {
+      // Link from the reset e-mail: #token=...&email=... in the fragment,
+      // stripped by src/utils/url-secret.ts before the app starts.
+      path: '/reset-password',
+      name: 'reset-password',
+      component: () => import('@/views/auth/ResetPasswordView.vue'),
+      meta: { authFlow: true },
+    },
+    {
+      path: '/platform',
+      component: () => import('@/layouts/PlatformLayout.vue'),
+      redirect: { name: 'platform-onboarding' },
+      meta: { requiresAuth: true, platform: true },
+      children: [
+        {
+          path: 'onboarding',
+          name: 'platform-onboarding',
+          component: () => import('@/views/platform/PlatformOnboardingView.vue'),
+          meta: { platformPermission: 'create_platform_restaurants' },
+        },
+      ],
     },
     {
       path: '/app',
@@ -174,6 +229,27 @@ router.beforeEach(async (to) => {
 
   if (to.meta.guestOnly && auth.authenticated) {
     return { name: 'app-dashboard' }
+  }
+
+  if (to.meta.invitation || to.meta.authFlow) return
+
+  if (to.meta.platform) {
+    const { canPlatform } = usePermissions()
+    if (to.meta.platformPermission && !canPlatform(to.meta.platformPermission)) {
+      return { name: 'app-dashboard' }
+    }
+    return
+  }
+
+  // A platform admin without any organization has nothing under /app —
+  // send them to the platform area instead of an empty, 403-ing shell.
+  if (
+    to.meta.requiresAuth &&
+    auth.authContext &&
+    auth.authContext.organizations.length === 0 &&
+    usePermissions().canPlatform('create_platform_restaurants')
+  ) {
+    return { name: 'platform-onboarding' }
   }
 
   if (to.meta.requiresAuth && auth.authenticated) {

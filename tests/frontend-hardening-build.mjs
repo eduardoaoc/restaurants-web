@@ -14,6 +14,8 @@ const negativeCases = [
   ['VITE_REVERB_HOST', 'localhost'],
   ['VITE_REVERB_SCHEME', 'http'],
   ['VITE_REVERB_APP_KEY', ''],
+  ['VITE_PUBLIC_APP_URL', 'https://CHANGE_ME_WEB_HOST'],
+  ['VITE_REVERB_APP_KEY', 'CHANGE_ME_REVERB_APP_KEY'],
 ]
 for (const mode of ['staging', 'production']) {
   for (const [key, value] of negativeCases) {
@@ -84,4 +86,4 @@ for (const mode of ['production', 'staging']) {
     }
   }
 }
-console.log('PASS: 14 fail-fast builds + 2 safe HTTPS/WSS builds; resolved runtime/QR targets and artifact origins verified; inert vendor localhost allowed')
+console.log(`PASS: ${negativeCases.length * 2} fail-fast builds + 2 safe HTTPS/WSS builds; resolved runtime/QR targets and artifact origins verified; inert vendor localhost allowed`)

@@ -1,3 +1,6 @@
+// Must stay the first import: strips one-time secrets (#token=...) from the
+// URL before anything else runs. See src/utils/url-secret.ts.
+import './utils/url-secret'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 

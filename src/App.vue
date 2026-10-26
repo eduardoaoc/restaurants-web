@@ -3,6 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import AButton from '@/components/ui/AButton.vue'
+import ASnackbar from '@/components/ui/ASnackbar.vue'
 
 import AppBootstrapScreen from '@/components/shared/AppBootstrapScreen.vue'
 import router from '@/router'
@@ -41,4 +42,5 @@ onMounted(async () => {
     <AButton @click="retry">{{ t('auth.retry') }}</AButton>
   </div>
   <RouterView v-else-if="isPublicRoute || !route.meta.requiresAuth || auth.authenticated" />
+  <ASnackbar />
 </template>

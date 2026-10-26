@@ -138,6 +138,41 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  const switchingOrganization = ref(false)
+
+  /**
+   * Makes another organization (one the user actively belongs to — the
+   * backend refuses anything else) the session's active organization, then
+   * drops every restaurant-scoped piece of client state before reloading
+   * context + restaurants, so nothing from the previous organization
+   * survives the switch.
+   */
+  async function switchOrganization(organizationId: number): Promise<void> {
+    if (switchingOrganization.value || authContext.value?.active_organization_id === organizationId) return
+    switchingOrganization.value = true
+    try {
+      await authService.selectOrganization(organizationId)
+      const restaurantStore = useRestaurantStore()
+      restaurantStore.clearRestaurant()
+      disconnectEcho()
+      await fetchAuthContext()
+      await restaurantStore.load()
+    } finally {
+      switchingOrganization.value = false
+    }
+  }
+
+  /**
+   * After accepting an invitation the backend has signed this browser in
+   * (possibly as a different account) and chosen the invited organization:
+   * reset everything client-side and resolve identity + context again.
+   */
+  async function adoptAcceptedSession(): Promise<void> {
+    clearSession()
+    notice.value = null
+    await fetchUser()
+  }
+
   async function logout(): Promise<void> {
     notice.value = null
     clearSession()
@@ -163,5 +198,8 @@ export const useAuthStore = defineStore('auth', () => {
     refreshAuthContext,
     login,
     logout,
+    switchingOrganization,
+    switchOrganization,
+    adoptAcceptedSession,
   }
 })

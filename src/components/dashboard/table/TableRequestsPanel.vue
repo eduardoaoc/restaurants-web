@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { PhBellRinging, PhCheck, PhCheckCircle } from '@phosphor-icons/vue'
 
 import AButton from '@/components/ui/AButton.vue'
+import { useSnackbar } from '@/composables/useSnackbar'
 import { normalizeApiError, type ApiError } from '@/api/errors'
 import { tableRequestsService } from '@/services/table-requests.service'
 import type { TableRequest } from '@/types/table-requests'
@@ -18,10 +19,11 @@ import { describeApiError } from '@/utils/error-message'
  * exists specifically for this pending -> acknowledged -> completed
  * lifecycle (TableRequestPolicy), never a role check.
  */
-const props = defineProps<{ tableId: number; restaurantId: number | null; refreshKey?: object }>()
+const props = defineProps<{ tableId: number; restaurantId: number | null; refreshKey?: object; serviceMode?: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
 
 const { t } = useI18n()
+const snackbar = useSnackbar()
 
 const requests = ref<TableRequest[]>([])
 const loading = ref(false)
@@ -76,6 +78,7 @@ async function acknowledge(request: TableRequest): Promise<void> {
   actionError.value = null
   try {
     await tableRequestsService.acknowledge(request.id)
+    if (props.serviceMode) snackbar.showSnackbar({ message: t('tableDrawer.requests.feedback.acknowledged'), kind: 'success' })
     emit('changed')
   } catch (err) {
     actionError.value = normalizeApiError(err)
@@ -90,6 +93,7 @@ async function complete(request: TableRequest): Promise<void> {
   actionError.value = null
   try {
     await tableRequestsService.complete(request.id)
+    if (props.serviceMode) snackbar.showSnackbar({ message: t('tableDrawer.requests.feedback.completed'), kind: 'success' })
     emit('changed')
   } catch (err) {
     actionError.value = normalizeApiError(err)

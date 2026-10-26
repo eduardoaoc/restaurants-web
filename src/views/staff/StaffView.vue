@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PhMagnifyingGlass, PhPlus, PhUsersThree } from '@phosphor-icons/vue'
 
+import InvitationItem from '@/components/invitations/InvitationItem.vue'
 import StaffDetailPanel from '@/components/staff/StaffDetailPanel.vue'
 import StaffForm from '@/components/staff/StaffForm.vue'
 import StaffRow from '@/components/staff/StaffRow.vue'
@@ -11,12 +12,14 @@ import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import ATextField from '@/components/ui/ATextField.vue'
 import { useOrganizationStaff } from '@/composables/useOrganizationStaff'
+import { useStaffInvitations } from '@/composables/useStaffInvitations'
 import { usePermissions } from '@/composables/usePermissions'
 import { useAuthStore } from '@/stores/auth'
 import { useRestaurantStore } from '@/stores/restaurant'
 import { describeApiError } from '@/utils/error-message'
 import { isStaffActive, staffRoleLabelKey } from '@/utils/staff'
-import type { CreateStaffPayload, StaffMember, StaffStatus, UpdateStaffPayload } from '@/types/staff'
+import type { CreateStaffInvitationPayload } from '@/types/invitation'
+import type { StaffMember, StaffStatus, UpdateStaffPayload } from '@/types/staff'
 
 /**
  * "Equipo" — the owner's view of the people who work here (CLAUDE.md Passo
@@ -35,8 +38,19 @@ const { can } = usePermissions()
 
 const canManageUsers = computed(() => can('manage_users'))
 
-const { staff, loading, error, saving, saveError, activeShiftByUserId, canReadShifts, createStaff, updateStaff } =
+const { staff, loading, error, saving, saveError, activeShiftByUserId, canReadShifts, shiftSaving, shiftError, startShift, endShift, updateStaff } =
   useOrganizationStaff(() => canManageUsers.value)
+
+// Adding someone = inviting them (they set their own password on
+// acceptance). Accepted invitations show up in the roster itself; this list
+// keeps only what still needs attention.
+const staffInvitations = useStaffInvitations(() => canManageUsers.value)
+const openInvitations = computed(() =>
+  staffInvitations.invitations.value.filter((invitation) => invitation.state === 'pending' || invitation.state === 'expired'),
+)
+const inviteNotice = ref<string | null>(null)
+const formSaving = computed(() => (panelMode.value === 'create' ? staffInvitations.saving.value : saving.value))
+const formError = computed(() => (panelMode.value === 'create' ? staffInvitations.saveError.value : saveError.value))
 
 type PanelMode = 'none' | 'detail' | 'create' | 'edit'
 type StatusFilter = 'all' | 'active' | 'inactive'
@@ -66,6 +80,7 @@ watch(
   () => {
     panelMode.value = 'none'
     selectedId.value = null
+    inviteNotice.value = null
     query.value = ''
     roleFilter.value = 'all'
     statusFilter.value = 'all'
@@ -100,12 +115,34 @@ const filteredStaff = computed(() => {
   })
 })
 
+/**
+ * Shifts are per restaurant: offered for the CURRENT restaurant only, to
+ * holders of manage_staff_shifts, for an active person assigned there.
+ * Automatic waiter assignment (QR) only considers waiters on shift.
+ */
+const canManageSelectedShift = computed(() => {
+  const member = selectedMember.value
+  const restaurantId = restaurantStore.currentRestaurantId
+  return canReadShifts.value && member !== null && restaurantId !== null && isStaffActive(member.status)
+    && member.restaurants.some((restaurant) => restaurant.id === restaurantId)
+})
+
+async function onStartShift(): Promise<void> {
+  if (selectedId.value !== null) await startShift(selectedId.value)
+}
+
+async function onEndShift(): Promise<void> {
+  const shift = selectedId.value !== null ? activeShiftByUserId.value[selectedId.value] : undefined
+  if (shift) await endShift(shift.id)
+}
+
 /** The backend refuses self-deactivation; the UI simply doesn't offer it. */
 const isSelfSelected = computed(() => selectedMember.value !== null && selectedMember.value.id === authStore.user?.id)
 
 /** `saveError` is shared by the form and the status action — a stale message must never surface in the other one. */
 function clearSaveError(): void {
   saveError.value = null
+  staffInvitations.saveError.value = null
 }
 
 function select(member: StaffMember): void {
@@ -116,6 +153,7 @@ function select(member: StaffMember): void {
 
 function startCreate(): void {
   clearSaveError()
+  inviteNotice.value = null
   selectedId.value = null
   panelMode.value = 'create'
 }
@@ -137,10 +175,13 @@ async function changeStatus(status: StaffStatus): Promise<void> {
   await updateStaff(selectedId.value, { status })
 }
 
-async function onSave(payload: CreateStaffPayload | UpdateStaffPayload): Promise<void> {
+async function onSave(payload: CreateStaffInvitationPayload | UpdateStaffPayload): Promise<void> {
   if (panelMode.value === 'create') {
-    const err = await createStaff(payload as CreateStaffPayload)
-    if (!err) panelMode.value = 'none'
+    const created = await staffInvitations.invite(payload as CreateStaffInvitationPayload)
+    if (created) {
+      panelMode.value = 'none'
+      inviteNotice.value = t('staffInvitations.sent', { email: created.email })
+    }
     return
   }
 
@@ -160,7 +201,7 @@ async function onSave(payload: CreateStaffPayload | UpdateStaffPayload): Promise
       </div>
       <AButton v-if="canManageUsers && staff.length > 0" @click="startCreate">
         <template #leading><PhPlus :size="16" /></template>
-        {{ t('staff.addPerson') }}
+        {{ t('staffInvitations.invitePerson') }}
       </AButton>
     </div>
 
@@ -169,6 +210,26 @@ async function onSave(payload: CreateStaffPayload | UpdateStaffPayload): Promise
     </ASurface>
 
     <template v-else>
+      <p v-if="inviteNotice" class="text-body-md text-on-surface" role="status">{{ inviteNotice }}</p>
+
+      <ASurface v-if="openInvitations.length > 0 || staffInvitations.error.value" tone="container" radius="lg" bordered class="p-4">
+        <h3 class="text-title-md font-medium text-on-surface">{{ t('staffInvitations.title') }}</h3>
+        <p class="text-body-md text-on-surface-variant">{{ t('staffInvitations.subtitle') }}</p>
+        <p v-if="staffInvitations.error.value" class="mt-2 text-body-md text-error" role="alert">{{ t('staffInvitations.loadError') }}</p>
+        <ul class="mt-1 divide-y divide-outline-variant" :aria-label="t('staffInvitations.title')">
+          <li v-for="invitation in openInvitations" :key="invitation.id">
+            <InvitationItem
+              :invitation="invitation"
+              :context="invitation.restaurants.map((r) => r.name).filter(Boolean).join(', ')"
+              :busy="staffInvitations.busyId.value === invitation.id"
+              :error="staffInvitations.itemErrors.value[invitation.id] ?? null"
+              @resend="staffInvitations.act(invitation, 'resend')"
+              @revoke="staffInvitations.act(invitation, 'revoke')"
+            />
+          </li>
+        </ul>
+      </ASurface>
+
       <div v-if="loading" class="flex items-center justify-center py-16">
         <AProgress />
       </div>
@@ -184,7 +245,7 @@ async function onSave(payload: CreateStaffPayload | UpdateStaffPayload): Promise
       </ASurface>
 
       <!-- Nobody yet: invite the first action rather than showing an empty list. -->
-      <ASurface v-else-if="staff.length === 0" tone="container" radius="lg" bordered elevated class="max-w-xl p-6">
+      <ASurface v-else-if="staff.length === 0 && panelMode !== 'create'" tone="container" radius="lg" bordered elevated class="max-w-xl p-6">
         <div class="flex items-start gap-3">
           <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-container text-on-primary-container">
             <PhUsersThree :size="22" aria-hidden="true" />
@@ -196,7 +257,7 @@ async function onSave(payload: CreateStaffPayload | UpdateStaffPayload): Promise
         </div>
         <AButton class="mt-5" @click="startCreate">
           <template #leading><PhPlus :size="16" /></template>
-          {{ t('staff.addPerson') }}
+          {{ t('staffInvitations.invitePerson') }}
         </AButton>
       </ASurface>
 
@@ -275,15 +336,15 @@ async function onSave(payload: CreateStaffPayload | UpdateStaffPayload): Promise
         <div class="flex flex-col gap-4">
           <ASurface v-if="panelMode === 'create' || panelMode === 'edit'" tone="container" radius="lg" bordered class="p-4">
             <h3 class="text-title-md font-medium text-on-surface">
-              {{ panelMode === 'create' ? t('staff.form.createTitle') : t('staff.form.editTitle') }}
+              {{ panelMode === 'create' ? t('staffInvitations.formTitle') : t('staff.form.editTitle') }}
             </h3>
             <div class="mt-3">
               <StaffForm
                 :key="panelMode === 'edit' ? `edit-${selectedId}` : 'create'"
                 :mode="panelMode === 'create' ? 'create' : 'edit'"
                 :member="panelMode === 'edit' ? (selectedMember ?? undefined) : undefined"
-                :saving="saving"
-                :error="saveError"
+                :saving="formSaving"
+                :error="formError"
                 @save="onSave"
                 @cancel="panelMode = selectedMember ? 'detail' : 'none'"
               />
@@ -300,6 +361,12 @@ async function onSave(payload: CreateStaffPayload | UpdateStaffPayload): Promise
             :is-self="isSelfSelected"
             :status-saving="saving"
             :status-error="saveError"
+            :can-manage-shift="canManageSelectedShift"
+            :current-restaurant-name="restaurantStore.currentRestaurant?.name ?? null"
+            :shift-saving="shiftSaving"
+            :shift-error="shiftError"
+            @start-shift="onStartShift"
+            @end-shift="onEndShift"
             @edit="startEdit"
             @deactivate="changeStatus('inactive')"
             @reactivate="changeStatus('active')"

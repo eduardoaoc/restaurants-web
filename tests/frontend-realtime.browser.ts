@@ -95,11 +95,16 @@ export async function runRealtimeChecks() {
     await advance(15000); check(channels.get('restaurant.1') === channel, '403 does not loop auth requests')
     channel.success(); check(feed.connectionState.value === 'connected', 'confirmed subscription is live')
     await advance(250); const before = reads
-    await advance(60000); check(reads === before, 'polling stops while channel is healthy')
+    await advance(59000); check(reads === before, '15 s fallback polling stops while channel is healthy')
+    await advance(1000); check(reads === before + 1, 'one 60 s safety reconcile while connected (worker may be stopped)')
+    const afterSafety = reads
     event(channel, 'same'); event(channel, 'same'); event(channel, 'wrong', 2)
-    await advance(250); check(reads === before + 1, 'duplicate and wrong tenant events ignored')
+    await advance(250); check(reads === afterSafety + 1, 'duplicate and wrong tenant events ignored')
+    await advance(59000); check(reads === afterSafety + 1, 'an event re-arms the safety reconcile instead of adding reads')
     state('connecting'); check(feed.connectionState.value === 'reconnecting', 'loss after live is reconnecting')
+    const lossReads = reads
     await advance(10000); check(feed.connectionState.value === 'unavailable', 'reconnect deadline bounded')
+    await advance(5000); check(reads === lossReads + 1, 'loss replaces the 60 s safety timer with the 15 s fallback')
     state('connected'); channel.success(); await advance(250)
     check(feed.lastRefreshSource.value === 'subscription', 'reconnect reconciles REST')
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: false }); window.dispatchEvent(new Event('offline'))

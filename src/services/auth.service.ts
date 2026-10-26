@@ -20,6 +20,10 @@ interface AuthContextEnvelope {
  *   GET  /api/v1/auth/me                                       -> { data: { user } }
  *   GET  /api/v1/auth/context                                  -> { data: AuthContext }
  *   POST /api/v1/auth/logout                                   -> 204 No Content
+ *   PUT  /api/v1/auth/active-organization { organization_id }  -> { data: { active_organization_id } } | 404 | 409
+ *   POST /api/v1/auth/forgot-password { email, locale? }        -> 200 generic message (never reveals the account)
+ *   POST /api/v1/auth/reset-password/preview { email, token }   -> { data: { valid: true } } | 422 PASSWORD_RESET_INVALID
+ *   POST /api/v1/auth/reset-password { email, token, password, password_confirmation } -> 200 | 422 (no sign-in)
  */
 export const authService = {
   async csrf(): Promise<void> {
@@ -39,6 +43,22 @@ export const authService = {
   async context(): Promise<AuthContext> {
     const { data } = await http.get<AuthContextEnvelope>('/api/v1/auth/context')
     return data.data
+  },
+
+  async selectOrganization(organizationId: number): Promise<void> {
+    await http.put('/api/v1/auth/active-organization', { organization_id: organizationId })
+  },
+
+  async forgotPassword(email: string, locale: string): Promise<void> {
+    await http.post('/api/v1/auth/forgot-password', { email, locale })
+  },
+
+  async previewPasswordReset(email: string, token: string): Promise<void> {
+    await http.post('/api/v1/auth/reset-password/preview', { email, token })
+  },
+
+  async resetPassword(email: string, token: string, password: string, passwordConfirmation: string): Promise<void> {
+    await http.post('/api/v1/auth/reset-password', { email, token, password, password_confirmation: passwordConfirmation })
   },
 
   async logout(): Promise<void> {

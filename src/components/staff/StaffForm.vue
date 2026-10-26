@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhEye, PhEyeSlash, PhPlus, PhTrash } from '@phosphor-icons/vue'
+import { PhPlus, PhTrash } from '@phosphor-icons/vue'
 
 import type { ApiError } from '@/api/errors'
 import AButton from '@/components/ui/AButton.vue'
@@ -11,9 +11,9 @@ import ATextField from '@/components/ui/ATextField.vue'
 import { useRestaurantStore } from '@/stores/restaurant'
 import { describeApiError } from '@/utils/error-message'
 import { staffRoleLabelKey } from '@/utils/staff'
+import type { CreateStaffInvitationPayload } from '@/types/invitation'
 import {
   ASSIGNABLE_STAFF_ROLES,
-  type CreateStaffPayload,
   type StaffMember,
   type StaffRoleSlug,
   type UpdateStaffPayload,
@@ -27,7 +27,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  save: [CreateStaffPayload | UpdateStaffPayload]
+  save: [CreateStaffInvitationPayload | UpdateStaffPayload]
   cancel: []
 }>()
 
@@ -43,8 +43,6 @@ interface AssignmentDraft {
 
 const name = ref('')
 const email = ref('')
-const password = ref('')
-const passwordVisible = ref(false)
 const role = ref<StaffRoleSlug>('waiter')
 const assignments = ref<AssignmentDraft[]>([])
 
@@ -57,8 +55,6 @@ function seed(): void {
   const member = props.member
   name.value = member?.name ?? ''
   email.value = member?.email ?? ''
-  password.value = ''
-  passwordVisible.value = false
   role.value = (member?.role?.slug as StaffRoleSlug) ?? 'waiter'
   assignments.value = member
     ? member.restaurants.map((restaurant) => ({ restaurantId: restaurant.id, employeeCode: restaurant.sub_id }))
@@ -114,7 +110,6 @@ function validate(): boolean {
 
   if (!name.value.trim()) errors.name = t('staff.errors.nameRequired')
   if (!email.value.trim()) errors.email = t('staff.errors.emailRequired')
-  if (props.mode === 'create' && password.value.length < 8) errors.password = t('staff.errors.passwordMin')
   if (assignments.value.length === 0) errors['restaurant_assignments'] = t('staff.errors.assignmentRequired')
 
   assignments.value.forEach((assignment, index) => {
@@ -140,14 +135,15 @@ function submit(): void {
       sub_id: assignment.employeeCode.trim(),
     }))
 
+  // Create = invite: the person chooses their own password on acceptance
+  // (POST /staff/invitations). No password is ever set by the inviter.
   if (props.mode === 'create') {
     emit('save', {
       name: name.value.trim(),
       email: email.value.trim(),
-      password: password.value,
       role: role.value,
       restaurant_assignments: restaurantAssignments,
-    } satisfies CreateStaffPayload)
+    } satisfies CreateStaffInvitationPayload)
     return
   }
 
@@ -173,6 +169,7 @@ function submit(): void {
 
 <template>
   <form class="flex flex-col gap-4" @submit.prevent="submit">
+    <p v-if="mode === 'create'" class="text-body-md text-on-surface-variant">{{ t('staffInvitations.formHelp') }}</p>
     <ATextField
       v-model="name"
       :label="t('staff.form.nameLabel')"
@@ -192,29 +189,6 @@ function submit(): void {
       autocomplete="email"
       required
     />
-
-    <!-- Create only: the API has no way to set or change a password later. -->
-    <div v-if="mode === 'create'" class="flex items-end gap-2">
-      <ATextField
-        v-model="password"
-        class="flex-1"
-        :label="t('staff.form.passwordLabel')"
-        :help-text="t('staff.form.passwordHelp')"
-        :error="fieldError('password')"
-        :disabled="saving"
-        :type="passwordVisible ? 'text' : 'password'"
-        autocomplete="new-password"
-        required
-      />
-      <AIconButton
-        :label="passwordVisible ? t('staff.form.hidePassword') : t('staff.form.showPassword')"
-        :disabled="saving"
-        @click="passwordVisible = !passwordVisible"
-      >
-        <PhEyeSlash v-if="passwordVisible" :size="18" />
-        <PhEye v-else :size="18" />
-      </AIconButton>
-    </div>
 
     <div>
       <label :for="roleSelectId" class="text-label-lg font-medium text-on-surface-variant">
@@ -308,7 +282,7 @@ function submit(): void {
 
     <div class="flex flex-wrap items-center gap-2">
       <AButton type="submit" :loading="saving">
-        {{ mode === 'create' ? t('staff.form.create') : t('common.save') }}
+        {{ mode === 'create' ? t('staffInvitations.send') : t('common.save') }}
       </AButton>
       <AButton variant="text" type="button" :disabled="saving" @click="emit('cancel')">{{ t('common.cancel') }}</AButton>
     </div>

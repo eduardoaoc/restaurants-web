@@ -6,14 +6,24 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <ul class="kitchen-items flex flex-col gap-4">
-    <li v-for="item in items" :key="item.id" class="break-words">
-      <p class="text-body-lg font-semibold">{{ item.quantity }}× {{ item.name }}</p>
-      <ul v-if="item.modifiers.length" class="mt-1 flex flex-col gap-1 pl-3 text-body-md">
+  <ul class="kitchen-items">
+    <li v-for="item in items" :key="item.id" class="kitchen-item">
+      <p class="kitchen-item-primary"><span class="kitchen-item-quantity tabular-nums">{{ item.quantity }}×</span> {{ item.name }}</p>
+      <ul v-if="item.modifiers.length" class="kitchen-item-modifiers">
         <li v-for="(modifier, index) in item.modifiers" :key="index">{{ modifier.group_name }}: {{ modifier.name }}</li>
       </ul>
-      <p v-if="item.note" class="mt-2 whitespace-pre-wrap border-l-2 border-outline pl-3 text-body-md font-medium">{{ t('kitchen.note') }}: {{ item.note }}</p>
+      <p v-if="item.note" class="kitchen-item-note"><strong>{{ t('kitchen.note') }}:</strong> {{ item.note }}</p>
     </li>
   </ul>
-  <p v-if="note" class="kitchen-note mt-4 whitespace-pre-wrap break-words rounded-md bg-secondary-container p-3 text-body-lg font-medium text-on-secondary-container">{{ t('kitchen.note') }}: {{ note }}</p>
+  <p v-if="note" class="kitchen-note"><strong>{{ t('kitchen.note') }}:</strong> {{ note }}</p>
 </template>
+
+<style scoped>
+.kitchen-items { display: flex; min-width: 0; flex-direction: column; gap: calc(var(--spacing) * 3); padding: 0; margin: 0; list-style: none; }
+.kitchen-item { min-width: 0; overflow-wrap: anywhere; }
+.kitchen-item-primary { font-size: var(--text-kds-item); font-weight: 500; line-height: var(--text-kds-item--line-height); }
+.kitchen-item-quantity { font-weight: 700; }
+.kitchen-item-modifiers { display: flex; flex-direction: column; gap: calc(var(--spacing) * 1); margin: calc(var(--spacing) * 1) 0 0; padding-left: calc(var(--spacing) * 4); color: var(--color-text-secondary); font-size: var(--text-body-sm); line-height: var(--text-body-sm--line-height); overflow-wrap: anywhere; }
+.kitchen-item-note { margin-top: calc(var(--spacing) * 2); padding-left: calc(var(--spacing) * 3); border-left: 2px solid var(--color-border-strong); color: var(--color-text-primary); font-size: var(--text-body-sm); line-height: var(--text-body-sm--line-height); white-space: pre-wrap; overflow-wrap: anywhere; }
+.kitchen-note { margin: calc(var(--spacing) * 1) 0 0; padding: calc(var(--spacing) * 3); border-radius: var(--radius-saloa-sm); background: var(--color-warning-subtle); color: var(--color-warning); font-size: var(--text-body); font-weight: 500; line-height: var(--text-body--line-height); white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>

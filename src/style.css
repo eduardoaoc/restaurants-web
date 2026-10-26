@@ -1,15 +1,14 @@
 @import "tailwindcss";
 @import "./styles/tokens.css";
+@import "./styles/tokens-v2.css";
+@import "./components/ui/button.css";
 
 /*
- * Maps AFORO's Material 3 system tokens (src/styles/tokens.css) into
- * Tailwind v4 utilities. Keep the indirection through var(--md-sys-color-*)
- * so utilities like `bg-primary` / `text-on-surface` stay correct across
- * light/dark without regenerating classes — see docs/design-system.md.
+ * Legacy utilities remain available during SALOA phase 1. Inline references
+ * preserve the M3 radius/type contracts while public V2 properties coexist.
+ * Canonical V2 values are defined in tokens-v2.css.
  */
-@theme {
-  --color-primary: var(--md-sys-color-primary);
-  --color-on-primary: var(--md-sys-color-on-primary);
+@theme inline {
   --color-primary-container: var(--md-sys-color-primary-container);
   --color-on-primary-container: var(--md-sys-color-on-primary-container);
 
@@ -23,7 +22,6 @@
   --color-tertiary-container: var(--md-sys-color-tertiary-container);
   --color-on-tertiary-container: var(--md-sys-color-on-tertiary-container);
 
-  --color-surface: var(--md-sys-color-surface);
   --color-surface-dim: var(--md-sys-color-surface-dim);
   --color-surface-bright: var(--md-sys-color-surface-bright);
   --color-surface-container-lowest: var(--md-sys-color-surface-container-lowest);
@@ -33,7 +31,6 @@
   --color-surface-container-highest: var(--md-sys-color-surface-container-highest);
   --color-on-surface: var(--md-sys-color-on-surface);
   --color-on-surface-variant: var(--md-sys-color-on-surface-variant);
-  --color-background: var(--md-sys-color-background);
   --color-on-background: var(--md-sys-color-on-background);
 
   --color-outline: var(--md-sys-color-outline);
@@ -58,11 +55,9 @@
   --color-on-brand-panel: var(--brand-panel-on-surface);
 
   /* Status roles — table primary_status / alert severity, see tokens.css */
-  --color-success: var(--status-success);
   --color-on-success: var(--status-on-success);
   --color-success-container: var(--status-success-container);
   --color-on-success-container: var(--status-on-success-container);
-  --color-warning: var(--status-warning);
   --color-on-warning: var(--status-on-warning);
   --color-warning-container: var(--status-warning-container);
   --color-on-warning-container: var(--status-on-warning-container);
@@ -98,6 +93,112 @@
   --text-label-lg--line-height: 1.4;
   --text-label-md: 0.75rem;
   --text-label-md--line-height: 1.4;
+
+  /* SALOA §4 KDS semantic roles. Available globally, adopted only by the KDS. */
+  --text-component-title: 1rem;
+  --text-component-title--line-height: 1.375rem;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.375rem;
+  --text-body-sm: 0.875rem;
+  --text-body-sm--line-height: 1.25rem;
+  --text-kds-item: 1.0625rem;
+  --text-kds-item--line-height: 1.375rem;
+  --text-timer: 1.75rem;
+  --text-timer--line-height: 2rem;
+
+  /* SALOA semantic utilities (§3.2), with theme values resolved at use. */
+  --color-fg: var(--color-text-primary);
+  --color-fg-muted: var(--color-text-secondary);
+  --color-fg-subtle: var(--color-text-tertiary);
+  --color-accent: var(--color-primary-text);
+  --color-hairline: var(--color-border);
+  --color-control: var(--color-border-strong);
+  --color-focus: var(--color-focus-ring);
+  --compat-accent-primary: var(--color-primary-text);
+  --compat-focus-primary: var(--color-focus-ring);
+
+  /* Runtime indirection is essential: Tailwind inlines literal shadow values
+   * into utilities, which would otherwise freeze them to the Light theme.
+   */
+  --shadow-flat: var(--elevation-flat);
+  --shadow-raised: var(--elevation-raised);
+  --shadow-floating: var(--elevation-floating);
+  --shadow-modal: var(--elevation-modal);
+
+  /* rounded-sm/md/lg keep their M3 sizes above. V2 is opt-in until phase 2. */
+  --radius-saloa-sm: var(--radius-sm);
+  --radius-saloa-md: var(--radius-md);
+  --radius-saloa-lg: var(--radius-lg);
+
+  /* Preserve existing easing utilities; new motion can opt into SALOA. */
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-saloa-out: var(--ease-out);
+  --ease-saloa-in: var(--ease-in);
+  --ease-saloa-in-out: var(--ease-in-out);
+
+  --container-pane-detail: var(--pane-detail);
+  --container-sidebar: var(--sidebar);
+  --container-rail: var(--rail);
+  --container-form: var(--form-max);
+  --container-dialog-sm: var(--dialog-sm);
+  --container-dialog-md: var(--dialog-md);
+}
+
+/* P0 compatibility is property-specific: never redirect primary fills.
+ * Functional utilities support opacity modifiers and hover/focus/peer variants.
+ * The private lookup resolves ONLY `primary`; other color utilities stay native.
+ * && wins over Tailwind's generated primary color rule regardless of sorting,
+ * without !important or changing the fill on an element with both classes.
+ */
+@utility text-* {
+  && {
+    color: --value(--compat-accent-*);
+    color: color-mix(in oklab, --value(--compat-accent-*) calc(--modifier(integer) * 1%), transparent);
+    color: color-mix(in oklab, --value(--compat-accent-*) --modifier([percentage]), transparent);
+  }
+}
+
+@utility border-* {
+  && {
+    border-color: --value(--compat-accent-*);
+    border-color: color-mix(in oklab, --value(--compat-accent-*) calc(--modifier(integer) * 1%), transparent);
+    border-color: color-mix(in oklab, --value(--compat-accent-*) --modifier([percentage]), transparent);
+  }
+}
+
+@utility ring-* {
+  && {
+    --tw-ring-color: --value(--compat-accent-*);
+    --tw-ring-color: color-mix(in oklab, --value(--compat-accent-*) calc(--modifier(integer) * 1%), transparent);
+    --tw-ring-color: color-mix(in oklab, --value(--compat-accent-*) --modifier([percentage]), transparent);
+  }
+}
+
+@utility outline-* {
+  && {
+    outline-color: --value(--compat-focus-*);
+    outline-color: color-mix(in oklab, --value(--compat-focus-*) calc(--modifier(integer) * 1%), transparent);
+    outline-color: color-mix(in oklab, --value(--compat-focus-*) --modifier([percentage]), transparent);
+  }
+}
+
+@utility duration-instant {
+  --tw-duration: var(--duration-instant);
+  transition-duration: var(--duration-instant);
+}
+@utility duration-fast {
+  --tw-duration: var(--duration-fast);
+  transition-duration: var(--duration-fast);
+}
+@utility duration-base {
+  --tw-duration: var(--duration-base);
+  transition-duration: var(--duration-base);
+}
+@utility duration-slow {
+  --tw-duration: var(--duration-slow);
+  transition-duration: var(--duration-slow);
 }
 
 @layer base {

@@ -2,9 +2,8 @@
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { normalizeApiError, type ApiError } from '@/api/errors'
-import ABottomSheet from '@/components/ui/ABottomSheet.vue'
 import AButton from '@/components/ui/AButton.vue'
-import AProgress from '@/components/ui/AProgress.vue'
+import ASheet from '@/components/ui/ASheet.vue'
 import KitchenItems from './KitchenItems.vue'
 import { kitchenService } from '@/services/kitchen.service'
 import type { KitchenTicket } from '@/types/kitchen'
@@ -71,22 +70,24 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ABottomSheet :label="t('kitchen.ticket')" @close="emit('close')">
-    <AProgress v-if="loading" />
-    <p v-if="error" class="mb-4 text-body-md text-error" role="alert">{{ kitchenError(error, t) }}</p>
+  <ASheet :title="t('kitchen.ticket')" variant="bottom" size="md" @close="emit('close')">
+    <div v-if="loading" class="kitchen-ticket-skeleton" aria-busy="true" :aria-label="t('kitchen.loading')">
+      <span /><span /><span /><span />
+    </div>
+    <p v-if="error" class="kitchen-ticket-error" role="alert">{{ kitchenError(error, t) }}</p>
     <AButton v-if="!ticket && !loading" variant="tonal" @click="preview">{{ t('kitchen.retry') }}</AButton>
-    <article v-if="ticket" class="flex flex-col gap-4 text-on-surface">
+    <article v-if="ticket" class="kitchen-ticket-preview">
       <header>
-        <h3 class="text-title-lg font-bold">{{ ticket.restaurant.name }}</h3>
-        <p class="text-title-lg font-semibold">{{ ticket.table.name }} · {{ ticket.order.order_number }}</p>
-        <p class="text-body-md">{{ timestamp(ticket.order.created_at) }}</p>
+        <h3>{{ ticket.restaurant.name }}</h3>
+        <p class="kitchen-ticket-location">{{ ticket.table.name }} · {{ ticket.order.order_number }}</p>
+        <p class="kitchen-ticket-created">{{ timestamp(ticket.order.created_at) }}</p>
       </header>
       <KitchenItems :items="ticket.items" :note="ticket.order_note" />
     </article>
     <template #footer>
       <AButton full-width :disabled="!ticket || loading" :loading="printing" @click="print">{{ t('kitchen.print') }}</AButton>
     </template>
-  </ABottomSheet>
+  </ASheet>
   <Teleport to="body">
     <article v-if="printDocument" class="aforo-kitchen-print">
       <header>
@@ -100,6 +101,17 @@ onBeforeUnmount(() => {
 </template>
 
 <style>
+.kitchen-ticket-skeleton { display: flex; min-height: 50dvh; flex-direction: column; gap: calc(var(--spacing) * 4); padding: calc(var(--spacing) * 4); }
+.kitchen-ticket-skeleton span { display: block; border-radius: var(--radius-saloa-sm); background: var(--color-surface-subtle); }
+.kitchen-ticket-skeleton span { height: var(--text-body--line-height); }
+.kitchen-ticket-skeleton span:first-child { width: 60%; height: var(--text-component-title--line-height); }
+.kitchen-ticket-skeleton span:nth-child(2) { width: 80%; }
+.kitchen-ticket-skeleton span:nth-child(3) { width: 100%; min-height: calc(var(--spacing) * 24); }
+.kitchen-ticket-skeleton span:last-child { width: 100%; min-height: calc(var(--spacing) * 12); margin-top: auto; }
+.kitchen-ticket-error { margin-bottom: calc(var(--spacing) * 4); padding: calc(var(--spacing) * 3); border-radius: var(--radius-sm); background: var(--color-danger-subtle); color: var(--color-danger); overflow-wrap: anywhere; }
+.kitchen-ticket-preview { display: flex; flex-direction: column; gap: calc(var(--spacing) * 4); color: var(--color-text-primary); }
+.kitchen-ticket-preview h3, .kitchen-ticket-location { font-size: var(--text-component-title); font-weight: 600; line-height: var(--text-component-title--line-height); overflow-wrap: anywhere; }
+.kitchen-ticket-created { color: var(--color-text-secondary); font-size: var(--text-body-sm); line-height: var(--text-body-sm--line-height); }
 .aforo-kitchen-print { display: none; }
 @media print {
   @page { size: auto; margin: 4mm; }

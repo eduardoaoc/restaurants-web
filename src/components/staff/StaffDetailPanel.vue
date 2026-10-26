@@ -37,11 +37,26 @@ const props = defineProps<{
   isSelf: boolean
   statusSaving: boolean
   statusError: ApiError | null
+  /** Start/end a shift at the current restaurant (manage_staff_shifts + member assigned there + active). */
+  canManageShift?: boolean
+  currentRestaurantName?: string | null
+  shiftSaving?: boolean
+  shiftError?: ApiError | null
 }>()
 
-const emit = defineEmits<{ edit: []; deactivate: []; reactivate: [] }>()
+const emit = defineEmits<{ edit: []; deactivate: []; reactivate: []; 'start-shift': []; 'end-shift': [] }>()
 
 const { t, locale } = useI18n()
+
+/** 409 (already on shift) / 422 (not eligible here) come back as raw English messages. */
+const shiftErrorText = computed(() => {
+  const error = props.shiftError
+  if (!error) return null
+  if (error.kind === 'conflict') return t('staff.shift.errors.alreadyActive')
+  if (error.kind === 'validation') return t('staff.shift.errors.ineligible')
+  return describeApiError(error, t)
+})
+
 const restaurantStore = useRestaurantStore()
 const { can } = usePermissions()
 
@@ -388,6 +403,25 @@ const shiftElapsed = computed(() => {
             : t('staff.shift.offShift')
         }}
       </p>
+      <template v-if="canManageShift">
+        <p v-if="currentRestaurantName" class="mt-1 text-label-md text-on-surface-variant">
+          {{ t('staff.shift.atRestaurant', { restaurant: currentRestaurantName }) }}
+        </p>
+        <AButton
+          v-if="activeShift"
+          variant="outlined"
+          class="mt-3"
+          :loading="shiftSaving"
+          @click="emit('end-shift')"
+        >
+          {{ t('staff.shift.end') }}
+        </AButton>
+        <AButton v-else variant="tonal" class="mt-3" :loading="shiftSaving" @click="emit('start-shift')">
+          {{ t('staff.shift.start') }}
+        </AButton>
+        <p class="mt-2 text-label-md text-on-surface-variant">{{ t('staff.shift.assignmentHint') }}</p>
+        <p v-if="shiftErrorText" class="mt-2 text-label-md text-error" role="alert">{{ shiftErrorText }}</p>
+      </template>
     </ASurface>
 
     <!-- Rendimiento -->

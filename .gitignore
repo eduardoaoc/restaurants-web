@@ -15,6 +15,9 @@ dist-ssr
 # Environment variables
 .env
 .env.*.local
+# Real per-environment build values (templates: .env.*.example)
+.env.staging
+.env.production
 
 # Editor directories and files
 .vscode/*

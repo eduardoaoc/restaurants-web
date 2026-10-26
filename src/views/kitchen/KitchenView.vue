@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhChefHat, PhClock, PhArrowClockwise, PhGauge } from '@phosphor-icons/vue'
-import ABottomSheet from '@/components/ui/ABottomSheet.vue'
+import { PhArrowClockwise } from '@phosphor-icons/vue'
 import AButton from '@/components/ui/AButton.vue'
-import AProgress from '@/components/ui/AProgress.vue'
-import ASurface from '@/components/ui/ASurface.vue'
-import EmptyState from '@/components/dashboard/EmptyState.vue'
+import ASheet from '@/components/ui/ASheet.vue'
+import AKitchenTicket from '@/components/kitchen/AKitchenTicket.vue'
 import KitchenDashboardPanel from '@/components/kitchen/KitchenDashboardPanel.vue'
 import KitchenItems from '@/components/kitchen/KitchenItems.vue'
 import KitchenTicketSheet from '@/components/kitchen/KitchenTicketSheet.vue'
@@ -17,21 +15,12 @@ import { useRestaurantRealtime } from '@/composables/useRestaurantRealtime'
 import { useRestaurantStore } from '@/stores/restaurant'
 import { KITCHEN_ACTIONS, KITCHEN_STATUSES, type KitchenOrder, type KitchenStatus } from '@/types/kitchen'
 import { kitchenError } from '@/utils/kitchen-error'
+import { createKitchenRealtimeArrivals } from '@/utils/kitchen-realtime-arrivals'
 
 const { t, locale } = useI18n()
 const restaurant = useRestaurantStore()
 const { can, canAny } = usePermissions()
-// Carta 7.1B §25/§26: the real backend Policy for GET kitchen/orders and
-// GET kitchen/dashboard accepts EITHER update_kitchen_status OR
-// serve_orders (verified live) — `canView` gates reading the screen.
-// Mutating a status (accept/preparing/ready) stays update_kitchen_status
-// ONLY (verified live: a serve_orders-only account gets 403 on
-// POST .../accept) — `canManage` gates every action button. The nav rail
-// deliberately still only shows "Cocina" for update_kitchen_status (see
-// AppShellLayout's NAV_ITEMS) — a waiter reaching this screen by direct
-// navigation is a real, authorized read, never hidden by a role check,
-// but their everyday workflow is Mesas/Servicio plus the ready-order alert,
-// not this dashboard.
+// These are the existing read/mutation gates. Keep the restaurant API as authority.
 const canView = computed(() => canAny(['update_kitchen_status', 'serve_orders']))
 const canManage = computed(() => can('update_kitchen_status'))
 const queue = useKitchenOrders(() => restaurant.currentRestaurantId, () => canView.value)
@@ -42,132 +31,221 @@ const realtime = useRestaurantRealtime(() => restaurant.currentRestaurantId, () 
     return [queue.error.value, dashboard.error.value]
   },
 })
-const tab = ref<KitchenStatus | 'dashboard'>('dashboard')
-const TABS = ['dashboard', ...KITCHEN_STATUSES] as const
+
+const selectedMobileStatus = ref<KitchenStatus>('confirmed')
+const view = ref<'queue' | 'metrics'>('queue')
 const selectedId = ref<number | null>(null)
 const ticketId = ref<number | null>(null)
 const selected = computed(() => queue.orders.value.find(order => order.id === selectedId.value) ?? null)
+const mobileOrders = computed(() => queue.orders.value.filter(order => order.status === selectedMobileStatus.value))
+const orderCount = (status: KitchenStatus) => queue.orders.value.filter(order => order.status === status).length
 const now = ref(Date.now())
+const highlightedOrders = ref(new Set<number>())
 let timer: ReturnType<typeof setInterval> | null = null
+let highlightTimer: ReturnType<typeof setTimeout> | null = null
+const arrivals = createKitchenRealtimeArrivals()
 
 watch(() => [restaurant.currentRestaurantId, canView.value] as const, () => {
   selectedId.value = null
   ticketId.value = null
-  tab.value = 'dashboard'
+  selectedMobileStatus.value = 'confirmed'
+  view.value = 'queue'
+  arrivals.reset()
+  highlightedOrders.value = new Set()
   if (timer) clearInterval(timer)
   timer = null
   now.value = Date.now()
   if (canView.value && restaurant.currentRestaurantId !== null) timer = setInterval(() => { now.value = Date.now() }, 1000)
 }, { immediate: true, flush: 'sync' })
-onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 
-const activeColumnOrders = computed(() => queue.orders.value.filter(order => order.status === tab.value))
-const oldest = computed(() => queue.orders.value.find(order => order.status !== 'ready')?.id)
+watch(realtime.lastEvent, event => {
+  arrivals.noteEvent(event)
+})
 
-function selectTab(next: KitchenStatus | 'dashboard'): void {
-  tab.value = next
-}
+watch(queue.orders, orders => {
+  if (queue.loading.value) return
+  const addedIds = arrivals.observe(orders.map(order => order.id), realtime.lastRefreshSource.value)
+  if (addedIds.length) {
+    highlightedOrders.value = new Set(addedIds)
+    if (highlightTimer) clearTimeout(highlightTimer)
+    highlightTimer = setTimeout(() => { highlightedOrders.value = new Set() }, 650)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (timer) clearInterval(timer)
+  if (highlightTimer) clearTimeout(highlightTimer)
+})
 
 function age(order: KitchenOrder): string {
-  // The server calculates elapsed_seconds from created_at. Advance that
-  // baseline locally, avoiding a wrong kitchen-device clock inventing age.
+  // elapsed_seconds is the server baseline. Local time only advances that baseline.
   const seconds = order.elapsed_seconds + Math.max(0, (now.value - queue.receivedAt.value) / 1000)
   return t('kitchen.minutes', { count: new Intl.NumberFormat(locale.value).format(Math.floor(seconds / 60)) })
 }
 function timestamp(value: string): string {
-  // Kitchen users cannot read admin settings; UTC is explicit until the
-  // kitchen contract exposes the restaurant timezone. Never guess local time.
-  return new Intl.DateTimeFormat(locale.value, {
-    dateStyle: 'short', timeStyle: 'short', timeZone: restaurant.currentSettings?.timezone ?? 'UTC',
-  }).format(new Date(value)) + ` (${restaurant.currentSettings?.timezone ?? 'UTC'})`
+  const timezone = restaurant.currentSettings?.timezone ?? 'UTC'
+  return new Intl.DateTimeFormat(locale.value, { dateStyle: 'short', timeStyle: 'short', timeZone: timezone }).format(new Date(value)) + ` (${timezone})`
 }
 async function advance(order: KitchenOrder): Promise<void> {
   if (!canManage.value) return
   const focus = document.activeElement
   await queue.advance(order)
   await nextTick()
-  // A card can move to another column (or out of the selected filter).
-  // Restore a useful keyboard position when its old button was removed.
-  if (focus instanceof HTMLElement && !focus.isConnected) document.getElementById('kitchen-heading')?.focus()
+  // A server-confirmed move can remove this ticket from the current mobile status.
+  if (focus instanceof HTMLElement && (!focus.isConnected || focus.closest('[inert]'))) {
+    const target = document.querySelector<HTMLInputElement>('.kds-mobile-status input:checked')
+    if (target) target.focus()
+    else document.getElementById('kitchen-heading')?.focus()
+  }
 }
 function openTicket(id: number): void { selectedId.value = null; ticketId.value = id }
+function openDetails(id: number): void { selectedId.value = id }
+function showStatus(status: KitchenStatus): void { selectedMobileStatus.value = status }
+function disableLeavingTicket(element: Element): void { (element as HTMLElement).inert = true }
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
-    <header class="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <h1 id="kitchen-heading" tabindex="-1" class="text-headline font-bold text-on-surface">{{ t('kitchen.title') }}</h1>
-        <p class="mt-1 text-body-md text-on-surface-variant">{{ t('kitchen.subtitle') }}</p>
+  <main class="kds-view">
+    <header class="kds-header">
+      <h1 id="kitchen-heading" tabindex="-1">{{ t('kitchen.title') }}</h1>
+      <div class="kds-header-actions">
+        <AButton v-if="canView" variant="secondary" :loading="queue.loading.value" @click="() => { void queue.refetch(); void dashboard.refetch() }">
+          <template #leading><PhArrowClockwise :size="20" aria-hidden="true" /></template>
+          {{ t('kitchen.refresh') }}
+        </AButton>
+        <AButton v-if="canView" variant="secondary" :aria-pressed="view === 'metrics'" @click="view = view === 'queue' ? 'metrics' : 'queue'">
+          {{ view === 'queue' ? t('kitchen.viewMetrics') : t('kitchen.viewQueue') }}
+        </AButton>
       </div>
-      <AButton v-if="canView" variant="tonal" :loading="queue.loading.value" @click="() => { void queue.refetch(); void dashboard.refetch() }">
-        <template #leading><PhArrowClockwise :size="20" aria-hidden="true" /></template>
-        {{ t('kitchen.refresh') }}
-      </AButton>
     </header>
 
-    <p v-if="!canView" role="alert" class="text-body-lg text-on-surface">{{ t('kitchen.noAccess') }}</p>
+    <p v-if="!canView" role="alert" class="kds-error">{{ t('kitchen.noAccess') }}</p>
     <template v-else>
-      <div class="flex flex-wrap items-center gap-3 text-body-md text-on-surface-variant" role="status">
-        <span>{{ t(`kitchen.connection.${realtime.connectionState.value}`) }}</span>
-        <span v-if="realtime.connectionState.value !== 'connected'">{{ t('kitchen.refreshHint') }}</span>
+      <p v-if="realtime.connectionState.value !== 'connected'" class="kds-connection" role="status">
+        {{ t(`kitchen.connection.${realtime.connectionState.value}`) }}
+        <span>{{ t('kitchen.refreshHint') }}</span>
+      </p>
+      <div v-if="queue.actionError.value" class="kds-error" role="alert">{{ kitchenError(queue.actionError.value, t) }}</div>
+      <div v-if="queue.error.value" class="kds-error kds-error-row" role="alert">
+        <span>{{ kitchenError(queue.error.value, t) }}</span>
+        <AButton variant="secondary" @click="queue.refetch">{{ t('kitchen.retry') }}</AButton>
       </div>
-      <p v-if="queue.actionError.value" class="rounded-lg bg-error-container p-4 text-body-lg text-on-error-container" role="alert">{{ kitchenError(queue.actionError.value, t) }}</p>
-      <p v-if="queue.error.value" class="rounded-lg bg-error-container p-4 text-body-lg text-on-error-container" role="alert">{{ kitchenError(queue.error.value, t) }}</p>
-      <p v-if="queue.orders.value.length === 100" class="text-body-md text-on-surface-variant">{{ t('kitchen.limit') }}</p>
+      <p v-if="queue.orders.value.length === 100" class="kds-limit">{{ t('kitchen.limit') }}</p>
 
-      <div class="flex gap-2 overflow-x-auto" role="tablist" :aria-label="t('kitchen.filter')">
-        <button v-for="status in TABS" :key="status" type="button" role="tab" :id="`kitchen-tab-${status}`"
-          :aria-selected="tab === status" :aria-controls="`kitchen-panel-${status}`"
-          class="flex min-h-12 shrink-0 items-center gap-2 rounded-md px-4 py-2 text-label-lg font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          :class="tab === status ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'"
-          @click="selectTab(status)">
-          <PhGauge v-if="status === 'dashboard'" :size="18" aria-hidden="true" />
-          {{ t(`kitchen.columns.${status}`) }}
-          <span v-if="status !== 'dashboard'" class="tabular-nums">{{ queue.orders.value.filter(order => order.status === status).length }}</span>
-        </button>
-      </div>
+      <template v-if="view === 'queue'">
+        <fieldset class="kds-mobile-status">
+          <legend class="sr-only">{{ t('kitchen.filter') }}</legend>
+          <label v-for="status in KITCHEN_STATUSES" :key="status" class="kds-mobile-status-option">
+            <input v-model="selectedMobileStatus" type="radio" name="kitchen-status" :value="status" @change="showStatus(status)">
+            <span>{{ t(`kitchen.columns.${status}`) }}</span>
+            <span class="kds-count tabular-nums">{{ orderCount(status) }}</span>
+          </label>
+        </fieldset>
 
-      <div v-if="tab === 'dashboard'" id="kitchen-panel-dashboard" role="tabpanel" aria-labelledby="kitchen-tab-dashboard">
-        <KitchenDashboardPanel :dashboard="dashboard.dashboard.value" :loading="dashboard.loading.value" :error="dashboard.error.value" @retry="dashboard.refetch" @select-tab="selectTab" />
-      </div>
-      <div v-else :id="`kitchen-panel-${tab}`" role="tabpanel" :aria-labelledby="`kitchen-tab-${tab}`">
-        <div v-if="queue.loading.value && !queue.orders.value.length" class="flex justify-center py-12"><AProgress /></div>
-        <ASurface v-else-if="!queue.error.value && !activeColumnOrders.length" tone="low" radius="lg" class="p-8">
-          <EmptyState :icon="PhChefHat" :message="t('kitchen.columnEmpty')" />
-        </ASurface>
-        <div v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <article v-for="order in activeColumnOrders" :key="order.id" :data-order-number="order.order_number" class="min-w-0 rounded-lg bg-surface-container-high p-4 text-on-surface shadow-card">
-            <header class="mb-4 flex flex-col gap-2">
-              <span v-if="oldest === order.id" class="self-start rounded-sm bg-primary-container px-2 py-1 text-label-md font-bold text-on-primary-container">{{ t('kitchen.oldest') }}</span>
-              <h3 class="break-words text-title-lg font-bold">{{ order.table.name }}</h3>
-              <div class="flex flex-wrap items-center justify-between gap-2 text-body-lg font-semibold">
-                <span>{{ order.order_number }}</span>
-                <span class="flex items-center gap-1 tabular-nums"><PhClock :size="20" aria-hidden="true" />{{ age(order) }}</span>
-              </div>
-              <p class="text-label-lg">{{ t(`tableDrawer.orders.status.${order.status}`) }}</p>
+        <section :aria-label="t(`kitchen.columns.${selectedMobileStatus}`)">
+          <div v-if="queue.loading.value && !queue.orders.value.length" class="kds-mobile-column kds-mobile-skeleton" aria-busy="true" :aria-label="t('kitchen.loading')">
+            <div v-for="index in 2" :key="index" class="kds-skeleton-ticket"><span /><span /><span /></div>
+          </div>
+          <p v-else-if="!queue.error.value && mobileOrders.length === 0" class="kds-empty" role="status">{{ t('kitchen.columnEmpty') }}</p>
+          <TransitionGroup v-else name="kds-ticket" tag="div" class="kds-mobile-column" @before-leave="disableLeavingTicket">
+            <AKitchenTicket v-for="order in mobileOrders" :key="order.id" :order="order" :elapsed="age(order)"
+              :status-label="t(`tableDrawer.orders.status.${order.status}`)"
+              :action-label="canManage && KITCHEN_ACTIONS[order.status] ? t(`kitchen.actions.${KITCHEN_ACTIONS[order.status]}`) : undefined"
+              :waiting-label="t('kitchen.awaitingWaiter')" :action-loading="queue.actingOn[order.id]"
+              :action-disabled="!!queue.error.value" :highlighted="highlightedOrders.has(order.id)"
+              @advance="advance(order)" @details="openDetails(order.id)" />
+          </TransitionGroup>
+        </section>
+
+        <section class="kds-columns" :aria-label="t('kitchen.queue')">
+          <article v-for="status in KITCHEN_STATUSES" :key="status" class="kds-column" :aria-labelledby="`kds-column-${status}`">
+            <header class="kds-column-heading">
+              <h2 :id="`kds-column-${status}`">{{ t(`kitchen.columns.${status}`) }}</h2>
+              <span class="kds-count tabular-nums" :aria-label="t('kitchen.orderCount', { count: orderCount(status) })">{{ orderCount(status) }}</span>
             </header>
-            <KitchenItems :items="order.items" :note="order.order_note" />
-            <div class="mt-5 flex flex-col gap-3">
-              <template v-if="canManage">
-                <AButton v-if="KITCHEN_ACTIONS[order.status]" class="min-h-12" full-width :loading="queue.actingOn[order.id]" :disabled="!!queue.error.value" @click="advance(order)">
-                  {{ t(`kitchen.actions.${KITCHEN_ACTIONS[order.status]}`) }}
-                </AButton>
-                <p v-else class="text-body-md font-semibold">{{ t('kitchen.awaitingWaiter') }}</p>
-              </template>
-              <AButton variant="tonal" full-width class="min-h-12" :aria-label="t('kitchen.detailsFor', { number: order.order_number })" @click="selectedId = order.id">{{ t('kitchen.details') }}</AButton>
+            <div v-if="queue.loading.value && !queue.orders.value.length" class="kds-column-list kds-column-skeleton" aria-busy="true" :aria-label="t('kitchen.loading')">
+              <div v-for="index in 2" :key="index" class="kds-skeleton-ticket"><span /><span /><span /></div>
             </div>
+            <p v-else-if="!queue.error.value && orderCount(status) === 0" class="kds-empty" role="status">{{ t('kitchen.columnEmpty') }}</p>
+            <TransitionGroup v-else name="kds-ticket" tag="div" class="kds-column-list" @before-leave="disableLeavingTicket">
+              <AKitchenTicket v-for="order in queue.orders.value.filter(entry => entry.status === status)" :key="order.id" :order="order" :elapsed="age(order)"
+                :status-label="t(`tableDrawer.orders.status.${order.status}`)"
+                :action-label="canManage && KITCHEN_ACTIONS[order.status] ? t(`kitchen.actions.${KITCHEN_ACTIONS[order.status]}`) : undefined"
+                :waiting-label="t('kitchen.awaitingWaiter')" :action-loading="queue.actingOn[order.id]"
+                :action-disabled="!!queue.error.value" :highlighted="highlightedOrders.has(order.id)"
+                @advance="advance(order)" @details="openDetails(order.id)" />
+            </TransitionGroup>
           </article>
-        </div>
-      </div>
+        </section>
+      </template>
 
-      <ABottomSheet v-if="selected && !queue.error.value" :label="`${selected.table.name} · ${selected.order_number}`" @close="selectedId = null">
-        <p class="mb-2 text-title-md font-semibold">{{ t(`tableDrawer.orders.status.${selected.status}`) }} · {{ age(selected) }}</p>
-        <p class="mb-4 text-body-md">{{ t('kitchen.created') }}: {{ timestamp(selected.created_at) }}</p>
+      <section v-else class="kds-metrics" :aria-label="t('kitchen.dashboard.sections.now')">
+        <KitchenDashboardPanel :dashboard="dashboard.dashboard.value" :loading="dashboard.loading.value" :error="dashboard.error.value"
+          @retry="dashboard.refetch" @select-tab="status => { selectedMobileStatus = status; view = 'queue' }" />
+      </section>
+
+      <ASheet v-if="selected && !queue.error.value" :title="`${selected.table.name} · ${selected.order_number}`" variant="bottom" size="md" @close="selectedId = null">
+        <AStatusBadge :state="selected.status === 'ready' ? 'success' : selected.status === 'confirmed' ? 'attention' : 'normal'" :label="t(`tableDrawer.orders.status.${selected.status}`)" />
+        <p class="kds-detail-age">{{ age(selected) }}</p>
+        <p class="kds-detail-created">{{ t('kitchen.created') }}: {{ timestamp(selected.created_at) }}</p>
         <KitchenItems :items="selected.items" :note="selected.order_note" />
-        <template #footer><AButton full-width variant="tonal" @click="openTicket(selected.id)">{{ t('kitchen.ticket') }}</AButton></template>
-      </ABottomSheet>
+        <template #footer><AButton full-width variant="secondary" @click="openTicket(selected.id)">{{ t('kitchen.ticket') }}</AButton></template>
+      </ASheet>
       <KitchenTicketSheet v-if="ticketId !== null && restaurant.currentRestaurantId !== null" :key="ticketId" :order-id="ticketId" :restaurant-id="restaurant.currentRestaurantId" :timestamp="timestamp" @close="ticketId = null" @refresh="queue.refetch" />
     </template>
-  </div>
+  </main>
 </template>
+
+<style scoped>
+.kds-view { display: flex; min-width: 0; max-width: 100%; flex-direction: column; gap: calc(var(--spacing) * 4); color: var(--color-text-primary); }
+.kds-header { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: calc(var(--spacing) * 3); }
+.kds-header h1 { min-width: 0; font-size: var(--text-component-title); font-weight: 600; line-height: var(--text-component-title--line-height); overflow-wrap: anywhere; }
+.kds-header-actions { display: flex; flex-wrap: wrap; gap: calc(var(--spacing) * 2); }
+.kds-header-actions :deep(.a-control), .kds-error-row :deep(.a-control) { min-height: 48px; }
+.kds-connection, .kds-error { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: calc(var(--spacing) * 2); padding: calc(var(--spacing) * 3); border-radius: var(--radius-saloa-sm); overflow-wrap: anywhere; }
+.kds-connection { border: 1px solid var(--color-border); background: var(--color-surface-subtle); color: var(--color-text-secondary); font-size: var(--text-body-sm); }
+.kds-error { border: 1px solid var(--color-danger); background: var(--color-danger-subtle); color: var(--color-danger); font-size: var(--text-body); }
+.kds-error-row { justify-content: space-between; }
+.kds-limit { color: var(--color-text-secondary); font-size: var(--text-body-sm); }
+.kds-mobile-status { display: none; }
+.kds-columns { display: grid; min-width: 0; max-width: 100%; grid-auto-flow: column; grid-auto-columns: minmax(280px, 1fr); grid-template-columns: repeat(4, minmax(280px, 1fr)); gap: calc(var(--spacing) * 3); overflow-x: auto; overscroll-behavior-inline: contain; scroll-snap-type: inline proximity; padding: 0 0 calc(var(--spacing) * 2); }
+.kds-column { display: flex; min-width: 0; height: min(68dvh, 48rem); min-height: 24rem; flex-direction: column; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--color-border); border-radius: var(--radius-saloa-md); background: var(--color-surface-subtle); scroll-snap-align: start; }
+.kds-column-heading { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; min-height: calc(var(--spacing) * 14); align-items: center; justify-content: space-between; gap: calc(var(--spacing) * 2); padding: calc(var(--spacing) * 3) calc(var(--spacing) * 4); border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
+.kds-column-heading h2 { min-width: 0; font-size: var(--text-component-title); font-weight: 600; line-height: var(--text-component-title--line-height); overflow-wrap: anywhere; }
+.kds-count { display: inline-flex; min-width: 32px; min-height: 32px; flex: 0 0 auto; align-items: center; justify-content: center; padding-inline: calc(var(--spacing) * 2); border-radius: var(--radius-saloa-sm); background: var(--color-surface); color: var(--color-text-primary); font-size: var(--text-body-sm); font-weight: 600; }
+.kds-column-list { display: flex; min-width: 0; flex-direction: column; gap: calc(var(--spacing) * 3); padding: calc(var(--spacing) * 3); }
+.kds-empty { padding: calc(var(--spacing) * 4); color: var(--color-text-secondary); font-size: var(--text-body); }
+.kds-skeleton-ticket { display: flex; min-height: calc(var(--spacing) * 64); flex-direction: column; gap: calc(var(--spacing) * 3); padding: calc(var(--spacing) * 4); border: 1px solid var(--color-border); border-radius: var(--radius-saloa-md); background: var(--color-surface); }
+.kds-skeleton-ticket span { display: block; height: 16px; border-radius: var(--radius-saloa-sm); background: var(--color-surface-subtle); }
+.kds-skeleton-ticket span:first-child { width: 52%; height: 32px; }
+.kds-skeleton-ticket span:nth-child(2) { width: 78%; height: 72px; }
+.kds-skeleton-ticket span:last-child { width: 100%; height: 56px; margin-top: auto; }
+.kds-detail-age { margin-top: calc(var(--spacing) * 3); font-size: var(--text-timer); font-weight: 700; line-height: var(--text-timer--line-height); font-variant-numeric: tabular-nums; }
+.kds-detail-created { margin: calc(var(--spacing) * 2) 0 calc(var(--spacing) * 4); color: var(--color-text-secondary); font-size: var(--text-body-sm); }
+.kds-metrics { min-width: 0; }
+.kds-view :deep(.kds-ticket-enter-active), .kds-view :deep(.kds-ticket-leave-active), .kds-view :deep(.kds-ticket-move) { transition: opacity var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out); }
+.kds-view :deep(.kds-ticket-enter-from), .kds-view :deep(.kds-ticket-leave-to) { opacity: 0; transform: translateY(calc(var(--spacing) * 1)); }
+.kds-view :deep(.kds-ticket-leave-active) { pointer-events: none; }
+@media (min-width: 768px) and (max-width: 1023px) {
+  .kds-columns { grid-template-columns: repeat(2, minmax(280px, 1fr)); }
+}
+@media (min-width: 1024px) and (max-width: 1179px) {
+  .kds-columns { grid-template-columns: repeat(3, minmax(280px, 1fr)); }
+}
+@media (max-width: 767px) {
+  .kds-view { gap: calc(var(--spacing) * 3); }
+  .kds-header { align-items: flex-start; }
+  .kds-header-actions { width: 100%; }
+  .kds-header-actions :deep(.a-control) { flex: 1 1 auto; }
+  .kds-mobile-status { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: calc(var(--spacing) * 2); min-width: 0; padding: 0; margin: 0; border: 0; }
+  .kds-mobile-status-option { position: relative; display: flex; min-width: 0; min-height: 48px; align-items: center; gap: calc(var(--spacing) * 2); padding: calc(var(--spacing) * 2); border: 1px solid var(--color-border-strong); border-radius: var(--radius-saloa-md); background: var(--color-surface); color: var(--color-text-primary); font-size: var(--text-body-sm); font-weight: 500; overflow-wrap: anywhere; cursor: pointer; }
+  .kds-mobile-status-option input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .kds-mobile-status-option:has(input:checked) { border-color: var(--color-primary-text); background: var(--color-primary-subtle); color: var(--color-primary-text); font-weight: 600; }
+  .kds-mobile-status-option:has(input:focus-visible) { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+  .kds-mobile-status-option > span:first-of-type { min-width: 0; flex: 1; }
+  .kds-count { min-width: 28px; min-height: 28px; }
+  .kds-mobile-column { display: flex; min-width: 0; flex-direction: column; gap: calc(var(--spacing) * 3); }
+  .kds-columns { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .kds-columns { scroll-behavior: auto; } .kds-view :deep(.kds-ticket-enter-active), .kds-view :deep(.kds-ticket-leave-active), .kds-view :deep(.kds-ticket-move) { transition: none; } }
+</style>

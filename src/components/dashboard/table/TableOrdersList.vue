@@ -10,13 +10,14 @@ import { normalizeApiError, type ApiError } from '@/api/errors'
 import { usePermissions } from '@/composables/usePermissions'
 import { useSessionOrderHistory } from '@/composables/useSessionOrderHistory'
 import { useOrderApprovals } from '@/composables/useOrderApprovals'
+import { useSnackbar } from '@/composables/useSnackbar'
 import { ordersService } from '@/services/orders.service'
 import { useRestaurantStore } from '@/stores/restaurant'
 import type { Order, OrderItem, OrderModifier } from '@/types/orders'
 import { describeApiError } from '@/utils/error-message'
 import { formatMoney } from '@/utils/format'
 
-const props = defineProps<{ tableSessionId: number; currency: string; timezone: string; refreshKey?: object }>()
+const props = defineProps<{ tableSessionId: number; currency: string; timezone: string; refreshKey?: object; serviceMode?: boolean }>()
 // Bubbles up (TableDetailsDrawer -> ServiceView) so the table's own
 // primary_status/orders.ready count — READY -> SERVED can change both —
 // refetches from the same authoritative operations snapshot the rest of
@@ -24,6 +25,7 @@ const props = defineProps<{ tableSessionId: number; currency: string; timezone: 
 const emit = defineEmits<{ served: []; approved: [] }>()
 
 const { t, locale } = useI18n()
+const snackbar = useSnackbar()
 const { can } = usePermissions()
 const restaurantStore = useRestaurantStore()
 const canApprove = computed(() => can('approve_customer_orders'))
@@ -126,6 +128,7 @@ const approvals = useOrderApprovals(() => canApprove.value, (updated) => {
   detailError.value = null
   if (orders.value) orders.value = orders.value.map(order => order.id === updated.id ? updated : order)
   if (orderDetail.value?.id === updated.id) orderDetail.value = updated
+  if (props.serviceMode) snackbar.showSnackbar({ message: t('tableDrawer.orders.feedback.approved', { order: updated.order_number }), kind: 'success' })
   emit('approved')
 }, () => props.tableSessionId)
 const detailLoading = ref(false)
@@ -231,6 +234,7 @@ async function markServed(order: Order): Promise<void> {
     history.cancelPending()
     if (orders.value) orders.value = orders.value.map((o) => (o.id === updated.id ? updated : o))
     if (orderDetail.value?.id === updated.id) orderDetail.value = updated
+    if (props.serviceMode) snackbar.showSnackbar({ message: t('tableDrawer.orders.feedback.served', { order: updated.order_number }), kind: 'success' })
     emit('served')
   } catch (err) {
     if (epoch !== contextEpoch) return

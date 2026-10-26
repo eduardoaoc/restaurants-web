@@ -3,7 +3,7 @@ import { useI18n } from 'vue-i18n'
 
 import EmptyState from '@/components/dashboard/EmptyState.vue'
 import AButton from '@/components/ui/AButton.vue'
-import ASurface from '@/components/ui/ASurface.vue'
+import ADialog from '@/components/ui/ADialog.vue'
 import { PhArmchair } from '@phosphor-icons/vue'
 import type { OperationsTable } from '@/types/operations'
 
@@ -14,9 +14,7 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" @click.self="emit('cancel')">
-    <ASurface tone="high" radius="lg" class="w-full max-w-sm p-5 shadow-elevated">
-      <h3 class="text-title-md font-semibold text-on-surface">{{ t('tableDrawer.transfer.title') }}</h3>
+  <ADialog :title="t('tableDrawer.transfer.title')" size="sm" @close="emit('cancel')">
       <p class="mt-1 text-body-md text-on-surface-variant">{{ t('tableDrawer.transfer.subtitle') }}</p>
 
       <EmptyState v-if="freeTables.length === 0" :icon="PhArmchair" :message="t('tableDrawer.transfer.noFreeTables')" class="mt-3" />
@@ -25,7 +23,7 @@ const { t } = useI18n()
           <button
             type="button"
             :disabled="submitting"
-            class="w-full rounded-md px-3 py-2 text-left text-body-md text-on-surface hover:bg-surface-container-highest focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50"
+          class="flex min-h-11 w-full items-center rounded-md px-3 py-2 text-left text-body-md text-on-surface hover:bg-surface-container-highest focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50"
             @click="emit('confirm', table.id)"
           >
             {{ table.name }}
@@ -33,9 +31,8 @@ const { t } = useI18n()
         </li>
       </ul>
 
-      <div class="mt-4 flex justify-end">
-        <AButton variant="text" @click="emit('cancel')">{{ t('common.cancel') }}</AButton>
-      </div>
-    </ASurface>
-  </div>
+    <template #footer>
+      <AButton variant="secondary" @click="emit('cancel')">{{ t('common.cancel') }}</AButton>
+    </template>
+  </ADialog>
 </template>

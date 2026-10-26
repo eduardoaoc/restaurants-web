@@ -62,6 +62,24 @@ const KNOWN_ERROR_CODES: Record<string, string> = {
   OPENING_FLOAT_MISMATCH: 'common.errors.codes.openingFloatMismatch',
   TABLE_SESSION_CLOSED: 'common.errors.codes.tableSessionNotActive',
   TABLE_SESSION_NOT_EMPTY: 'common.errors.codes.tableSessionNotEmpty',
+  // Onboarding / invitations (restaurants-api InvitationException).
+  // INVITATION_NOT_FOUND/EXPIRED/REVOKED/ALREADY_ACCEPTED are full-page
+  // states on the accept screen (it reads error.code), not banner texts.
+  INVITATION_ACCOUNT_EXISTS: 'invitation.errors.accountExists',
+  INVITATION_ACCOUNT_REQUIRED: 'invitation.errors.accountRequired',
+  INVITATION_ACCOUNT_SUSPENDED: 'invitation.errors.accountSuspended',
+  INVITATION_NOT_ALLOWED_FOR_ACCOUNT: 'invitation.errors.notAllowed',
+  INVITATION_ORGANIZATION_UNAVAILABLE: 'invitation.errors.organizationUnavailable',
+  INVITATION_MEMBERSHIP_CONFLICT: 'invitation.errors.membershipConflict',
+  INVITATION_ASSIGNMENT_CONFLICT: 'invitation.errors.assignmentConflict',
+  INVITATION_NOT_PENDING: 'invitations.errors.notPending',
+  INVITATION_RESEND_TOO_SOON: 'invitations.errors.tooSoon',
+  INVITATION_ALREADY_PENDING: 'invitations.errors.alreadyPending',
+  STAFF_ALREADY_MEMBER: 'staffInvitations.errors.alreadyMember',
+  STAFF_MEMBERSHIP_INACTIVE: 'staffInvitations.errors.membershipInactive',
+  ORGANIZATION_SUSPENDED: 'platform.onboarding.errors.organizationSuspended',
+  ORGANIZATION_HAS_OWNER: 'platform.onboarding.errors.hasOwner',
+  PASSWORD_RESET_INVALID: 'passwordReset.invalid',
 }
 
 /**
@@ -79,6 +97,13 @@ export function describeApiError(error: ApiError, t: (key: string) => string): s
     const codeKey = error.code ? KNOWN_ERROR_CODES[error.code] : undefined
     if (codeKey) return t(codeKey)
     if (error.message) return error.message
+  }
+
+  // A few domain codes ride on 403/429 (e.g. INVITATION_ACCOUNT_SUSPENDED,
+  // INVITATION_RESEND_TOO_SOON); a known code is still more specific than
+  // the generic text. Unknown codes on these kinds keep the generic text.
+  if ((error.kind === 'forbidden' || error.kind === 'rate_limited') && error.code && KNOWN_ERROR_CODES[error.code]) {
+    return t(KNOWN_ERROR_CODES[error.code])
   }
 
   switch (error.kind) {

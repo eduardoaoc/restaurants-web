@@ -1,0 +1,172 @@
+/* SALOA §3/5–10/19: parallel foundation. Source: docs/design/DESIGN_SYSTEM.md.
+ * Keep M3 primitives, containers, type and component geometry until migration.
+ * `static` keeps the public color API available even before first use.
+ */
+@theme static {
+  --color-background: #f5f5f3;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #efefec;
+  --color-surface-elevated: #ffffff;
+
+  --color-primary: #ff7300;
+  --color-primary-hover: #f26b00;
+  --color-primary-active: #e06200;
+  --color-on-primary: #1a0f00;
+  --color-primary-text: #a84300;
+  --color-primary-subtle: #fff1e5;
+
+  --color-text-primary: #1b1b1a;
+  --color-text-secondary: #5c5c58;
+  --color-text-tertiary: #6b6b66;
+  --color-border: #e3e3df;
+  --color-border-strong: #85857f;
+  --color-focus-ring: #a84300;
+
+  --color-success: #1e7547;
+  --color-success-subtle: #e6f2ea;
+  --color-warning: #8a5700;
+  --color-warning-subtle: #fbf0dc;
+  --color-danger: #c0261a;
+  --color-danger-subtle: #fbe9e7;
+  --color-info: #3a5a7a;
+  --color-info-subtle: #e8eef4;
+  --color-scrim: rgba(16, 16, 15, 0.40);
+
+}
+
+:root {
+  /* A zero transparent shadow represents "none" inside Tailwind's composed
+   * shadow list, where the literal `none` would invalidate focus rings.
+   */
+  --elevation-flat: 0 0 transparent;
+  --elevation-raised: 0 1px 2px rgb(0 0 0 / .05), 0 1px 1px rgb(0 0 0 / .03);
+  --elevation-floating: 0 8px 24px rgb(0 0 0 / .10), 0 0 0 1px rgb(0 0 0 / .04);
+  --elevation-modal: 0 24px 48px rgb(0 0 0 / .16);
+
+  /* The existing Tailwind --spacing: .25rem already supplies the 4px grid. */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --z-sticky: 10;
+  --z-nav: 20;
+  --z-menu: 30;
+  --z-sheet: 40;
+  --z-dialog: 50;
+  --z-snackbar: 60;
+
+  --pane-detail: 420px;
+  --sidebar: 240px;
+  --rail: 72px;
+  --form-max: 720px;
+  --dialog-sm: 400px;
+  --dialog-md: 560px;
+
+  --icon-sm: 16px;
+  --icon-md: 20px;
+  --icon-lg: 24px;
+}
+
+/* Shared dark declarations without a second theme implementation/store.
+ * Explicit light always wins over the OS preference, including first paint.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-background: #111113;
+    --color-surface: #1a1a1d;
+    --color-surface-subtle: #151517;
+    --color-surface-elevated: #242428;
+    --color-primary: #ff7a1a;
+    --color-primary-hover: #ff8a33;
+    --color-primary-active: #f06a00;
+    --color-primary-text: #ff9a4d;
+    --color-primary-subtle: #2b1a0c;
+    --color-text-primary: #f2f2f0;
+    --color-text-secondary: #a6a6a2;
+    --color-text-tertiary: #8e8e92;
+    --color-border: #2c2c31;
+    --color-border-strong: #747479;
+    --color-focus-ring: #ff7a1a;
+    --color-success: #5cc98e;
+    --color-success-subtle: #13281c;
+    --color-warning: #e6b04a;
+    --color-warning-subtle: #2b2210;
+    --color-danger: #ff7a6e;
+    --color-danger-subtle: #2e1614;
+    --color-info: #8fb4d9;
+    --color-info-subtle: #152230;
+    --color-scrim: rgba(0, 0, 0, 0.56);
+    /* Raised needs surface + hairline; floating also needs a hairline (§8).
+     * Shadow utilities alone deliberately do not set background or border.
+     */
+    --elevation-raised: var(--elevation-flat);
+    --elevation-floating: 0 8px 24px rgb(0 0 0 / .40);
+    --elevation-modal: 0 24px 48px rgb(0 0 0 / .50);
+  }
+}
+
+:root[data-theme='dark'] {
+  --color-background: #111113;
+  --color-surface: #1a1a1d;
+  --color-surface-subtle: #151517;
+  --color-surface-elevated: #242428;
+  --color-primary: #ff7a1a;
+  --color-primary-hover: #ff8a33;
+  --color-primary-active: #f06a00;
+  --color-primary-text: #ff9a4d;
+  --color-primary-subtle: #2b1a0c;
+  --color-text-primary: #f2f2f0;
+  --color-text-secondary: #a6a6a2;
+  --color-text-tertiary: #8e8e92;
+  --color-border: #2c2c31;
+  --color-border-strong: #747479;
+  --color-focus-ring: #ff7a1a;
+  --color-success: #5cc98e;
+  --color-success-subtle: #13281c;
+  --color-warning: #e6b04a;
+  --color-warning-subtle: #2b2210;
+  --color-danger: #ff7a6e;
+  --color-danger-subtle: #2e1614;
+  --color-info: #8fb4d9;
+  --color-info-subtle: #152230;
+  --color-scrim: rgba(0, 0, 0, 0.56);
+  --elevation-raised: var(--elevation-flat);
+  --elevation-floating: 0 8px 24px rgb(0 0 0 / .40);
+  --elevation-modal: 0 24px 48px rgb(0 0 0 / .50);
+}
+
+@media (prefers-contrast: more) {
+  :root,
+  :root[data-theme],
+  :root:not([data-theme='light']) {
+    --color-border: var(--color-border-strong);
+    --color-text-tertiary: var(--color-text-secondary);
+  }
+}
+
+/* Only unambiguous M3 roles alias V2. Leave tonal ladders, secondary/tertiary,
+ * status on-color pairs and legacy shadows intact; their roles differ.
+ * These declarations follow the legacy dark overrides, avoiding alias cycles.
+ */
+:root,
+:root[data-theme],
+:root:not([data-theme='light']) {
+  --md-sys-color-primary: var(--color-primary);
+  --md-sys-color-on-primary: var(--color-on-primary);
+  --md-sys-color-background: var(--color-background);
+  --md-sys-color-on-background: var(--color-text-primary);
+  --md-sys-color-surface: var(--color-surface);
+  --md-sys-color-on-surface: var(--color-text-primary);
+  --md-sys-color-on-surface-variant: var(--color-text-secondary);
+  --md-sys-color-outline: var(--color-border-strong);
+  --md-sys-color-outline-variant: var(--color-border);
+}

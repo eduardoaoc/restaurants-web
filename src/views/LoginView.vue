@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { PhArrowRight, PhEnvelopeSimple, PhEye, PhEyeSlash, PhLockSimple, PhShareNetwork } from '@phosphor-icons/vue'
 
 import { normalizeApiError } from '@/api/errors'
@@ -223,6 +223,7 @@ async function onSubmit(): Promise<void> {
               </template>
             </ATextField>
 
+            <div class="flex flex-wrap items-center justify-between gap-2">
             <label class="flex min-h-11 items-center gap-3 text-body-md text-on-surface-variant">
               <input
                 v-model="remember"
@@ -231,6 +232,10 @@ async function onSubmit(): Promise<void> {
               />
               {{ t('auth.rememberMe') }}
             </label>
+            <RouterLink :to="{ name: 'forgot-password' }" class="inline-flex min-h-11 items-center rounded-full px-3 text-label-lg font-medium text-primary hover:bg-primary-container/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+              {{ t('passwordReset.forgotLink') }}
+            </RouterLink>
+            </div>
 
             <AButton type="submit" full-width :loading="auth.submitting">
               {{ auth.submitting ? t('auth.submitting') : t('auth.submit') }}

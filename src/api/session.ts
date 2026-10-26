@@ -6,7 +6,8 @@ export function installSessionInterceptor(client: AxiosInstance, expire: () => v
     const state = session?.()
     if (state) {
       const path = config.url?.split('?')[0]
-      const authFlow = ['/api/v1/auth/login', '/sanctum/csrf-cookie', '/api/v1/auth/logout', '/api/v1/auth/me'].includes(path ?? '')
+      // Invitation preview/accept are made precisely by someone without a session.
+      const authFlow = ['/api/v1/auth/login', '/sanctum/csrf-cookie', '/api/v1/auth/logout', '/api/v1/auth/me', '/api/v1/invitations/preview', '/api/v1/invitations/accept', '/api/v1/invitations/accept-existing', '/api/v1/auth/forgot-password', '/api/v1/auth/reset-password/preview', '/api/v1/auth/reset-password'].includes(path ?? '')
       if (state.version > 0 && !state.authenticated && !authFlow) throw new axios.CanceledError('Session ended')
       versions.set(config, state.version)
     }

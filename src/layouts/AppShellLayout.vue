@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { PhArmchair, PhBellRinging, PhBookOpen, PhCashRegister, PhChefHat, PhGauge, PhList, PhStar, PhUsersThree, PhX } from '@phosphor-icons/vue'
-
-import AIconButton from '@/components/ui/AIconButton.vue'
-import ASurface from '@/components/ui/ASurface.vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { RouterView, useRoute } from 'vue-router'
+import AAppShell from '@/components/shell/AAppShell.vue'
+import LegacyAppShell from '@/components/shell/LegacyAppShell.vue'
+import { resolveShellNavigation } from '@/components/shell/navigation'
 import ActivityBell from '@/components/shared/ActivityBell.vue'
 import LanguageSwitcher from '@/components/shared/LanguageSwitcher.vue'
 import ReadyOrderNotificationStack from '@/components/shared/ReadyOrderNotificationStack.vue'
@@ -15,221 +13,45 @@ import UserMenu from '@/components/shared/UserMenu.vue'
 import { usePermissions } from '@/composables/usePermissions'
 import { useReadyOrderNotifications } from '@/composables/useReadyOrderNotifications'
 import { useRestaurantStore } from '@/stores/restaurant'
-import type { PermissionSlug } from '@/types/auth-context'
+import { appConfig } from '@/config/runtime'
 import { unlockNotificationSound } from '@/utils/notification-sound'
-import aforoSymbol from '@/assets/brand/aforo-symbol.png'
-import aforoWordmark from '@/assets/brand/aforo-wordmark.png'
 
-interface NavItem {
-  routeName: string
-  labelKey: string
-  icon: typeof PhGauge
-  /**
-   * Restaurant-scoped capability required to see this item — undefined
-   * means "always visible to an authenticated user" (Dashboard today: it
-   * renders its own permission-aware content internally rather than
-   * disappearing from the rail, since it's currently the app's only
-   * destination — see DashboardView). An array is an OR (Passo 3.2 —
-   * Servicio is reachable with any one of a few different capabilities,
-   * unlike every earlier item's single required permission). Future items
-   * (Cocina/...) can set this the moment they're added, per CLAUDE.md
-   * §17/§23.
-   */
-  permission?: PermissionSlug | PermissionSlug[]
-}
-
-// Data-driven list (not hardcoded markup) so Cocina/etc. are a one-line
-// addition later, without rebuilding the rail/drawer. See CLAUDE.md §17.
-// Carta (Passo 2.2) is the first item to actually set `permission` — it
-// disappears from both rail and drawer for a user whose current restaurant
-// lacks manage_menu, never a role-name check.
-const NAV_ITEMS: NavItem[] = [
-  { routeName: 'app-dashboard', labelKey: 'common.dashboard', icon: PhGauge, permission: ['view_operations', 'view_reports'] },
-  { routeName: 'app-kitchen', labelKey: 'kitchen.title', icon: PhChefHat, permission: 'update_kitchen_status' },
-  {
-    routeName: 'app-service',
-    labelKey: 'service.title',
-    icon: PhBellRinging,
-    // Passo 3.4: a cashier's real permission subset is record_payments/
-    // close_bill/handle_table_requests only — this list was missed when
-    // those capabilities shipped, which left a cashier-only account with no
-    // nav link into the one screen their permissions actually let them use
-    // (found auditing the real navigation per Passo 3.4 §9, not hypothetical).
-    permission: [
-      'create_orders',
-      'approve_customer_orders',
-      'view_operations',
-      'serve_orders',
-      'record_payments',
-      'close_bill',
-      'handle_table_requests',
-    ],
-  },
-  { routeName: 'app-menu', labelKey: 'common.menu', icon: PhBookOpen, permission: 'manage_menu' },
-  // CARTA 9.1B — close_daily_operation (waiter/cashier, today only) OR
-  // view_daily_closes (owner/manager, today + historial). Kitchen holds
-  // neither, so it never appears for them — never a role check.
-  { routeName: 'app-day-close', labelKey: 'dayClose.pageTitle', icon: PhCashRegister, permission: ['open_daily_operation', 'close_daily_operation', 'view_daily_closes'] },
-  { routeName: 'app-tables', labelKey: 'common.tables', icon: PhArmchair, permission: 'manage_tables' },
-  // Labelled from the module's own namespace, not common.staff ("Personal"),
-  // so the rail and the page agree on one name for the same place.
-  { routeName: 'app-staff', labelKey: 'staff.pageTitle', icon: PhUsersThree, permission: 'manage_users' },
-  // Passo 3.5 — owner/manager only (view_customer_feedback). A waiter's own
-  // aggregate lives in Servicio instead (GET /me/feedback-summary needs no
-  // permission at all), never this nav item.
-  { routeName: 'app-feedback', labelKey: 'feedback.pageTitle', icon: PhStar, permission: 'view_customer_feedback' },
-]
-
-const { t } = useI18n()
 const route = useRoute()
 const restaurantStore = useRestaurantStore()
-const { can, canAny } = usePermissions()
-const visibleNavItems = computed(() =>
-  NAV_ITEMS.filter((item) => !item.permission || (Array.isArray(item.permission) ? canAny(item.permission) : can(item.permission))),
-)
-const drawerOpen = ref(false)
-
-function isActive(routeName: string): boolean {
-  return route.name === routeName
-}
-
-function closeDrawer(): void {
-  drawerOpen.value = false
-}
-
-// Carta 7.1B §15 — global, outside KitchenView, so a waiter sees the alert
-// regardless of which screen they're on. §20 — sound needs a prior user
-// gesture to unlock (browser autoplay policy); this listens for the
-// FIRST pointerdown/keydown of the session and then gets out of the way,
-// long before any real order.ready.attention can plausibly arrive.
+const permissions = usePermissions()
+// Kept outside both presentations and RouterView: exactly one ready
+// subscription and one memoized restaurant initialization, as before.
 const readyOrderNotifications = useReadyOrderNotifications()
+const items = computed(() => resolveShellNavigation(permissions, route.name, route.matched.map(record => record.name), readyOrderNotifications.notifications.value.length))
 function unlockSoundOnce(): void {
   unlockNotificationSound()
   document.removeEventListener('pointerdown', unlockSoundOnce)
   document.removeEventListener('keydown', unlockSoundOnce)
 }
-
 onMounted(() => {
   void restaurantStore.load()
   document.addEventListener('pointerdown', unlockSoundOnce, { once: true })
   document.addEventListener('keydown', unlockSoundOnce, { once: true })
 })
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', unlockSoundOnce)
+  document.removeEventListener('keydown', unlockSoundOnce)
+})
 </script>
 
 <template>
-  <div class="flex min-h-dvh bg-background">
-    <a
-      href="#main-content"
-      class="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:left-4 focus-visible:top-4 focus-visible:z-50 focus-visible:rounded-md focus-visible:bg-primary focus-visible:px-4 focus-visible:py-2 focus-visible:text-on-primary"
-    >
-      {{ t('appShell.skipToContent') }}
-    </a>
-
-    <!-- Desktop / tablet: Material 3 navigation rail -->
-    <nav
-      class="hidden w-20 shrink-0 flex-col items-center gap-6 border-r border-outline-variant bg-surface-container-low py-6 md:flex"
-      :aria-label="t('appShell.mainNav')"
-    >
-      <img :src="aforoSymbol" alt="AFORO" class="h-9 w-9" />
-      <RouterLink
-        v-for="item in visibleNavItems"
-        :key="item.routeName"
-        :to="{ name: item.routeName }"
-        class="flex w-16 flex-col items-center gap-1 rounded-lg py-2 text-label-md text-on-surface-variant transition-colors duration-200 ease-out hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        :class="isActive(item.routeName) ? 'text-on-surface' : ''"
-      >
-        <span
-          class="flex h-8 w-14 items-center justify-center rounded-full"
-          :class="isActive(item.routeName) ? 'bg-primary-container text-on-primary-container' : ''"
-        >
-          <component :is="item.icon" :size="22" :weight="isActive(item.routeName) ? 'fill' : 'regular'" />
-        </span>
-        {{ t(item.labelKey) }}
-      </RouterLink>
-    </nav>
-
-    <!-- Mobile: modal navigation drawer -->
-    <Transition name="fade">
-      <div v-if="drawerOpen" class="fixed inset-0 z-30 md:hidden">
-        <div class="absolute inset-0 bg-black/40" @click="closeDrawer" />
-        <ASurface
-          tone="low"
-          radius="none"
-          class="absolute inset-y-0 left-0 flex w-72 flex-col gap-4 p-4 shadow-elevated"
-        >
-          <div class="flex items-center justify-between">
-            <img :src="aforoWordmark" alt="AFORO" class="h-6 w-auto" />
-            <AIconButton :label="t('appShell.closeMenu')" @click="closeDrawer">
-              <PhX :size="20" />
-            </AIconButton>
-          </div>
-          <nav class="flex flex-col gap-1">
-            <RouterLink
-              v-for="item in visibleNavItems"
-              :key="item.routeName"
-              :to="{ name: item.routeName }"
-              class="flex items-center gap-3 rounded-md px-3 py-3 text-body-lg text-on-surface hover:bg-surface-container-high"
-              :class="isActive(item.routeName) ? 'bg-primary-container text-on-primary-container' : ''"
-              @click="closeDrawer"
-            >
-              <component :is="item.icon" :size="22" />
-              {{ t(item.labelKey) }}
-            </RouterLink>
-          </nav>
-          <hr class="border-outline-variant" />
-          <div class="flex items-center gap-2">
-            <LanguageSwitcher />
-            <ThemeSwitcher />
-          </div>
-        </ASurface>
-      </div>
-    </Transition>
-
-    <div class="flex min-w-0 flex-1 flex-col">
-      <header
-        class="flex h-16 shrink-0 items-center gap-3 border-b border-outline-variant bg-surface-container-low px-4 md:px-6"
-      >
-        <AIconButton :label="t('appShell.openMenu')" class="md:hidden" @click="drawerOpen = true">
-          <PhList :size="22" />
-        </AIconButton>
-        <div class="flex min-w-0 items-center gap-1">
-          <span class="hidden shrink-0 text-title-md font-medium text-on-surface sm:block">{{ t(NAV_ITEMS.find(item => item.routeName === route.name)?.labelKey ?? (route.name === 'app-day-close-detail' ? 'dayClose.detail.title' : 'common.settings')) }}</span>
-          <span class="hidden h-5 w-px shrink-0 bg-outline-variant sm:block" aria-hidden="true" />
-          <RestaurantSwitcher />
-        </div>
-        <div class="ml-auto flex items-center gap-1">
-          <LanguageSwitcher class="hidden md:inline-flex" />
-          <ThemeSwitcher />
-          <ActivityBell />
-          <UserMenu />
-        </div>
-      </header>
-
-      <main id="main-content" class="flex-1 overflow-y-auto p-4 md:p-8">
-        <RouterView />
-      </main>
-    </div>
-
-    <ReadyOrderNotificationStack
-      :notifications="readyOrderNotifications.notifications.value"
-      @dismiss="readyOrderNotifications.dismiss"
-    />
-  </div>
+  <component :is="appConfig.shellV2 ? AAppShell : LegacyAppShell" :items="items" :route-key="route.path">
+    <RouterView />
+    <template #restaurant><RestaurantSwitcher /></template>
+    <template #activity><ActivityBell /></template>
+    <template #language><LanguageSwitcher /></template>
+    <template #theme><ThemeSwitcher /></template>
+    <template #user><UserMenu :hide-settings="appConfig.shellV2" /></template>
+    <template #language-inline><LanguageSwitcher inline /></template>
+    <template #theme-inline><ThemeSwitcher inline /></template>
+    <template #account-inline><UserMenu inline hide-settings /></template>
+    <template #notifications>
+      <ReadyOrderNotificationStack :notifications="readyOrderNotifications.notifications.value" class="app-shell-ready" @dismiss="readyOrderNotifications.dismiss" />
+    </template>
+  </component>
 </template>
-
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 200ms ease-out;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-@media (prefers-reduced-motion: reduce) {
-  .fade-enter-active,
-  .fade-leave-active {
-    transition: none;
-  }
-}
-</style>

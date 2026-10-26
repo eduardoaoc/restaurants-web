@@ -1,0 +1,10 @@
+{
+  "enabledPlugins": {
+    "frontend-stack@frontend-stack": true,
+    "frontend-design@frontend-stack": true,
+    "impeccable@frontend-stack": true,
+    "ui-ux-pro-max@frontend-stack": true,
+    "taste@frontend-stack": true,
+    "emil-design-eng@frontend-stack": true
+  }
+}

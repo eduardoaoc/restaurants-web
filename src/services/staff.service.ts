@@ -31,6 +31,8 @@ interface StaffPerformanceEnvelope {
  *   GET   /api/v1/staff/{user}                                       -> { data: { staff } }
  *   PATCH /api/v1/staff/{user}                                       -> { message, data: { staff } } | 422
  *   GET   /api/v1/restaurants/{restaurant}/staff-shifts              -> paginated staff_shifts
+ *   POST  /api/v1/restaurants/{restaurant}/staff-shifts { user_id }  -> 201 { data: { staff_shift } } | 409 active | 422 ineligible
+ *   POST  /api/v1/staff-shifts/{staffShift}/end                     -> { data: { staff_shift } }
  *   GET   /api/v1/restaurants/{restaurant}/staff/{staff}/performance -> { data: {...} }
  *
  * GET /staff is ORGANIZATION-wide (scoped server-side to the restaurants the
@@ -70,6 +72,24 @@ export const staffService = {
       { params: { active: 'true' }, signal },
     )
     return data.data.staff_shifts
+  },
+
+  /**
+   * Start a shift for `userId` at this restaurant (StaffShiftPolicy::start:
+   * self, or `manage_staff_shifts` for someone else). Automatic waiter
+   * assignment only considers waiters with an active shift.
+   */
+  async startShift(restaurantId: number, userId: number): Promise<StaffShift> {
+    const { data } = await http.post<{ data: { staff_shift: StaffShift } }>(
+      `/api/v1/restaurants/${restaurantId}/staff-shifts`,
+      { user_id: userId },
+    )
+    return data.data.staff_shift
+  },
+
+  async endShift(shiftId: number): Promise<StaffShift> {
+    const { data } = await http.post<{ data: { staff_shift: StaffShift } }>(`/api/v1/staff-shifts/${shiftId}/end`)
+    return data.data.staff_shift
   },
 
   /** Requires `view_reports` and that the staff member is assigned to this exact restaurant. */

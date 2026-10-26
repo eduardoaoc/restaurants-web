@@ -7,6 +7,12 @@ import { EVENTS_REQUIRING_OPERATIONS_REFRESH, REALTIME_EVENT_NAMES,
 const REFRESH_DEBOUNCE_MS = 250
 const DIAGNOSTIC_TIMEOUT_MS = 10_000
 const FALLBACK_INTERVAL_MS = 15_000
+// A healthy socket does not prove events are being published: if the
+// realtime-local queue worker stops, the WebSocket stays connected while
+// broadcasts pile up in the queue. A slow REST reconcile while connected
+// (re-armed by every refresh, so an active feed never adds extra reads)
+// bounds how stale a screen can get in that case.
+const CONNECTED_SAFETY_INTERVAL_MS = 60_000
 
 type RefreshSource = 'event' | 'subscription' | 'fallback' | 'resume' | 'mutation'
 export interface ReceivedRealtimeEvent extends RealtimeEventEnvelope { name: RealtimeEventName }
@@ -35,6 +41,7 @@ export function useRestaurantRealtime(restaurantId: () => number | null, enabled
   let retryDelay = FALLBACK_INTERVAL_MS
   let retryAt = 0
   let readDenied = false
+  let safetyArmed = false
 
   const active = () => !disposed && restaurantId() !== null && enabled()
   const visibleOnline = () => !document.hidden && navigator.onLine
@@ -52,6 +59,7 @@ export function useRestaurantRealtime(restaurantId: () => number | null, enabled
   }
 
   function schedule(source: RefreshSource, delay = REFRESH_DEBOUNCE_MS): void {
+    safetyArmed = false
     if (!active() || !visibleOnline() || readDenied) return
     if (refreshing) { queuedSource = source; return }
     // A domain event supersedes a future fallback, but not Retry-After.
@@ -60,7 +68,13 @@ export function useRestaurantRealtime(restaurantId: () => number | null, enabled
   }
 
   function scheduleFallback(): void {
-    if (connectionState.value !== 'connected' && options.refresh && !refreshTimer) schedule('fallback', retryDelay)
+    if (!options.refresh) return
+    const connected = connectionState.value === 'connected'
+    // A pending slow safety reconcile must not delay the 15 s fallback once
+    // the connection is lost; any other pending refresh is kept.
+    if (refreshTimer && !(safetyArmed && !connected)) return
+    schedule('fallback', connected ? Math.max(retryDelay, CONNECTED_SAFETY_INTERVAL_MS) : retryDelay)
+    safetyArmed = connected && refreshTimer !== null
   }
 
   async function refresh(source: RefreshSource): Promise<void> {

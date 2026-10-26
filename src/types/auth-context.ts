@@ -70,6 +70,7 @@ export type PlatformPermissionSlug =
   | 'manage_platform_organizations'
   | 'view_platform_restaurants'
   | 'manage_platform_restaurants'
+  | 'create_platform_restaurants'
   | 'view_platform_audit'
   | (string & {})
 
@@ -122,6 +123,13 @@ export interface AuthContext {
   user: AuthContextUser
   platform: PlatformContext
   organizations: OrganizationContext[]
+  /**
+   * The organization tenant routes (GET /restaurants, /staff, ...) resolve
+   * for THIS session — chosen via PUT /auth/active-organization, otherwise
+   * the backend's default. null when the user has no active membership
+   * (e.g. a platform admin).
+   */
+  active_organization_id: number | null
 }
 
 /**

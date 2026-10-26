@@ -18,6 +18,9 @@ export function validateEnv(env: BuildEnv, mode: string) {
   const target = resolveBuildTarget(mode)
   const secure = target !== 'local'
   const read = (key: string) => String(env[key] ?? '').trim()
+  // .env.staging.example placeholders are syntactically valid hosts/keys:
+  // refuse them explicitly so a half-filled file never ships.
+  if (secure) for (const key of Object.keys(env)) if (key.startsWith('VITE_') && /CHANGE_ME/i.test(String(env[key] ?? ''))) invalid(key)
   const api = read('VITE_API_URL'), publicApp = read('VITE_PUBLIC_APP_URL')
   if (secure && !api) invalid('VITE_API_URL')
   if (secure && !publicApp) invalid('VITE_PUBLIC_APP_URL')
@@ -37,5 +40,5 @@ export function validateEnv(env: BuildEnv, mode: string) {
     key: read('VITE_REVERB_APP_KEY'), host: read('VITE_REVERB_HOST'),
     port: Number(read('VITE_REVERB_PORT')), tls: read('VITE_REVERB_SCHEME') === 'https',
   } : null
-  return { target, apiUrl, publicAppUrl, realtimeConfigured, reverb }
+  return { target, apiUrl, publicAppUrl, realtimeConfigured, reverb, shellV2: read('VITE_SHELL_V2') === 'true' }
 }

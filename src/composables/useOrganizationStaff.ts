@@ -36,6 +36,8 @@ export function useOrganizationStaff(enabled: () => boolean = () => true) {
   const saveError = ref<ApiError | null>(null)
 
   const activeShifts = ref<StaffShift[]>([])
+  const shiftSaving = ref(false)
+  const shiftError = ref<ApiError | null>(null)
   const canReadShifts = computed(() => can('manage_staff_shifts'))
 
   let controller: AbortController | null = null
@@ -102,6 +104,7 @@ export function useOrganizationStaff(enabled: () => boolean = () => true) {
       staff.value = []
       activeShifts.value = []
       saveError.value = null
+      shiftError.value = null
       if (!isEnabled || restaurantId === null) {
         staff.value = []
         activeShifts.value = []
@@ -164,6 +167,40 @@ export function useOrganizationStaff(enabled: () => boolean = () => true) {
     }
   }
 
+  /**
+   * Start/end a shift at the CURRENT restaurant (shifts are per restaurant),
+   * then re-read the active shifts so the badge reflects the backend.
+   */
+  async function changeShift(action: () => Promise<unknown>): Promise<ApiError | null> {
+    if (shiftSaving.value || disposed || !canReadShifts.value) return null
+    const token = generation
+    shiftSaving.value = true
+    shiftError.value = null
+    try {
+      await action()
+      if (token !== generation || disposed) return null
+      await fetchActiveShifts()
+      return null
+    } catch (err) {
+      if (token !== generation || disposed) return null
+      const normalized = normalizeApiError(err)
+      shiftError.value = normalized
+      return normalized
+    } finally {
+      shiftSaving.value = false
+    }
+  }
+
+  function startShift(userId: number): Promise<ApiError | null> {
+    const restaurantId = restaurantStore.currentRestaurantId
+    if (restaurantId === null) return Promise.resolve(null)
+    return changeShift(() => staffService.startShift(restaurantId, userId))
+  }
+
+  function endShift(shiftId: number): Promise<ApiError | null> {
+    return changeShift(() => staffService.endShift(shiftId))
+  }
+
   onBeforeUnmount(() => { disposed = true; ++generation; abortAll() })
 
   return {
@@ -174,6 +211,10 @@ export function useOrganizationStaff(enabled: () => boolean = () => true) {
     saveError,
     activeShiftByUserId,
     canReadShifts,
+    shiftSaving,
+    shiftError,
+    startShift,
+    endShift,
     createStaff,
     updateStaff,
     refresh: fetchStaff,

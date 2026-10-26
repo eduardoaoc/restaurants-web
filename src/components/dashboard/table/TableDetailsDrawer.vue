@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PhCaretDown, PhCheck, PhUserCircleMinus, PhX } from '@phosphor-icons/vue'
 
@@ -7,15 +7,19 @@ import { normalizeApiError } from '@/api/errors'
 import AButton from '@/components/ui/AButton.vue'
 import AConfirmDialog from '@/components/ui/AConfirmDialog.vue'
 import AIconButton from '@/components/ui/AIconButton.vue'
+import AStatusBadge from '@/components/ui/AStatusBadge.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import ATextField from '@/components/ui/ATextField.vue'
+import ASheet from '@/components/ui/ASheet.vue'
 import { usePermissions } from '@/composables/usePermissions'
 import { getTableStatusStyle } from '@/composables/useTableStatusStyle'
+import { useSnackbar } from '@/composables/useSnackbar'
 import { tableSessionsService } from '@/services/table-sessions.service'
 import { tablesService } from '@/services/tables.service'
 import { useRestaurantStore } from '@/stores/restaurant'
 import type { OperationsStaffMember, OperationsTable } from '@/types/operations'
 import type { SessionBill } from '@/types/table-sessions'
+import { serviceTableStatus } from '@/utils/service-table-status'
 import { describeApiError } from '@/utils/error-message'
 import { formatDuration, formatMoney } from '@/utils/format'
 import BillReceiptSheet from './BillReceiptSheet.vue'
@@ -31,11 +35,15 @@ const props = defineProps<{
   staff: OperationsStaffMember[]
   freeTables: OperationsTable[]
   currency: string
+  /** Opt-in presentation used by ServiceView; Dashboard keeps the legacy drawer. */
+  serviceMode?: boolean
+  initialSection?: 'overview' | 'orders' | 'requests' | 'bill'
 }>()
 
 const emit = defineEmits<{ close: []; refresh: [] }>()
 
 const { t, locale } = useI18n()
+const snackbar = useSnackbar()
 
 /**
  * Every table-session action here maps to the exact backend Policy ability
@@ -92,7 +100,7 @@ const feedback = ref<{ kind: 'success' | 'error'; message: string } | null>(null
 const bill = ref<SessionBill | null>(null)
 
 watch(
-  () => `${restaurantStore.currentRestaurantId}:${props.table?.id}:${props.table?.session?.id}`,
+  () => `${restaurantStore.currentRestaurantId}:${props.table?.id}:${props.table?.session?.id}:${props.initialSection}`,
   () => {
     // Carta 8.1B §2: a session's orders are no longer an extra click away —
     // they're visible the moment a table with an active session opens, same
@@ -102,7 +110,7 @@ watch(
     // table (§3).
     showOrders.value = !!(props.table?.session && canViewOrders.value)
     showAccess.value = false
-    showBill.value = false
+    showBill.value = props.serviceMode === true && props.initialSection === 'bill'
     showReceipt.value = false
     showTransfer.value = false
     showWaiterMenu.value = false
@@ -110,6 +118,14 @@ watch(
     showCloseConfirm.value = false
     feedback.value = null
     bill.value = null
+    if (props.serviceMode && props.initialSection && props.initialSection !== 'overview') {
+      const target = {
+        orders: 'service-table-orders',
+        requests: 'service-table-requests',
+        bill: 'service-table-bill',
+      }[props.initialSection]
+      void nextTick(() => document.getElementById(target)?.scrollIntoView({ block: 'start', behavior: scrollBehavior() }))
+    }
   },
   { immediate: true },
 )
@@ -117,10 +133,52 @@ watch(
 function onOrderCreated(): void {
   showOrderComposer.value = false
   feedback.value = { kind: 'success', message: t('tableDrawer.feedback.orderCreated') }
+  if (props.serviceMode) snackbar.showSnackbar({ message: t('tableDrawer.feedback.orderCreated'), kind: 'success' })
   emit('refresh')
 }
 
 const style = computed(() => (props.table ? getTableStatusStyle(props.table.primary_status) : null))
+const serviceStatus = computed(() => props.table ? serviceTableStatus(props.table.primary_status) : null)
+
+type ServicePrimaryAction = 'open' | 'orders' | 'requests' | 'bill' | 'new-order'
+const servicePrimaryAction = computed<ServicePrimaryAction | null>(() => {
+  const table = props.table
+  if (!props.serviceMode || !table) return null
+  if (!table.session && canOpenTable.value) return 'open'
+  if (table.primary_status === 'waiting_approval' || table.primary_status === 'ready') {
+    return canViewOrders.value ? 'orders' : null
+  }
+  if (table.primary_status === 'bill_requested' && canViewBilling.value) return 'bill'
+  if (table.primary_status === 'waiter_requested' && canHandleTableRequests.value) return 'requests'
+  if (table.session && canCreateOrders.value) return 'new-order'
+  return null
+})
+
+function scrollBehavior(): ScrollBehavior {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+}
+
+function scrollToServiceSection(id: string): void {
+  document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: scrollBehavior() })
+}
+
+function runServicePrimaryAction(): void {
+  switch (servicePrimaryAction.value) {
+    case 'open': openTable(); break
+    case 'orders':
+      showOrders.value = true
+      void nextTick(() => scrollToServiceSection('service-table-orders'))
+      break
+    case 'requests':
+      void nextTick(() => scrollToServiceSection('service-table-requests'))
+      break
+    case 'bill':
+      showBill.value = true
+      void nextTick(() => scrollToServiceSection('service-table-bill'))
+      break
+    case 'new-order': showOrderComposer.value = true; break
+  }
+}
 
 // Matches the house dropdown pattern (RestaurantSwitcher/LanguageSwitcher/
 // ThemeSwitcher/UserMenu, see CLAUDE.md's component notes): without this,
@@ -145,6 +203,7 @@ async function run(action: string, task: () => Promise<unknown>, successKey: str
   try {
     await task()
     feedback.value = { kind: 'success', message: t(successKey) }
+    if (props.serviceMode) snackbar.showSnackbar({ message: t(successKey), kind: 'success' })
     emit('refresh')
   } catch (err) {
     feedback.value = { kind: 'error', message: describeApiError(normalizeApiError(err), t) }
@@ -230,13 +289,25 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
 
 <template>
   <Transition name="drawer">
-    <aside
+    <component
+      :is="serviceMode ? ASheet : 'aside'"
       v-if="table"
-      class="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border border-outline-variant bg-surface-container-high p-5 shadow-elevated sm:inset-x-auto sm:inset-y-6 sm:right-6 sm:w-96 sm:rounded-2xl"
-      role="dialog"
-      :aria-label="table.name"
+      :title="table.name"
+      variant="side"
+      size="md"
+      :class="serviceMode ? 'service-table-sheet' : 'fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border border-outline-variant bg-surface-container-high p-5 shadow-elevated sm:inset-x-auto sm:inset-y-6 sm:right-6 sm:w-96 sm:rounded-2xl'"
+      :role="serviceMode ? undefined : 'dialog'"
+      :aria-label="serviceMode ? undefined : table.name"
+      @close="emit('close')"
     >
-      <div class="flex items-start justify-between gap-3">
+      <template v-if="serviceMode" #header>{{ table.name }}</template>
+      <div v-if="serviceMode" class="mb-3 flex min-w-0 flex-wrap items-center gap-2">
+        <AStatusBadge v-if="serviceStatus" :state="serviceStatus.state" :label="t(serviceStatus.labelKey)" :icon="serviceStatus.icon" />
+        <span v-if="table.session?.assigned_waiter?.name" class="break-words text-body-sm text-fg-muted">
+          {{ table.session.assigned_waiter.name }}
+        </span>
+      </div>
+      <div v-else class="flex items-start justify-between gap-3">
         <div>
           <h3 class="text-title-lg font-semibold text-on-surface">{{ table.name }}</h3>
           <p v-if="style" class="mt-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-label-md" :class="style.tone">
@@ -249,7 +320,7 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
       </div>
 
       <p
-        v-if="feedback"
+        v-if="feedback && (!serviceMode || feedback.kind === 'error')"
         class="mt-3 rounded-md px-3 py-2 text-label-lg"
         :class="feedback.kind === 'success' ? 'bg-success-container text-on-success-container' : 'bg-critical-container text-on-critical-container'"
         role="status"
@@ -259,10 +330,12 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
 
       <TableRequestsPanel
         v-if="table.session && canHandleTableRequests"
+        id="service-table-requests"
         class="mt-3"
         :table-id="table.id"
         :restaurant-id="restaurantStore.currentRestaurantId"
         :refresh-key="table"
+        :service-mode="serviceMode"
         @changed="onTableRequestsChanged"
       />
 
@@ -270,7 +343,7 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
       <div v-if="!table.session && canOpenTable" class="mt-4 flex flex-col gap-3">
         <p class="text-body-md text-on-surface-variant">{{ t('tableDrawer.freeHint') }}</p>
         <ATextField v-model="openGuestCount" :label="t('tableDrawer.guestCount')" inputmode="numeric" type="number" />
-        <AButton :loading="submittingAction === 'open'" @click="openTable">{{ t('tableDrawer.actions.open') }}</AButton>
+        <AButton v-if="!serviceMode" :loading="submittingAction === 'open'" @click="openTable">{{ t('tableDrawer.actions.open') }}</AButton>
       </div>
       <p v-else-if="!table.session" class="mt-4 text-body-md text-on-surface-variant">{{ t('tableDrawer.freeHint') }}</p>
 
@@ -337,11 +410,11 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
         </div>
 
         <div class="mt-4 grid grid-cols-2 gap-2">
-          <AButton v-if="canViewOrders" variant="tonal" @click="showOrders = !showOrders">
+          <AButton v-if="canViewOrders && (!serviceMode || servicePrimaryAction !== 'orders')" variant="tonal" @click="showOrders = !showOrders">
             {{ showOrders ? t('tableDrawer.actions.hideOrders') : t('tableDrawer.actions.viewOrders') }}
           </AButton>
           <AButton
-            v-if="canCreateOrders"
+            v-if="canCreateOrders && (!serviceMode || servicePrimaryAction !== 'new-order')"
             variant="outlined"
             :disabled="!table.session"
             @click="showOrderComposer = true"
@@ -352,11 +425,11 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
             {{ t('tableDrawer.actions.callWaiter') }}
           </AButton>
           <AButton v-if="canTransferTables" variant="outlined" @click="showTransfer = true">{{ t('tableDrawer.actions.transfer') }}</AButton>
-          <AButton v-if="canViewBilling" variant="tonal" @click="showBill = !showBill">{{ t('tableDrawer.actions.viewBill') }}</AButton>
+          <AButton v-if="canViewBilling && (!serviceMode || servicePrimaryAction !== 'bill')" variant="tonal" @click="showBill = !showBill">{{ t('tableDrawer.actions.viewBill') }}</AButton>
           <AButton v-if="canViewReceipt" variant="outlined" @click="showReceipt = true">{{ t('tableDrawer.actions.viewReceipt') }}</AButton>
         </div>
 
-        <div v-show="table.session && canViewBilling && showBill" class="mt-4 border-t border-outline-variant pt-4">
+        <div v-show="table.session && canViewBilling && showBill" id="service-table-bill" class="mt-4 border-t border-outline-variant pt-4">
           <TableBillPanel
             v-if="table.session && canViewBilling"
             :key="table.session.id"
@@ -403,13 +476,14 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
           {{ t('tableDrawer.closeDisabledHint') }}
         </p>
 
-        <div v-if="showOrders && canViewOrders" class="mt-4 border-t border-outline-variant pt-4">
+        <div v-if="showOrders && canViewOrders" id="service-table-orders" class="mt-4 border-t border-outline-variant pt-4">
           <TableOrdersList
             :key="table.session.id"
             :table-session-id="table.session.id"
             :currency="currency"
             :timezone="restaurantStore.currentSettings?.timezone ?? 'Europe/Madrid'"
             :refresh-key="table"
+            :service-mode="serviceMode"
             @served="emit('refresh')"
             @approved="emit('refresh')"
           />
@@ -437,7 +511,12 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
           <TableAccessPanel :key="table.id" :table-id="table.id" />
         </div>
       </div>
-    </aside>
+      <template v-if="serviceMode && servicePrimaryAction" #footer>
+        <AButton size="lg" full-width :loading="servicePrimaryAction === 'open' && submittingAction === 'open'" @click="runServicePrimaryAction">
+          {{ t(`service.tableAction.${servicePrimaryAction}`) }}
+        </AButton>
+      </template>
+    </component>
   </Transition>
 
   <TransferTableDialog
@@ -477,6 +556,10 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
 </template>
 
 <style scoped>
+.service-table-sheet { --service-detail-max: var(--pane-detail); }
+@media (max-width: 767px) {
+  :global(.service-table-sheet) { height: 100%; max-height: 100%; border-radius: 0; }
+}
 .drawer-enter-active,
 .drawer-leave-active {
   transition:

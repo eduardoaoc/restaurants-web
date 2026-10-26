@@ -2,14 +2,23 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { PhBellRinging, PhCheckCircle, PhStar, PhTable } from '@phosphor-icons/vue'
+import {
+  PhArrowClockwise,
+  PhBellRinging,
+  PhBellSimple,
+  PhHandPalm,
+  PhInfo,
+  PhReceipt,
+  PhStar,
+  PhUsers,
+  PhWarning,
+  PhWarningOctagon,
+} from '@phosphor-icons/vue'
 
-import EmptyState from '@/components/dashboard/EmptyState.vue'
-import SectionCard from '@/components/dashboard/SectionCard.vue'
-import AProgress from '@/components/ui/AProgress.vue'
 import AButton from '@/components/ui/AButton.vue'
+import APageHeader from '@/components/ui/APageHeader.vue'
+import AStatusBadge from '@/components/ui/AStatusBadge.vue'
 import ASurface from '@/components/ui/ASurface.vue'
-import AttentionPanel from '@/components/dashboard/operation/AttentionPanel.vue'
 import TableDetailsDrawer from '@/components/dashboard/table/TableDetailsDrawer.vue'
 import ProductAvailabilityPanel from '@/components/service/ProductAvailabilityPanel.vue'
 import DailyOperationBanner from '@/components/shared/DailyOperationBanner.vue'
@@ -22,16 +31,19 @@ import { provideCatalogRefresh } from '@/composables/useCatalogRefresh'
 import { usePermissions } from '@/composables/usePermissions'
 import { useRestaurantOperations } from '@/composables/useRestaurantOperations'
 import { useRestaurantRealtime } from '@/composables/useRestaurantRealtime'
-import { getTableStatusStyle } from '@/composables/useTableStatusStyle'
 import { customerFeedbackService } from '@/services/customer-feedback.service'
 import { tablesService } from '@/services/tables.service'
 import { useRestaurantStore } from '@/stores/restaurant'
+import { useAuthStore } from '@/stores/auth'
 import type { CustomerFeedbackSummary } from '@/types/customer-feedback'
 import type { FloorPlanTable } from '@/types/floor-plan'
-import type { OperationsTable } from '@/types/operations'
+import type { OperationsAlert, OperationsTable } from '@/types/operations'
 import type { Order } from '@/types/orders'
 import { describeApiError } from '@/utils/error-message'
+import { operationsAlertTypeLabelKey } from '@/utils/operations-alerts'
 import { DEFAULT_CURRENCY, formatDuration, formatMoney } from '@/utils/format'
+import { useSnackbar } from '@/composables/useSnackbar'
+import ServiceTableTile from '@/components/service/ServiceTableTile.vue'
 
 /**
  * "Servicio" (Passo 3.2) — the waiter's own operational entry point,
@@ -47,6 +59,8 @@ const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const restaurantStore = useRestaurantStore()
+const authStore = useAuthStore()
+const snackbar = useSnackbar()
 const refreshCatalog = provideCatalogRefresh()
 const { can } = usePermissions()
 
@@ -224,11 +238,71 @@ const sortedTables = computed(() =>
 )
 const freeTables = computed(() => allTables.value.filter((table) => table.primary_status === 'free'))
 
+const tableScope = ref<'all' | 'mine'>('all')
+const selectedZoneId = ref<number | null>(null)
+const currentUserId = computed(() => authStore.authContext?.user.id ?? null)
+const canFilterMine = computed(() => operations.snapshot.value !== null && currentUserId.value !== null)
+const serviceZones = computed(() => operations.snapshot.value?.floors.flatMap(floor => floor.zones) ?? [])
+const visibleTables = computed(() => sortedTables.value.filter(table => {
+  if (selectedZoneId.value !== null && table.zone_id !== selectedZoneId.value) return false
+  if (tableScope.value === 'mine' && canFilterMine.value) return table.session?.assigned_waiter?.id === currentUserId.value
+  return true
+}))
+const operationAlerts = computed(() => operations.snapshot.value?.alerts ?? [])
+const primaryAlerts = computed(() => operationAlerts.value.filter(alert =>
+  alert.table_id !== null && !(canApprove.value && alert.type === 'order_waiting_approval'),
+))
+const nonTableAlerts = computed(() => operationAlerts.value.filter(alert => alert.table_id === null))
+const showNow = computed(() => canApprove.value || canViewTables.value)
+const nowError = computed(() => {
+  if (approvals.orders.value.length + primaryAlerts.value.length + nonTableAlerts.value.length > 0) return null
+  if (tablesError.value && allTables.value.length === 0) return tablesError.value
+  if (canApprove.value && approvals.error.value && approvals.orders.value.length === 0) return approvals.error.value
+  if (canViewOperations.value && operations.error.value && operations.snapshot.value === null) return operations.error.value
+  return null
+})
+const nowLoading = computed(() =>
+  (canApprove.value && approvals.loading.value && approvals.orders.value.length === 0)
+  || (canViewOperations.value && operations.loading.value && operations.snapshot.value === null),
+)
+
+function alertSection(alert: OperationsAlert): 'overview' | 'orders' | 'requests' | 'bill' {
+  if (alert.type === 'order_waiting_approval' || alert.type === 'order_ready') return 'orders'
+  if (alert.type === 'customer_waiter_request_pending' || alert.type === 'responsible_waiter_call_pending') return 'requests'
+  if (alert.type === 'bill_request_pending') return 'bill'
+  return 'overview'
+}
+
 const selectedTableId = ref<number | null>(null)
 const selectedTable = computed(() => allTables.value.find((table) => table.id === selectedTableId.value) ?? null)
+const selectedTableSection = ref<'overview' | 'orders' | 'requests' | 'bill'>('overview')
 
-function openTable(tableId: number): void {
+function openTable(tableId: number, section: 'overview' | 'orders' | 'requests' | 'bill' = 'overview'): void {
   selectedTableId.value = tableId
+  selectedTableSection.value = section
+}
+
+function openAlertTable(alert: OperationsAlert): void {
+  if (alert.table_id !== null) openTable(alert.table_id, alertSection(alert))
+}
+
+function statusForAlert(alert: OperationsAlert): 'attention' | 'warning' | 'critical' | 'normal' {
+  if (alert.severity === 'critical') return 'critical'
+  if (alert.severity === 'warning') return 'warning'
+  return alert.type === 'order_waiting_approval' || alert.type === 'order_ready'
+    || alert.type === 'customer_waiter_request_pending' || alert.type === 'bill_request_pending'
+    || alert.type === 'responsible_waiter_call_pending' ? 'attention' : 'normal'
+}
+
+function iconForAlert(alert: OperationsAlert) {
+  if (alert.type === 'order_waiting_approval') return PhHandPalm
+  if (alert.type === 'order_ready') return PhBellSimple
+  if (alert.type === 'bill_request_pending') return PhReceipt
+  if (alert.type === 'customer_waiter_request_pending' || alert.type === 'responsible_waiter_call_pending') return PhBellRinging
+  if (alert.type === 'active_table_unassigned' || alert.type === 'assigned_waiter_off_shift' || alert.type === 'assigned_waiter_suspended') return PhUsers
+  if (alert.severity === 'critical') return PhWarningOctagon
+  if (alert.severity === 'warning') return PhWarning
+  return PhInfo
 }
 
 /**
@@ -263,6 +337,15 @@ function onDrawerRefresh(): void {
   realtime.refresh()
 }
 
+async function toggleAvailability(product: import('@/types/product').RestaurantProduct): Promise<void> {
+  const previous = availability.products.value.find(item => item.id === product.id)?.available
+  await availability.toggle(product)
+  const updated = availability.products.value.find(item => item.id === product.id)
+  if (previous !== undefined && updated && updated.available !== previous) {
+    snackbar.showSnackbar({ message: t('service.feedback.availabilityUpdated'), kind: 'success' })
+  }
+}
+
 const selectedOrderId = ref<number | null>(null)
 const selectedOrder = computed(() => canApprove.value
   ? approvals.orders.value.find((order) => order.id === selectedOrderId.value) ?? null : null)
@@ -280,7 +363,10 @@ watch(
   () => restaurantStore.currentRestaurantId,
   () => {
     selectedTableId.value = null
+    selectedTableSection.value = 'overview'
     selectedOrderId.value = null
+    tableScope.value = 'all'
+    selectedZoneId.value = null
   },
 )
 
@@ -294,6 +380,7 @@ async function approveOrder(order: Order): Promise<void> {
   const err = await approvals.approve(order.id)
   if (restaurantId !== restaurantStore.currentRestaurantId) return
   if (!err) {
+    snackbar.showSnackbar({ message: t('service.feedback.orderApproved', { order: order.order_number }), kind: 'success' })
     if (selectedOrderId.value === order.id) selectedOrderId.value = null
   }
 }
@@ -305,160 +392,177 @@ async function rejectSelected(): Promise<void> {
   const err = await approvals.reject(order.id)
   if (restaurantId !== restaurantStore.currentRestaurantId) return
   if (!err) {
+    snackbar.showSnackbar({ message: t('service.feedback.orderRejected', { order: order.order_number }), kind: 'info' })
     if (selectedOrderId.value === order.id) selectedOrderId.value = null
   }
 }
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
-    <div>
-      <h2 class="text-headline font-bold text-on-surface">{{ t('service.title') }}</h2>
-      <p class="mt-1.5 text-body-md text-on-surface-variant">{{ t('service.subtitle') }}</p>
-    </div>
+  <div class="flex min-w-0 flex-col gap-5">
+    <APageHeader :title="t('service.title')">
+      <template #context>
+        <span class="inline-flex min-h-11 items-center text-body-sm text-fg-muted" role="status">
+          {{ t(`operations.connection.${realtime.connectionState.value}`) }}
+          <span v-if="realtime.connectionState.value !== 'connected'" class="ml-1">{{ t('kitchen.refreshHint') }}</span>
+        </span>
+      </template>
+      <template #actions>
+        <AButton variant="ghost" :loading="realtime.connectionState.value === 'connecting'" @click="onDrawerRefresh">
+          <template #leading><PhArrowClockwise :size="20" aria-hidden="true" /></template>
+          {{ t('operations.quickActions.refresh') }}
+        </AButton>
+      </template>
+    </APageHeader>
 
     <ASurface v-if="!hasAnyAccess" tone="container" radius="lg" class="max-w-xl p-6">
-      <p class="text-title-md font-medium text-on-surface">{{ t('service.noAccess') }}</p>
+      <p class="text-title-md font-medium text-fg">{{ t('service.noAccess') }}</p>
     </ASurface>
 
     <template v-else>
-      <p role="status" class="text-body-md text-on-surface-variant">
-        {{ t(`operations.connection.${realtime.connectionState.value}`) }}
-        <span v-if="realtime.connectionState.value !== 'connected'">{{ t('kitchen.refreshHint') }}</span>
-      </p>
+      <section v-if="showNow" aria-labelledby="service-now-heading" class="min-w-0">
+        <div class="mb-2 flex items-baseline justify-between gap-3">
+          <h2 id="service-now-heading" class="text-title-lg font-semibold text-fg">{{ t('service.now.title') }}</h2>
+          <span v-if="approvals.orders.value.length + primaryAlerts.length + nonTableAlerts.length" class="text-body-sm font-medium tabular-nums text-fg-muted" aria-live="polite">
+            {{ t('service.now.count', approvals.orders.value.length + primaryAlerts.length + nonTableAlerts.length) }}
+          </span>
+        </div>
+
+        <div v-if="nowLoading" class="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-busy="true" :aria-label="t('service.now.loading')">
+          <div v-for="index in 2" :key="index" class="h-16 animate-pulse rounded-md bg-surface-subtle" />
+        </div>
+        <div v-else-if="nowError" class="rounded-md bg-danger-subtle px-4 py-3 text-body-md text-danger" role="alert">
+          {{ describeApiError(nowError, t) }}
+        </div>
+        <p v-else-if="approvals.orders.value.length === 0 && primaryAlerts.length === 0 && nonTableAlerts.length === 0" class="py-2 text-body-md text-fg-muted">
+          {{ t('service.now.empty') }}
+        </p>
+        <ul v-else class="flex min-w-0 gap-2 overflow-x-auto pb-1 snap-x snap-mandatory" :aria-label="t('service.now.title')">
+          <li v-for="order in approvals.orders.value" :key="`order-${order.id}`" class="w-[min(86vw,22rem)] shrink-0 snap-start rounded-md border border-hairline bg-surface p-3 shadow-raised">
+            <div class="flex min-w-0 items-start gap-2">
+              <PhHandPalm :size="24" weight="fill" class="shrink-0 text-accent" aria-hidden="true" />
+              <div class="min-w-0 flex-1">
+                <p class="break-words text-body-lg font-semibold text-fg">{{ order.table.name }}</p>
+                <p class="break-words text-body-sm text-fg-muted">
+                  {{ order.order_number }} · {{ formatDuration(orderAgeSeconds(order)) }}
+                </p>
+              </div>
+            </div>
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <AButton v-if="approvals.canAct(order)" size="md" :loading="approvals.actingOn[order.id] === 'approve'" :disabled="!!approvals.actingOn[order.id]" @click="approveOrder(order)">
+                {{ t('service.order.approve') }}
+              </AButton>
+              <AButton variant="ghost" size="md" :aria-label="t('tableDrawer.orders.actions.viewDetail', { number: order.order_number })" @click="openOrder(order)">
+                {{ t('service.pending.viewOrder') }}
+              </AButton>
+              <span class="ml-auto min-w-0 break-words text-body-sm font-semibold tabular-nums text-fg">
+                {{ formatMoney(order.total, locale, currency) }}
+              </span>
+            </div>
+            <p v-if="approvals.actionError[order.id]" class="mt-2 text-body-sm text-danger" role="alert">
+              {{ describeApiError(approvals.actionError[order.id]!, t) }}
+            </p>
+          </li>
+          <li v-for="alert in primaryAlerts" :key="`alert-${alert.id}`" class="w-[min(86vw,22rem)] shrink-0 snap-start">
+            <button
+              v-if="alert.table_id !== null"
+              type="button"
+              class="flex min-h-16 w-full min-w-0 items-center gap-3 rounded-md border border-hairline bg-surface px-3 py-3 text-left shadow-raised hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              @click="openAlertTable(alert)"
+            >
+              <AStatusBadge :state="statusForAlert(alert)" :label="alert.type && operationsAlertTypeLabelKey(alert.type) ? t(operationsAlertTypeLabelKey(alert.type)!) : alert.type" :icon="iconForAlert(alert)" />
+              <span class="min-w-0 flex-1">
+                <span class="block break-words text-body-lg font-semibold text-fg">{{ allTables.find(table => table.id === alert.table_id)?.name ?? t('service.tables.title') }}</span>
+                <span class="block break-words text-body-sm text-fg-muted">{{ t(operationsAlertTypeLabelKey(alert.type) ?? 'operations.alerts.title') }} · {{ formatDuration(alert.age_seconds) }}</span>
+              </span>
+            </button>
+          </li>
+          <li v-for="alert in nonTableAlerts" :key="`alert-${alert.id}`" class="w-[min(86vw,22rem)] shrink-0 snap-start">
+            <div class="flex min-h-16 min-w-0 items-center gap-3 rounded-md border border-hairline bg-surface px-3 py-3 shadow-raised" role="status">
+              <AStatusBadge :state="statusForAlert(alert)" :label="t(operationsAlertTypeLabelKey(alert.type) ?? 'operations.alerts.title')" :icon="iconForAlert(alert)" />
+              <span class="min-w-0 flex-1">
+                <span v-if="operations.snapshot.value?.staff.find(member => member.user.id === alert.user_id)?.user.name" class="block break-words text-body-lg font-semibold text-fg">
+                  {{ operations.snapshot.value.staff.find(member => member.user.id === alert.user_id)?.user.name }}
+                </span>
+                <span class="block text-body-sm tabular-nums text-fg-muted">{{ formatDuration(alert.age_seconds) }}</span>
+              </span>
+            </div>
+          </li>
+        </ul>
+        <p v-if="approvals.error.value && (approvals.orders.value.length > 0 || primaryAlerts.length + nonTableAlerts.length > 0)" class="mt-2 text-body-sm text-danger" role="alert">
+          {{ describeApiError(approvals.error.value, t) }}
+        </p>
+      </section>
+
       <DailyOperationBanner
         v-if="operations.snapshot.value?.daily_operation"
         :daily-operation="operations.snapshot.value.daily_operation"
         :can-manage="can('open_daily_operation') || can('close_daily_operation')"
       />
-      <SectionCard v-if="canApprove" :icon="PhBellRinging" :title="t('service.pending.title')">
-        <div v-if="approvals.loading.value && approvals.orders.value.length === 0" class="flex justify-center py-6">
-          <AProgress size="sm" />
-        </div>
-        <p v-else-if="approvals.error.value" class="text-body-md text-error" role="alert">
-          {{ describeApiError(approvals.error.value, t) }}
-        </p>
-        <EmptyState v-else-if="approvals.orders.value.length === 0" :icon="PhCheckCircle" :message="t('service.pending.empty')" />
-        <ul v-else class="flex flex-col divide-y divide-outline-variant">
-          <li v-for="order in approvals.orders.value" :key="order.id" class="flex flex-col gap-3 py-3">
-            <div class="flex items-center justify-between gap-3">
-              <div class="min-w-0">
-                <p class="truncate text-body-lg font-medium text-on-surface">{{ order.table.name }} · {{ order.order_number }}</p>
-                <p class="text-label-md text-on-surface-variant">
-                  {{ t('service.pending.itemCount', { count: order.items.reduce((total, item) => total + item.quantity, 0) }) }} · {{ formatDuration(orderAgeSeconds(order)) }}
-                </p>
-              </div>
-              <span class="shrink-0 text-body-lg font-semibold tabular-nums text-on-surface">
-                {{ formatMoney(order.total, locale, currency) }}
-              </span>
-            </div>
-            <p class="text-label-md text-on-surface-variant">{{ t('tableDrawer.orders.status.waiting_approval') }}</p>
-            <div class="flex flex-wrap gap-3">
-              <AButton variant="outlined" :aria-label="t('tableDrawer.orders.actions.viewDetail', { number: order.order_number })" @click="openOrder(order)">
-                {{ t('service.pending.viewOrder') }}
-              </AButton>
-              <AButton v-if="approvals.canAct(order)" :loading="approvals.actingOn[order.id] === 'approve'" :disabled="!!approvals.actingOn[order.id]" @click="approveOrder(order)">
-                {{ t('service.order.approve') }}
-              </AButton>
-            </div>
-            <p v-if="approvals.actionError[order.id]" class="text-label-md text-error" role="alert">
-              {{ describeApiError(approvals.actionError[order.id]!, t) }}
+
+      <section v-if="canViewTables" aria-labelledby="service-tables-heading" class="min-w-0">
+        <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 id="service-tables-heading" class="text-title-lg font-semibold text-fg">{{ t('service.tables.title') }}</h2>
+            <p v-if="tablesError && sortedTables.length > 0" class="mt-1 text-body-sm text-danger" role="status">
+              {{ describeApiError(tablesError, t) }}
             </p>
-          </li>
-        </ul>
-        <AButton variant="text" class="mt-3" :loading="approvals.loading.value" @click="onDrawerRefresh">
-          {{ t('operations.quickActions.refresh') }}
-        </AButton>
-      </SectionCard>
-
-      <SectionCard
-        v-if="canViewTables && operations.snapshot.value && operations.snapshot.value.alerts.length > 0"
-        :icon="PhBellRinging"
-        :title="t('operations.alerts.title')"
-      >
-        <AttentionPanel :alerts="operations.snapshot.value.alerts" @open-table="openTable" />
-      </SectionCard>
-
-      <SectionCard v-if="canViewTables" :icon="PhTable" :title="t('service.tables.title')">
-        <div v-if="tablesLoading" class="flex justify-center py-6">
-          <AProgress size="sm" />
+          </div>
+          <div class="flex min-w-0 flex-wrap items-center gap-2">
+            <div v-if="canFilterMine" class="inline-flex min-h-11 rounded-md bg-surface-subtle p-1" role="group" :aria-label="t('service.tables.scopeLabel')">
+              <button type="button" class="min-h-11 rounded-sm px-3 text-body-sm font-medium" :class="tableScope === 'all' ? 'bg-surface text-fg shadow-raised' : 'text-fg-muted'" :aria-pressed="tableScope === 'all'" @click="tableScope = 'all'">{{ t('service.tables.all') }}</button>
+              <button type="button" class="min-h-11 rounded-sm px-3 text-body-sm font-medium" :class="tableScope === 'mine' ? 'bg-surface text-fg shadow-raised' : 'text-fg-muted'" :aria-pressed="tableScope === 'mine'" @click="tableScope = 'mine'">{{ t('service.tables.mine') }}</button>
+            </div>
+            <label v-if="serviceZones.length > 1" class="flex min-h-11 min-w-0 items-center gap-2 text-body-sm text-fg-muted">
+              <span class="sr-only">{{ t('service.tables.zoneLabel') }}</span>
+              <select v-model="selectedZoneId" class="min-h-11 max-w-40 min-w-0 rounded-md border border-control bg-surface px-3 text-body-sm text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
+                <option :value="null">{{ t('service.tables.allZones') }}</option>
+                <option v-for="zone in serviceZones" :key="zone.id" :value="zone.id">{{ zone.name }}</option>
+              </select>
+            </label>
+          </div>
         </div>
-        <p v-else-if="tablesError" class="text-body-md text-error" role="alert">
-          {{ tablesError.kind === 'forbidden' ? t('operations.errors.forbidden') : describeApiError(tablesError, t) }}
-        </p>
-        <EmptyState v-else-if="sortedTables.length === 0" :icon="PhTable" :message="t('service.tables.empty')" />
-        <ul v-else class="flex flex-col divide-y divide-outline-variant">
-          <li v-for="table in sortedTables" :key="table.id">
-            <button
-              type="button"
-              class="flex min-h-11 w-full items-center justify-between gap-3 py-3 text-left hover:bg-surface-container-low focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              @click="openTable(table.id)"
-            >
-              <div class="flex min-w-0 items-center gap-3">
-                <span
-                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-                  :class="getTableStatusStyle(table.primary_status).tone"
-                >
-                  <component :is="getTableStatusStyle(table.primary_status).icon" :size="18" aria-hidden="true" />
-                </span>
-                <span class="min-w-0">
-                  <span class="block truncate text-body-lg font-medium text-on-surface">{{ table.name }}</span>
-                  <span class="text-label-md text-on-surface-variant">{{ t(getTableStatusStyle(table.primary_status).labelKey) }}</span>
-                </span>
-              </div>
-              <span v-if="table.orders.waiting_approval > 0" class="shrink-0 rounded-full bg-warning-container px-2 py-0.5 text-label-md font-medium text-on-warning-container">
-                {{ t('service.tables.waitingApprovalBadge', { count: table.orders.waiting_approval }) }}
-              </span>
-            </button>
-          </li>
+
+        <div v-if="tablesLoading && allTables.length === 0" class="grid grid-cols-2 gap-3 min-[414px]:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6" aria-busy="true" :aria-label="t('service.tables.loading')">
+          <div v-for="index in 6" :key="index" class="min-h-28 animate-pulse rounded-md bg-surface-subtle" />
+        </div>
+        <div v-else-if="tablesError && allTables.length === 0" class="flex flex-col items-start gap-2 rounded-md bg-danger-subtle p-4 text-danger" role="alert">
+          <p class="text-body-md">{{ tablesError.kind === 'forbidden' ? t('operations.errors.forbidden') : describeApiError(tablesError, t) }}</p>
+          <AButton variant="secondary" @click="onDrawerRefresh">{{ t('operations.quickActions.refresh') }}</AButton>
+        </div>
+        <p v-else-if="allTables.length === 0" class="py-2 text-body-md text-fg-muted">{{ t('service.tables.empty') }}</p>
+        <p v-else-if="visibleTables.length === 0" class="py-2 text-body-md text-fg-muted">{{ t('service.tables.filterEmpty') }}</p>
+        <ul v-else class="grid grid-cols-2 gap-3 min-[414px]:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          <ServiceTableTile v-for="table in visibleTables" :key="table.id" :table="table" @select="openTable" />
         </ul>
-      </SectionCard>
+      </section>
 
       <ProductAvailabilityPanel v-if="canChangeAvailability" :key="restaurantStore.currentRestaurantId ?? 0"
         :products="availability.products.value" :loading="availability.loading.value" :error="availability.error.value"
-        :busy="availability.busy" :errors="availability.errors" @toggle="availability.toggle" @refresh="realtime.refresh" />
+        :busy="availability.busy" :errors="availability.errors" @toggle="toggleAvailability" @refresh="realtime.refresh" />
 
-      <!-- "Mis valoraciones" (Passo 3.5 §17) — the waiter's own aggregate
-           only, GET /me/feedback-summary. Deliberately never the same card
-           as "Rendimiento" (internal manager review, staff.detail.* / the
-           unrelated StaffReview system) — separate section, separate label,
-           never mixed (CLAUDE.md §15/§19 for this Passo). -->
-      <SectionCard v-if="canSeeOwnFeedback" :icon="PhStar" :title="t('service.feedback.title')">
-        <div v-if="feedbackSummaryLoading" class="flex justify-center py-4">
-          <AProgress size="sm" />
+      <details v-if="canSeeOwnFeedback" class="rounded-md border border-hairline bg-surface px-4 py-3">
+        <summary class="flex min-h-11 cursor-pointer items-center text-body-lg font-semibold text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
+          {{ t('service.feedback.title') }}
+        </summary>
+        <div class="pt-2">
+          <div v-if="feedbackSummaryLoading" class="h-12 animate-pulse rounded-sm bg-surface-subtle" aria-busy="true" :aria-label="t('service.feedback.loading')" />
+          <p v-else-if="feedbackSummaryError" class="text-body-md text-danger" role="alert">{{ describeApiError(feedbackSummaryError, t) }}</p>
+          <p v-else-if="feedbackSummary && feedbackSummary.feedback_count === 0" class="text-body-md text-fg-muted">{{ t('service.feedback.empty') }}</p>
+          <template v-else-if="feedbackSummary">
+            <div class="flex flex-wrap items-baseline gap-2">
+              <span class="text-display font-semibold tabular-nums text-fg">{{ feedbackSummary.average_overall?.toFixed(1) }}</span>
+              <PhStar :size="20" weight="fill" class="text-warning" aria-hidden="true" />
+              <span class="text-body-sm text-fg-muted">{{ t('service.feedback.count', feedbackSummary.feedback_count) }}</span>
+            </div>
+            <dl class="mt-3 grid grid-cols-3 gap-3">
+              <div v-if="feedbackSummary.average_service !== null"><dt class="text-label-md text-fg-muted">{{ t('feedback.detail.service') }}</dt><dd class="text-title-md font-semibold tabular-nums text-fg">{{ feedbackSummary.average_service.toFixed(1) }}</dd></div>
+              <div v-if="feedbackSummary.average_food !== null"><dt class="text-label-md text-fg-muted">{{ t('feedback.detail.food') }}</dt><dd class="text-title-md font-semibold tabular-nums text-fg">{{ feedbackSummary.average_food.toFixed(1) }}</dd></div>
+              <div v-if="feedbackSummary.average_wait_time !== null"><dt class="text-label-md text-fg-muted">{{ t('feedback.detail.waitTime') }}</dt><dd class="text-title-md font-semibold tabular-nums text-fg">{{ feedbackSummary.average_wait_time.toFixed(1) }}</dd></div>
+            </dl>
+          </template>
         </div>
-        <p v-else-if="feedbackSummaryError" class="text-body-md text-error" role="alert">
-          {{ describeApiError(feedbackSummaryError, t) }}
-        </p>
-        <EmptyState
-          v-else-if="feedbackSummary && feedbackSummary.feedback_count === 0"
-          :icon="PhStar"
-          :message="t('service.feedback.empty')"
-        />
-        <template v-else-if="feedbackSummary">
-          <div class="flex items-baseline gap-2">
-            <span class="text-display font-semibold text-on-surface">{{ feedbackSummary.average_overall?.toFixed(1) }}</span>
-            <PhStar :size="22" weight="fill" class="text-primary" aria-hidden="true" />
-            <span class="text-label-lg text-on-surface-variant">
-              {{ t('service.feedback.count', feedbackSummary.feedback_count) }}
-            </span>
-          </div>
-          <dl class="mt-3 grid grid-cols-3 gap-3">
-            <div v-if="feedbackSummary.average_service !== null">
-              <dt class="text-label-md text-on-surface-variant">{{ t('feedback.detail.service') }}</dt>
-              <dd class="text-title-md font-semibold tabular-nums text-on-surface">{{ feedbackSummary.average_service.toFixed(1) }}</dd>
-            </div>
-            <div v-if="feedbackSummary.average_food !== null">
-              <dt class="text-label-md text-on-surface-variant">{{ t('feedback.detail.food') }}</dt>
-              <dd class="text-title-md font-semibold tabular-nums text-on-surface">{{ feedbackSummary.average_food.toFixed(1) }}</dd>
-            </div>
-            <div v-if="feedbackSummary.average_wait_time !== null">
-              <dt class="text-label-md text-on-surface-variant">{{ t('feedback.detail.waitTime') }}</dt>
-              <dd class="text-title-md font-semibold tabular-nums text-on-surface">{{ feedbackSummary.average_wait_time.toFixed(1) }}</dd>
-            </div>
-          </dl>
-        </template>
-      </SectionCard>
+      </details>
     </template>
 
     <TableDetailsDrawer
@@ -466,6 +570,8 @@ async function rejectSelected(): Promise<void> {
       :staff="operations.snapshot.value?.staff ?? []"
       :free-tables="freeTables"
       :currency="currency"
+      service-mode
+      :initial-section="selectedTableSection"
       @close="selectedTableId = null"
       @refresh="onDrawerRefresh"
     />

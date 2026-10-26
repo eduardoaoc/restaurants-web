@@ -6,6 +6,7 @@ import { PhCheck, PhGlobe } from '@phosphor-icons/vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import { AVAILABLE_LOCALES, changeLocale, LOCALE_CODE, LOCALE_LABEL, type AppLocale } from '@/i18n'
 
+withDefaults(defineProps<{ inline?: boolean }>(), { inline: false })
 const { t, locale } = useI18n()
 
 const open = ref(false)
@@ -28,7 +29,11 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <div ref="rootRef" class="relative" @focusout="onFocusOut" @keydown="onKeydown">
+  <label v-if="inline" class="shell-preference text-body-md text-fg">
+    <span>{{ t('language.label') }}</span>
+    <select :value="locale" @change="select(($event.target as HTMLSelectElement).value as AppLocale)"><option v-for="loc in AVAILABLE_LOCALES" :key="loc" :value="loc">{{ LOCALE_LABEL[loc] }}</option></select>
+  </label>
+  <div v-else ref="rootRef" class="relative" @focusout="onFocusOut" @keydown="onKeydown">
     <button
       type="button"
       class="inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-label-lg font-medium text-on-surface-variant transition-colors duration-200 ease-out hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -62,3 +67,9 @@ function onKeydown(event: KeyboardEvent): void {
     </ASurface>
   </div>
 </template>
+
+<style scoped>
+.shell-preference { display: flex; flex-direction: column; gap: calc(var(--spacing) * 2); min-width: 0; }
+.shell-preference select { width: 100%; max-width: 100%; min-width: 0; min-height: calc(var(--spacing) * 12); padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3); border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text-primary); font-size: var(--text-body-lg); }
+.shell-preference select:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+</style>

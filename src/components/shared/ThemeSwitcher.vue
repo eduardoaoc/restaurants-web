@@ -7,7 +7,7 @@ import AIconButton from '@/components/ui/AIconButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import { useThemeStore, type ThemePreference } from '@/stores/theme'
 
-withDefaults(defineProps<{ onMedia?: boolean }>(), { onMedia: false })
+withDefaults(defineProps<{ onMedia?: boolean; inline?: boolean }>(), { onMedia: false, inline: false })
 
 const { t } = useI18n()
 const theme = useThemeStore()
@@ -34,7 +34,11 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <div ref="rootRef" class="relative" @focusout="onFocusOut" @keydown="onKeydown">
+  <label v-if="inline" class="shell-preference text-body-md text-fg">
+    <span>{{ t('theme.label') }}</span>
+    <select :value="theme.preference" @change="select(($event.target as HTMLSelectElement).value as ThemePreference)"><option v-for="preference in OPTIONS" :key="preference" :value="preference">{{ t(`theme.${preference}`) }}</option></select>
+  </label>
+  <div v-else ref="rootRef" class="relative" @focusout="onFocusOut" @keydown="onKeydown">
     <AIconButton
       :label="t('theme.label')"
       :pressed="open"
@@ -67,3 +71,9 @@ function onKeydown(event: KeyboardEvent): void {
     </ASurface>
   </div>
 </template>
+
+<style scoped>
+.shell-preference { display: flex; flex-direction: column; gap: calc(var(--spacing) * 2); min-width: 0; }
+.shell-preference select { width: 100%; max-width: 100%; min-width: 0; min-height: calc(var(--spacing) * 12); padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3); border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text-primary); font-size: var(--text-body-lg); }
+.shell-preference select:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+</style>
