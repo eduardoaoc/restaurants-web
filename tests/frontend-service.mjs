@@ -68,7 +68,7 @@ assert.match(view, /grid-cols-2[^\n]*min-\[414px\]:grid-cols-3/, 'mobile starts 
 assert.match(view, /md:grid-cols-4[^\n]*xl:grid-cols-5/, 'tablet and desktop add density without horizontal page scrolling')
 assert.match(view, /serviceZones\.length > 1/, 'zone filtering appears only when existing zones exist')
 assert.match(view, /canFilterMine/, 'my-table filter is permission/data-context conditional')
-assert.match(drawer, /serviceMode \? ASheet : 'aside'/, 'Service opts into ASheet while the shared Dashboard keeps its legacy presentation')
+assert.match(drawer, /modalMode[\s\S]*props\.serviceMode \|\| props\.dashboardMode/, 'Service and Dashboard opt into the shared sheet presentation')
 assert.match(drawer, /variant="side"/)
 assert.match(drawer, /servicePrimaryAction/)
 assert.match(drawer, /record_payments|close_bill/)

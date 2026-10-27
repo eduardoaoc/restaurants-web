@@ -24,18 +24,26 @@ const stats = computed(() => [
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <div class="grid grid-cols-3 gap-2 sm:grid-cols-5">
-      <div v-for="stat in stats" :key="stat.key" class="rounded-lg bg-surface-container-high p-3">
-        <span class="block text-label-md text-on-surface-variant">{{ t(`operations.kitchen.status.${stat.key}`) }}</span>
-        <span class="mt-1.5 block text-title-lg font-bold text-on-surface">{{ formatNumber(stat.value, locale) }}</span>
+  <div class="overflow-hidden rounded-saloa-lg border border-hairline bg-surface">
+    <dl class="grid grid-cols-2 border-b border-hairline">
+      <div class="min-w-0 px-4 py-3">
+        <dt class="text-label-md text-fg-muted">{{ t('kitchen.dashboard.activeOrders') }}</dt>
+        <dd class="mt-1 text-metric-sm tabular-nums text-fg">{{ formatNumber(kitchen.active_orders, locale) }}</dd>
       </div>
-    </div>
-    <p class="text-body-md text-on-surface-variant">
-      {{ t('operations.kitchen.activeOrders', { count: formatNumber(kitchen.active_orders, locale) }) }}
-      <template v-if="kitchen.oldest_active_order_age_seconds !== null">
-        · {{ t('operations.kitchen.oldestAge', { age: formatDuration(kitchen.oldest_active_order_age_seconds) }) }}
-      </template>
-    </p>
+      <div class="min-w-0 border-l border-hairline px-4 py-3">
+        <dt class="text-label-md text-fg-muted">{{ t('kitchen.dashboard.oldestActive') }}</dt>
+        <dd class="mt-1 break-words text-metric-sm tabular-nums text-fg">
+          {{ kitchen.oldest_active_order_age_seconds !== null ? formatDuration(kitchen.oldest_active_order_age_seconds) : '—' }}
+        </dd>
+      </div>
+    </dl>
+    <dl class="divide-y divide-hairline">
+      <div v-for="stat in stats" :key="stat.key" class="flex min-h-11 items-center justify-between gap-4 px-4 py-2">
+        <dt class="min-w-0 break-words text-body-sm text-fg">{{ t(`operations.kitchen.status.${stat.key}`) }}</dt>
+        <dd class="shrink-0 text-body-sm tabular-nums" :class="stat.value > 0 ? 'font-semibold text-fg' : 'text-fg-muted'">
+          {{ formatNumber(stat.value, locale) }}
+        </dd>
+      </div>
+    </dl>
   </div>
 </template>

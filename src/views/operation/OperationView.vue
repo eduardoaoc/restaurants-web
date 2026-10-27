@@ -1,26 +1,27 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhBellRinging, PhClockCounterClockwise, PhCookingPot, PhTable, PhUsersThree } from '@phosphor-icons/vue'
+import { PhCaretRight, PhPencilSimple, PhTable } from '@phosphor-icons/vue'
 
 import EmptyState from '@/components/dashboard/EmptyState.vue'
+import AStatStrip from '@/components/dashboard/AStatStrip.vue'
 import RestaurantOnboarding from '@/components/dashboard/RestaurantOnboarding.vue'
-import SectionCard from '@/components/dashboard/SectionCard.vue'
-import AProgress from '@/components/ui/AProgress.vue'
+import DashboardNow from '@/components/dashboard/operation/DashboardNow.vue'
+import DashboardTableOverview from '@/components/dashboard/operation/DashboardTableOverview.vue'
+import AButton from '@/components/ui/AButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
-import AttentionPanel from '@/components/dashboard/operation/AttentionPanel.vue'
 import CapacityPanel from '@/components/dashboard/operation/CapacityPanel.vue'
+import DailyOperationBanner from '@/components/shared/DailyOperationBanner.vue'
 import FloorMapEditor from '@/components/dashboard/operation/FloorMapEditor.vue'
 import KitchenLivePanel from '@/components/dashboard/operation/KitchenLivePanel.vue'
-import QuickActions from '@/components/dashboard/operation/QuickActions.vue'
-import QuickMetrics from '@/components/dashboard/operation/QuickMetrics.vue'
 import RestaurantFloorMap from '@/components/dashboard/operation/RestaurantFloorMap.vue'
 import StaffLivePanel from '@/components/dashboard/operation/StaffLivePanel.vue'
 import TableDetailsDrawer from '@/components/dashboard/table/TableDetailsDrawer.vue'
-import { useActivityPanelToggle } from '@/composables/useActivityPanelToggle'
 import { usePermissions } from '@/composables/usePermissions'
+import { SERVICE_ACCESS_PERMISSIONS } from '@/types/auth-context'
 import type { OperationsLiveSnapshot, OperationsTable } from '@/types/operations'
 import type { ReceivedRealtimeEvent } from '@/composables/useRestaurantRealtime'
+import { formatMoney, formatNumber } from '@/utils/format'
 
 const props = defineProps<{
   restaurantId: number | null
@@ -32,19 +33,19 @@ const props = defineProps<{
   lastRealtimeEvent: ReceivedRealtimeEvent | null
   /** Carta 8.1B — a table to auto-open once `snapshot` actually has it (deep-link from a QR scan or a bookmarked URL). Null/undefined the rest of the time. */
   pendingTableId?: number | null
+  canViewReports: boolean
 }>()
 
 const emit = defineEmits<{ refresh: []; 'pending-table-consumed': [] }>()
 
-const { t } = useI18n()
-const { can } = usePermissions()
-const activityPanelToggle = useActivityPanelToggle()
+const { t, locale } = useI18n()
+const { can, canAny } = usePermissions()
 
 const canManageFloorPlan = computed(() => can('manage_floor_plan'))
-// §9: a discreet link into the existing Carta 6.1B Activity Center, never a
-// second timeline — hidden for a role that can't open it anyway.
-const canViewActivity = computed(() => can('view_activity'))
-
+const canViewService = computed(() => canAny(SERVICE_ACCESS_PERMISSIONS))
+const canViewKitchen = computed(() => canAny(['update_kitchen_status', 'serve_orders']))
+const canViewStaff = computed(() => can('manage_users'))
+const canManageDailyOperation = computed(() => can('open_daily_operation') || can('close_daily_operation'))
 const selectedTableId = ref<number | null>(null)
 const showEditor = ref(false)
 
@@ -71,10 +72,28 @@ const freeTables = computed(() => allTables.value.filter((table) => table.primar
 // restaurant) — every operational panel would just be a wall of empty
 // states in that case, so the onboarding card replaces them instead.
 const hasAnyTables = computed(() => allTables.value.length > 0)
-
-function openTableById(tableId: number): void {
-  selectedTableId.value = tableId
-}
+const statItems = computed(() => {
+  if (!props.snapshot) return []
+  const { summary, restaurant } = props.snapshot
+  const items: Array<{ id: string; label: string; value: string; context?: string }> = [
+    {
+      id: 'occupied-tables',
+      label: t('operations.quick.occupancy'),
+      value: `${formatNumber(summary.tables.occupied, locale.value)} / ${formatNumber(summary.tables.total, locale.value)}`,
+      context: t('operations.quick.occupancyContext', { percent: Math.round(summary.tables.occupancy_rate * 100) }),
+    },
+    { id: 'active-orders', label: t('operations.quick.activeOrders'), value: formatNumber(summary.orders.active, locale.value) },
+    { id: 'active-guests', label: t('operations.quick.activeGuests'), value: formatNumber(summary.active_guests, locale.value) },
+  ]
+  if (props.canViewReports) {
+    items.push({
+      id: 'received-today',
+      label: t('operations.quick.receivedToday'),
+      value: formatMoney(summary.sales.received_today, locale.value, restaurant.currency),
+    })
+  }
+  return items
+})
 
 /**
  * Carta 8.1B §16/§17/§18 — fires whenever either side changes, so it works
@@ -111,8 +130,15 @@ function onEditorClose(): void {
 
 <template>
   <div class="flex flex-col gap-4">
-    <div v-if="loading" class="flex items-center justify-center py-24">
-      <AProgress />
+    <div v-if="loading" class="flex flex-col gap-6" aria-busy="true" role="status">
+      <span class="sr-only">{{ t('operations.loading') }}</span>
+      <div class="h-16 rounded-md bg-surface-subtle motion-safe:animate-pulse motion-reduce:animate-none" />
+      <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div v-for="index in 4" :key="index" class="h-24 rounded-md bg-surface-subtle motion-safe:animate-pulse motion-reduce:animate-none" />
+      </div>
+      <div class="grid min-h-64 grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+        <div v-for="index in 8" :key="index" class="rounded-md bg-surface-subtle motion-safe:animate-pulse motion-reduce:animate-none" />
+      </div>
     </div>
 
     <ASurface
@@ -136,90 +162,102 @@ function onEditorClose(): void {
     </ASurface>
 
     <template v-else-if="snapshot">
-      <QuickActions
-        :refreshing="refreshing"
-        :can-manage-floor-plan="canManageFloorPlan"
-        @edit-floor-plan="openFloorEditor"
-        @refresh="emit('refresh')"
-      />
+      <div class="dashboard-enter flex flex-col gap-8">
+        <div class="flex flex-col gap-4">
+          <DashboardNow
+            :health="snapshot.operation"
+            :alerts="snapshot.alerts"
+            :can-view-service="canViewService"
+          />
 
-      <RestaurantOnboarding
-        v-if="!hasAnyTables"
-        :total-tables="allTables.length"
-        :can-manage-floor-plan="canManageFloorPlan"
-        @open-floor-editor="openFloorEditor"
-      />
+          <DailyOperationBanner
+            v-if="snapshot.daily_operation.status === 'not_open'"
+            :daily-operation="snapshot.daily_operation"
+            :can-manage="canManageDailyOperation"
+          />
 
-      <template v-else>
-      <!-- §20 mobile priority (Carta 6.2): estado geral → alertas → mesas →
-           indicadores → equipe. `order-*` only reflows mobile/tablet (<lg);
-           `lg:order-none` restores the original DOM order (indicadores
-           first) once there's room for Attention+Map to sit side-by-side —
-           desktop layout is unchanged. -->
-      <QuickMetrics
-        class="order-2 lg:order-none"
-        :summary="snapshot.summary"
-        :currency="snapshot.restaurant.currency"
-        :pending-attention-count="snapshot.alerts.length"
-      />
+          <section :aria-label="t('operations.quick.title')">
+            <AStatStrip :items="statItems" />
+          </section>
+        </div>
 
-      <!-- Problems before the map (§5/§11): "Necesita atención" is first in
-           document order — mobile AND tablet (both below `lg`) stack it
-           above the Floor Map, and it's also what a screen reader reaches
-           first. `lg:order-*` only re-flows the VISUAL position once there's
-           room for the map to stay wide and prominent side-by-side. -->
-      <div class="order-1 grid grid-cols-1 gap-4 lg:order-none lg:grid-cols-[1.75fr_1fr]">
-        <SectionCard :icon="PhBellRinging" :title="t('operations.alerts.title')" class="lg:order-2">
-          <template v-if="canViewActivity" #actions>
-            <button
-              type="button"
-              class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-label-md font-medium text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              @click="activityPanelToggle.open()"
-            >
-              <PhClockCounterClockwise :size="16" aria-hidden="true" />
-              {{ t('operations.alerts.viewActivity') }}
-            </button>
-          </template>
-          <AttentionPanel :alerts="snapshot.alerts" @open-table="openTableById" />
-        </SectionCard>
+        <RestaurantOnboarding
+          v-if="!hasAnyTables"
+          :total-tables="allTables.length"
+          :can-manage-floor-plan="canManageFloorPlan"
+          @open-floor-editor="openFloorEditor"
+        />
 
-        <SectionCard :icon="PhTable" :title="t('operations.floorMap.title')" class="lg:order-1">
-          <template #default>
-            <div class="mb-3 flex items-center justify-between gap-3">
-              <span class="text-label-md text-on-surface-variant">
-                {{ t('operations.floorMap.summary', { tables: snapshot.summary.tables.total, guests: snapshot.summary.active_guests }) }}
-              </span>
-              <button
-                v-if="canManageFloorPlan"
-                type="button"
-                class="rounded-md border border-primary/30 bg-primary-container/40 px-3 py-1.5 text-label-md font-medium text-on-primary-container hover:bg-primary-container/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                @click="openFloorEditor"
-              >
-                {{ t('operations.floorMap.edit') }}
-              </button>
+        <template v-else>
+          <!-- The room is the primary object: full content width, so zones keep their real proportions -->
+          <section class="min-w-0" aria-labelledby="dashboard-tables-title">
+            <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+              <div class="min-w-0">
+                <h2 id="dashboard-tables-title" class="text-section-title font-semibold text-fg">{{ t('operations.floorMap.title') }}</h2>
+                <p class="mt-1 text-body-sm tabular-nums text-fg-muted">
+                  {{ t('operations.floorMap.summary', { tables: snapshot.summary.tables.total, guests: snapshot.summary.active_guests }) }}
+                </p>
+              </div>
+              <AButton v-if="canManageFloorPlan" variant="secondary" size="sm" @click="openFloorEditor">
+                <template #leading><PhPencilSimple /></template>{{ t('operations.floorMap.edit') }}
+              </AButton>
             </div>
-            <RestaurantFloorMap
-              :floors="snapshot.floors"
-              :unassigned-tables="snapshot.unassigned_tables"
-              :selected-table-id="selectedTableId"
-              @select-table="(table) => (selectedTableId = table.id)"
-            />
-          </template>
-        </SectionCard>
-      </div>
 
-      <div class="order-3 grid grid-cols-1 gap-4 lg:order-none lg:grid-cols-3">
-        <SectionCard :icon="PhCookingPot" :title="t('operations.kitchen.title')">
-          <KitchenLivePanel :kitchen="snapshot.kitchen" />
-        </SectionCard>
-        <SectionCard :icon="PhUsersThree" :title="t('operations.staff.title')">
-          <StaffLivePanel :staff="snapshot.staff" />
-        </SectionCard>
-        <SectionCard :icon="PhTable" :title="t('operations.capacity.title')">
-          <CapacityPanel :tables="allTables" :active-guests="snapshot.summary.active_guests" />
-        </SectionCard>
+            <div class="lg:hidden">
+              <DashboardTableOverview :tables="allTables" :selected-table-id="selectedTableId" @select="selectedTableId = $event.id" />
+            </div>
+            <div class="hidden lg:block">
+              <RestaurantFloorMap
+                :floors="snapshot.floors"
+                :unassigned-tables="snapshot.unassigned_tables"
+                :selected-table-id="selectedTableId"
+                @select-table="(table) => (selectedTableId = table.id)"
+              />
+            </div>
+
+            <details class="group mt-4 border-t border-hairline">
+              <summary class="flex min-h-11 cursor-pointer list-none items-center gap-2 text-body-sm font-medium text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
+                <PhCaretRight :size="16" class="text-fg-muted transition-transform duration-base ease-out group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
+                {{ t('operations.capacity.title') }}
+              </summary>
+              <div class="pb-2 pl-6">
+                <CapacityPanel :tables="allTables" :active-guests="snapshot.summary.active_guests" />
+              </div>
+            </details>
+          </section>
+
+          <!-- Context summaries share one row in equal columns; they never compete with the room for width -->
+          <div v-if="canViewKitchen || canViewStaff" class="grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-2">
+            <section v-if="canViewKitchen" class="min-w-0" aria-labelledby="dashboard-kitchen-title">
+              <div class="mb-3 flex min-h-11 items-center justify-between gap-3">
+                <h2 id="dashboard-kitchen-title" class="text-component-title font-semibold text-fg">{{ t('operations.kitchen.title') }}</h2>
+                <AButton as="RouterLink" :to="{ name: 'app-kitchen' }" variant="ghost" size="sm">
+                  {{ t('operations.now.viewKitchen') }}
+                  <template #trailing><PhCaretRight /></template>
+                </AButton>
+              </div>
+              <KitchenLivePanel :kitchen="snapshot.kitchen" />
+            </section>
+
+            <section v-if="canViewStaff" class="min-w-0" aria-labelledby="dashboard-staff-title">
+              <div class="mb-3 flex min-h-11 items-center justify-between gap-3">
+                <h2 id="dashboard-staff-title" class="text-component-title font-semibold text-fg">{{ t('operations.staff.title') }}</h2>
+                <AButton as="RouterLink" :to="{ name: 'app-staff' }" variant="ghost" size="sm">
+                  {{ t('operations.now.viewStaff') }}
+                  <template #trailing><PhCaretRight /></template>
+                </AButton>
+              </div>
+              <StaffLivePanel :staff="snapshot.staff" />
+            </section>
+          </div>
+        </template>
+
+        <DailyOperationBanner
+          v-if="snapshot.daily_operation.status !== 'not_open'"
+          :daily-operation="snapshot.daily_operation"
+          :can-manage="canManageDailyOperation"
+        />
       </div>
-      </template>
     </template>
 
     <EmptyState v-else :icon="PhTable" :message="t('operations.noData')" />
@@ -229,6 +267,7 @@ function onEditorClose(): void {
       :staff="snapshot?.staff ?? []"
       :free-tables="freeTables"
       :currency="snapshot?.restaurant.currency ?? 'EUR'"
+      dashboard-mode
       @close="selectedTableId = null"
       @refresh="onDrawerRefresh"
     />
@@ -241,3 +280,14 @@ function onEditorClose(): void {
     />
   </div>
 </template>
+
+<style scoped>
+/* SALOA §10.2 generic entrance: first paint only, opacity + 4px rise; nothing moves when motion is reduced. */
+@media (prefers-reduced-motion: no-preference) {
+  .dashboard-enter { animation: dashboard-enter var(--duration-base) var(--ease-out) both; }
+}
+@keyframes dashboard-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+</style>

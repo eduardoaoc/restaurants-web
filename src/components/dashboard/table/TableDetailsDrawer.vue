@@ -12,7 +12,6 @@ import ASurface from '@/components/ui/ASurface.vue'
 import ATextField from '@/components/ui/ATextField.vue'
 import ASheet from '@/components/ui/ASheet.vue'
 import { usePermissions } from '@/composables/usePermissions'
-import { getTableStatusStyle } from '@/composables/useTableStatusStyle'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { tableSessionsService } from '@/services/table-sessions.service'
 import { tablesService } from '@/services/tables.service'
@@ -35,8 +34,10 @@ const props = defineProps<{
   staff: OperationsStaffMember[]
   freeTables: OperationsTable[]
   currency: string
-  /** Opt-in presentation used by ServiceView; Dashboard keeps the legacy drawer. */
+  /** Opt-in presentation used by ServiceView; preserves the Service body and actions. */
   serviceMode?: boolean
+  /** Dashboard uses the modal primitive while retaining its existing body/actions. */
+  dashboardMode?: boolean
   initialSection?: 'overview' | 'orders' | 'requests' | 'bill'
 }>()
 
@@ -44,6 +45,7 @@ const emit = defineEmits<{ close: []; refresh: [] }>()
 
 const { t, locale } = useI18n()
 const snackbar = useSnackbar()
+const modalMode = computed(() => props.serviceMode || props.dashboardMode)
 
 /**
  * Every table-session action here maps to the exact backend Policy ability
@@ -137,7 +139,6 @@ function onOrderCreated(): void {
   emit('refresh')
 }
 
-const style = computed(() => (props.table ? getTableStatusStyle(props.table.primary_status) : null))
 const serviceStatus = computed(() => props.table ? serviceTableStatus(props.table.primary_status) : null)
 
 type ServicePrimaryAction = 'open' | 'orders' | 'requests' | 'bill' | 'new-order'
@@ -290,14 +291,14 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
 <template>
   <Transition name="drawer">
     <component
-      :is="serviceMode ? ASheet : 'aside'"
+      :is="modalMode ? ASheet : 'aside'"
       v-if="table"
       :title="table.name"
       variant="side"
       size="md"
-      :class="serviceMode ? 'service-table-sheet' : 'fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border border-outline-variant bg-surface-container-high p-5 shadow-elevated sm:inset-x-auto sm:inset-y-6 sm:right-6 sm:w-96 sm:rounded-2xl'"
-      :role="serviceMode ? undefined : 'dialog'"
-      :aria-label="serviceMode ? undefined : table.name"
+      :class="modalMode ? 'service-table-sheet' : 'fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border border-outline-variant bg-surface-container-high p-5 shadow-elevated sm:inset-x-auto sm:inset-y-6 sm:right-6 sm:w-96 sm:rounded-2xl'"
+      :role="modalMode ? undefined : 'dialog'"
+      :aria-label="modalMode ? undefined : table.name"
       @close="emit('close')"
     >
       <template v-if="serviceMode" #header>{{ table.name }}</template>
@@ -307,12 +308,16 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
           {{ table.session.assigned_waiter.name }}
         </span>
       </div>
+      <div v-else-if="dashboardMode" class="mb-3 flex min-w-0 flex-wrap items-center gap-2">
+        <AStatusBadge v-if="serviceStatus" :state="serviceStatus.state" :label="t(serviceStatus.labelKey)" :icon="serviceStatus.icon" />
+        <span v-if="table.session?.assigned_waiter?.name" class="break-words text-body-sm text-fg-muted">
+          {{ table.session.assigned_waiter.name }}
+        </span>
+      </div>
       <div v-else class="flex items-start justify-between gap-3">
         <div>
           <h3 class="text-title-lg font-semibold text-on-surface">{{ table.name }}</h3>
-          <p v-if="style" class="mt-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-label-md" :class="style.tone">
-            {{ t(style.labelKey) }}
-          </p>
+          <AStatusBadge v-if="serviceStatus" class="mt-1" :state="serviceStatus.state" :label="t(serviceStatus.labelKey)" :icon="serviceStatus.icon" />
         </div>
         <AIconButton :label="t('common.close')" @click="emit('close')">
           <PhX :size="18" />

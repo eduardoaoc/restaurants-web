@@ -1,24 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import {
-  PhChartPieSlice,
-  PhClock,
-  PhCookingPot,
-  PhForkKnife,
-  PhTable,
-  PhTrophy,
-  PhWallet,
-} from '@phosphor-icons/vue'
+import { PhCheck } from '@phosphor-icons/vue'
 
 import BarList from '@/components/dashboard/BarList.vue'
 import DonutChart from '@/components/dashboard/DonutChart.vue'
-import MetricCard from '@/components/dashboard/MetricCard.vue'
-import ProgressRing from '@/components/dashboard/ProgressRing.vue'
-import SectionCard from '@/components/dashboard/SectionCard.vue'
+import AStatStrip from '@/components/dashboard/AStatStrip.vue'
 import PeakHoursChart from '@/components/dashboard/analytics/PeakHoursChart.vue'
 import RevenueChart from '@/components/dashboard/analytics/RevenueChart.vue'
-import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import type { ApiError } from '@/api/errors'
 import type { AnalyticsGranularity, AnalyticsQuery, RestaurantAnalytics } from '@/types/analytics'
@@ -99,33 +88,49 @@ const staffItems = computed(() => {
       displayValue: t('analytics.staff.ordersServed', { count: member.orders_served }),
     }))
 })
+
+const statItems = computed(() => {
+  if (!props.data) return []
+  return [
+    { id: 'revenue', label: t('analytics.summary.revenue'), value: formatMoney(props.data.summary.revenue, locale.value, currency.value) },
+    { id: 'average-ticket', label: t('analytics.summary.averageTicket'), value: formatMoney(props.data.summary.average_ticket, locale.value, currency.value) },
+    { id: 'occupancy', label: t('analytics.summary.occupancy'), value: `${Math.round(props.data.occupancy.occupancy_rate * 100)}%` },
+    { id: 'turnover', label: t('analytics.summary.tableTurnover'), value: `${new Intl.NumberFormat(locale.value, { maximumFractionDigits: 1 }).format(props.data.table_turnover.turnover_per_table)}×` },
+  ]
+})
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div class="flex min-w-0 flex-col gap-8">
     <!-- Period presets — always convert to the backend's own date/granularity contract, never reproduce its default-range logic -->
-    <div class="flex flex-wrap items-center gap-2">
+    <div class="flex flex-wrap items-center gap-2" role="group" :aria-label="t('analytics.presets.label')">
       <button
         v-for="preset in (['this_month', 'last_30', 'last_90', 'custom'] as Preset[])"
         :key="preset"
         type="button"
-        class="rounded-full px-3 py-1.5 text-label-lg font-medium transition-colors duration-200 ease-out"
-        :class="activePreset === preset ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest'"
+        class="min-h-11 rounded-md px-3 text-label-lg font-medium transition-colors duration-fast"
+        :class="activePreset === preset ? 'bg-primary-subtle text-accent' : 'bg-surface-subtle text-fg-muted hover:bg-surface-elevated'"
+        :aria-pressed="activePreset === preset"
         @click="applyPreset(preset)"
       >
+        <PhCheck v-if="activePreset === preset" :size="16" aria-hidden="true" class="mr-1 inline-block align-[-2px]" />
         {{ t(`analytics.presets.${preset}`) }}
       </button>
       <template v-if="activePreset === 'custom'">
-        <input v-model="customFrom" type="date" class="rounded-md border border-outline bg-surface-container-lowest px-2 py-1.5 text-body-md text-on-surface" />
-        <input v-model="customTo" type="date" class="rounded-md border border-outline bg-surface-container-lowest px-2 py-1.5 text-body-md text-on-surface" />
-        <button type="button" class="rounded-md bg-primary px-3 py-1.5 text-label-lg font-medium text-on-primary" @click="applyCustom">
+        <label class="sr-only" for="analytics-from">{{ t('analytics.presets.from') }}</label>
+        <input id="analytics-from" v-model="customFrom" type="date" class="min-h-11 min-w-0 rounded-md border border-control bg-surface px-2 text-body-md text-fg" />
+        <label class="sr-only" for="analytics-to">{{ t('analytics.presets.to') }}</label>
+        <input id="analytics-to" v-model="customTo" type="date" class="min-h-11 min-w-0 rounded-md border border-control bg-surface px-2 text-body-md text-fg" />
+        <button type="button" class="min-h-11 rounded-md bg-primary px-3 text-label-lg font-medium text-on-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" @click="applyCustom">
           {{ t('analytics.presets.apply') }}
         </button>
       </template>
     </div>
 
-    <div v-if="loading" class="flex items-center justify-center py-24">
-      <AProgress />
+    <div v-if="loading && !data" class="flex flex-col gap-6" aria-busy="true" role="status">
+      <span class="sr-only">{{ t('analytics.loading') }}</span>
+      <div class="h-24 rounded-md bg-surface-subtle motion-safe:animate-pulse motion-reduce:animate-none" />
+      <div class="h-64 rounded-md bg-surface-subtle motion-safe:animate-pulse motion-reduce:animate-none" />
     </div>
 
     <ASurface
@@ -149,38 +154,38 @@ const staffItems = computed(() => {
     </ASurface>
 
     <template v-else-if="data">
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard :icon="PhWallet" :label="t('analytics.summary.revenue')" :value="formatMoney(data.summary.revenue, locale, currency)" size="display" />
-        <MetricCard :icon="PhForkKnife" :label="t('analytics.summary.averageTicket')" :value="formatMoney(data.summary.average_ticket, locale, currency)" />
-        <MetricCard :icon="PhTable" :label="t('analytics.summary.occupancy')" :value="`${Math.round(data.occupancy.occupancy_rate * 100)}%`">
-          <ProgressRing :value="data.occupancy.occupancy_rate" :label="t('analytics.summary.occupancy')" :center-text="`${Math.round(data.occupancy.occupancy_rate * 100)}%`" :size="44" />
-        </MetricCard>
-        <MetricCard :icon="PhClock" :label="t('analytics.summary.tableTurnover')" :value="data.table_turnover.turnover_per_table.toFixed(1) + 'x'" />
-      </div>
+      <p v-if="loading" class="text-label-md text-fg-muted" role="status">{{ t('analytics.loading') }}</p>
+      <AStatStrip :items="statItems" />
 
-      <SectionCard :icon="PhWallet" :title="t('analytics.charts.revenueTitle')">
+      <section class="min-w-0 border-t border-hairline pt-5" aria-labelledby="analytics-revenue-title">
+        <h2 id="analytics-revenue-title" class="mb-4 text-section-title font-semibold text-fg">{{ t('analytics.charts.revenueTitle') }}</h2>
         <RevenueChart :points="data.revenue_series" :currency="currency" />
-      </SectionCard>
+      </section>
 
-      <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <SectionCard :icon="PhChartPieSlice" :title="t('analytics.charts.peakHoursTitle')">
+      <div class="grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-2">
+        <section class="min-w-0 border-t border-hairline pt-5" aria-labelledby="analytics-peak-title">
+          <h2 id="analytics-peak-title" class="mb-4 text-component-title font-semibold text-fg">{{ t('analytics.charts.peakHoursTitle') }}</h2>
           <PeakHoursChart :hours="data.peak_hours" />
-        </SectionCard>
-        <SectionCard :icon="PhChartPieSlice" :title="t('analytics.orders.title')">
+        </section>
+        <section class="min-w-0 border-t border-hairline pt-5" aria-labelledby="analytics-origins-title">
+          <h2 id="analytics-origins-title" class="mb-4 text-component-title font-semibold text-fg">{{ t('analytics.orders.title') }}</h2>
           <DonutChart :segments="originSegments" :center-value="formatNumber(data.orders.total, locale)" :center-label="t('analytics.orders.title')" :empty-message="t('analytics.charts.ordersEmpty')" />
-        </SectionCard>
+        </section>
       </div>
 
-      <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <SectionCard :icon="PhTrophy" :title="t('analytics.products.title')">
+      <div class="grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-2">
+        <section class="min-w-0 border-t border-hairline pt-5" aria-labelledby="analytics-products-title">
+          <h2 id="analytics-products-title" class="mb-4 text-component-title font-semibold text-fg">{{ t('analytics.products.title') }}</h2>
           <BarList :items="topProductsItems" :empty-message="t('analytics.products.empty')" />
-        </SectionCard>
-        <SectionCard :icon="PhTrophy" :title="t('analytics.staff.title')">
+        </section>
+        <section class="min-w-0 border-t border-hairline pt-5" aria-labelledby="analytics-staff-title">
+          <h2 id="analytics-staff-title" class="mb-4 text-component-title font-semibold text-fg">{{ t('analytics.staff.title') }}</h2>
           <BarList :items="staffItems" :empty-message="t('analytics.staff.empty')" />
-        </SectionCard>
+        </section>
       </div>
 
-      <SectionCard :icon="PhCookingPot" :title="t('analytics.kitchen.title')" class="max-w-xl">
+      <section class="max-w-xl border-t border-hairline pt-5" aria-labelledby="analytics-kitchen-title">
+        <h2 id="analytics-kitchen-title" class="mb-4 text-component-title font-semibold text-fg">{{ t('analytics.kitchen.title') }}</h2>
         <dl class="flex flex-col gap-2 text-body-md">
           <div class="flex items-center justify-between">
             <dt class="text-on-surface-variant">{{ t('analytics.kitchen.averagePrep') }}</dt>
@@ -197,7 +202,7 @@ const staffItems = computed(() => {
             <dd class="font-medium text-on-surface">{{ formatNumber(data.kitchen.orders_cancelled, locale) }}</dd>
           </div>
         </dl>
-      </SectionCard>
+      </section>
     </template>
   </div>
 </template>

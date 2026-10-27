@@ -69,13 +69,6 @@ watch(inView, (isInView) => {
 const linePath = computed(() =>
   animatedPoints.value.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' '),
 )
-const areaPath = computed(() => {
-  if (animatedPoints.value.length === 0) return ''
-  const first = animatedPoints.value[0]
-  const last = animatedPoints.value[animatedPoints.value.length - 1]
-  return `${linePath.value} L ${last.x} ${height} L ${first.x} ${height} Z`
-})
-
 const hoverIndex = ref<number | null>(null)
 function onMove(event: MouseEvent): void {
   const rect = (event.currentTarget as SVGElement).getBoundingClientRect()
@@ -107,13 +100,6 @@ const axisLabels = computed(() => {
         @mousemove="onMove"
         @mouseleave="hoverIndex = null"
       >
-        <defs>
-          <linearGradient id="revenueArea" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="var(--chart-accent)" stop-opacity="0.22" />
-            <stop offset="1" stop-color="var(--chart-accent)" stop-opacity="0" />
-          </linearGradient>
-        </defs>
-        <path :d="areaPath" fill="url(#revenueArea)" />
         <path :d="linePath" fill="none" stroke="var(--chart-accent)" stroke-width="2" stroke-linecap="round" />
         <g v-if="hoverPoint">
           <line :x1="hoverPoint.x" :x2="hoverPoint.x" y1="0" :y2="height" stroke="var(--color-outline-variant)" stroke-width="1" />
@@ -126,6 +112,17 @@ const axisLabels = computed(() => {
       <p v-if="hoverPoint" class="mt-1 text-label-lg text-on-surface" role="status">
         {{ formatDateOnly(hoverPoint.label, locale) }} — {{ formatMoney(String(hoverPoint.value), locale, currency) }}
       </p>
+      <details class="mt-3 border-t border-hairline pt-2">
+        <summary class="min-h-11 cursor-pointer py-2 text-body-sm font-medium text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
+          {{ t('analytics.charts.dataDetails') }}
+        </summary>
+        <ul class="flex max-h-64 flex-col divide-y divide-hairline overflow-y-auto">
+          <li v-for="point in points" :key="point.period_start" class="flex justify-between gap-3 py-2 text-body-sm">
+            <span>{{ formatDateOnly(point.period_start, locale) }}</span>
+            <span class="shrink-0 tabular-nums">{{ formatMoney(point.revenue, locale, currency) }}</span>
+          </li>
+        </ul>
+      </details>
     </template>
   </div>
 </template>

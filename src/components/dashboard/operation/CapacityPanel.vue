@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import ProgressRing from '@/components/dashboard/ProgressRing.vue'
 import type { OperationsTable } from '@/types/operations'
 import { formatNumber } from '@/utils/format'
 
@@ -22,17 +21,13 @@ const { t, locale } = useI18n()
  */
 const totalSeats = computed(() => props.tables.reduce((sum, table) => sum + (table.capacity ?? 0), 0))
 const availableSeats = computed(() => Math.max(totalSeats.value - props.activeGuests, 0))
-const ratio = computed(() => (totalSeats.value > 0 ? Math.min(props.activeGuests / totalSeats.value, 1) : 0))
 </script>
 
 <template>
-  <div class="flex items-center gap-4">
-    <ProgressRing :value="ratio" :size="72" :label="t('operations.capacity.title')" :center-text="`${Math.round(ratio * 100)}%`" />
-    <div>
-      <p class="text-title-md font-semibold text-on-surface">
-        {{ t('operations.capacity.guestsOfSeats', { guests: formatNumber(activeGuests, locale), seats: formatNumber(totalSeats, locale) }) }}
-      </p>
-      <p class="text-label-md text-on-surface-variant">{{ t('operations.capacity.available', { count: formatNumber(availableSeats, locale) }) }}</p>
-    </div>
+  <div class="flex flex-wrap gap-x-4 gap-y-1 text-body-sm text-fg-muted">
+    <span class="tabular-nums">
+      {{ t('operations.capacity.guestsOfSeats', { guests: formatNumber(activeGuests, locale), seats: formatNumber(totalSeats, locale) }) }}
+    </span>
+    <span class="tabular-nums">{{ t('operations.capacity.available', { count: formatNumber(availableSeats, locale) }) }}</span>
   </div>
 </template>

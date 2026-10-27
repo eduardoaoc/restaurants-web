@@ -782,11 +782,13 @@ export default {
       error: 'Error de conexión en tiempo real',
     },
     tabs: {
+      label: 'Vista del panel',
       operation: 'Operación',
       analysis: 'Análisis',
     },
     health: {
       title: 'Operación',
+      scoreContext: 'Índice operativo: {score}/100',
       level: {
         healthy: 'Buena',
         attention: 'Requiere atención',
@@ -805,13 +807,26 @@ export default {
       },
     },
     quick: {
+      title: 'Resumen operativo',
       occupancy: 'Ocupación',
       occupancyContext: '{percent}% ocupado',
       activeOrders: 'Pedidos activos',
+      activeGuests: 'Clientes ahora',
+      receivedToday: 'Cobrado hoy',
       pendingAttention: 'Atenciones pendientes',
       pendingAttentionActive: 'Requiere tu atención',
       pendingAttentionNone: 'Todo al día',
     },
+    now: {
+      title: 'Ahora',
+      clear: 'Todo en orden.',
+      count: 'Ninguna situación necesita atención | 1 situación necesita atención | {count} situaciones necesitan atención',
+      genericAttention: 'Atención operativa',
+      viewService: 'Ver servicio',
+      viewKitchen: 'Ver cocina',
+      viewStaff: 'Ver equipo',
+    },
+    loading: 'Cargando el estado del restaurante…',
     errors: {
       forbidden: 'No tienes permiso para ver la operación de este restaurante.',
       notFound: 'Este restaurante ya no está disponible.',
@@ -1045,12 +1060,16 @@ export default {
   },
   analytics: {
     presets: {
+      label: 'Seleccionar periodo',
       this_month: 'Este mes',
       last_30: 'Últimos 30 días',
       last_90: '90 días',
       custom: 'Personalizado',
+      from: 'Fecha inicial',
+      to: 'Fecha final',
       apply: 'Aplicar',
     },
+    loading: 'Cargando el análisis…',
     errors: {
       forbidden: 'No tienes permiso para ver el análisis de este restaurante.',
       notFound: 'Este restaurante ya no está disponible.',
@@ -1064,6 +1083,7 @@ export default {
       tableTurnover: 'Giro de mesas',
     },
     charts: {
+      dataDetails: 'Ver datos',
       revenueTitle: 'Facturación por periodo',
       revenueEmpty: 'Todavía no hay ventas en este periodo.',
       peakHoursTitle: 'Horas punta',

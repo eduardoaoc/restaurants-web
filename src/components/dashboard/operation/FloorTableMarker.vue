@@ -2,9 +2,10 @@
 import { computed } from 'vue'
 import { PhUserCircleMinus } from '@phosphor-icons/vue'
 
-import { getTableStatusStyle } from '@/composables/useTableStatusStyle'
 import type { OperationsTable } from '@/types/operations'
 import { formatDuration } from '@/utils/format'
+import { serviceTableStatus } from '@/utils/service-table-status'
+import { floorTableIconTone, floorTableTone } from './floor-table-tone'
 
 const props = withDefaults(
   defineProps<{
@@ -17,24 +18,24 @@ const props = withDefaults(
 
 defineEmits<{ select: [] }>()
 
-const style = computed(() => getTableStatusStyle(props.table.primary_status))
+const style = computed(() => serviceTableStatus(props.table.primary_status))
 
 const shapeClass = computed(() => {
   switch (props.table.layout.shape) {
     case 'round':
       return 'rounded-full'
     case 'rectangle':
-      return 'rounded-lg'
+      return 'rounded-(--radius-md)'
     default:
-      return 'rounded-xl'
+      return 'rounded-(--radius-md)'
   }
 })
 
 const positionStyle = computed(() => ({
   left: `${(props.table.layout.x ?? 0.5) * 100}%`,
   top: `${(props.table.layout.y ?? 0.5) * 100}%`,
-  width: `${props.table.layout.width ?? 84}px`,
-  height: `${props.table.layout.height ?? 64}px`,
+  width: `${Math.max(props.table.layout.width ?? 84, 64)}px`,
+  height: `${Math.max(props.table.layout.height ?? 64, 48)}px`,
   transform: `translate(-50%, -50%) rotate(${props.table.layout.rotation ?? 0}deg)`,
 }))
 
@@ -44,15 +45,16 @@ const hasUnassignedFlag = computed(() => props.table.flags.includes('unassigned'
 <template>
   <button
     type="button"
-    class="absolute flex flex-col items-center justify-center gap-0.5 shadow-card transition-transform duration-200 ease-out hover:z-10 hover:scale-105 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-    :class="[shapeClass, style.tone, selected ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface' : '']"
+    class="absolute flex min-w-max flex-col items-center justify-center gap-1 border px-2 transition-colors duration-fast ease-out hover:z-10 hover:border-control focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+    :class="[shapeClass, floorTableTone(table.primary_status), selected ? 'z-10 ring-2 ring-accent ring-offset-2 ring-offset-surface-subtle' : '']"
     :style="positionStyle"
     :aria-label="label"
+    :aria-pressed="selected"
     @click="$emit('select')"
   >
-    <component :is="style.icon" :size="16" aria-hidden="true" />
-    <span class="text-label-md font-semibold leading-none">{{ table.name }}</span>
-    <span v-if="table.session" class="text-[10px] leading-none opacity-80">
+    <component :is="style.icon" :size="16" :weight="style.state === 'attention' ? 'fill' : 'regular'" :class="floorTableIconTone(table.primary_status)" aria-hidden="true" />
+    <span class="whitespace-nowrap text-label-lg font-semibold leading-none">{{ table.name }}</span>
+    <span v-if="table.session" class="whitespace-nowrap text-label-md tabular-nums leading-none" :class="style.state === 'attention' ? '' : 'text-fg-muted'">
       {{ table.session.guest_count }} · {{ formatDuration(table.session.elapsed_seconds) }}
     </span>
     <PhUserCircleMinus

@@ -782,11 +782,13 @@ export default {
       error: 'Error de connexió en temps real',
     },
     tabs: {
+      label: 'Vista del panell',
       operation: 'Operació',
       analysis: 'Anàlisi',
     },
     health: {
       title: 'Operació',
+      scoreContext: 'Índex operatiu: {score}/100',
       level: {
         healthy: 'Bona',
         attention: 'Requereix atenció',
@@ -805,13 +807,26 @@ export default {
       },
     },
     quick: {
+      title: 'Resum operatiu',
       occupancy: 'Ocupació',
       occupancyContext: '{percent}% ocupat',
       activeOrders: 'Comandes actives',
+      activeGuests: 'Clients ara',
+      receivedToday: 'Rebut hui',
       pendingAttention: 'Atencions pendents',
       pendingAttentionActive: 'Requereix la teua atenció',
       pendingAttentionNone: 'Tot al dia',
     },
+    now: {
+      title: 'Ara',
+      clear: 'Tot en ordre.',
+      count: 'Cap situació necessita atenció | 1 situació necessita atenció | {count} situacions necessiten atenció',
+      genericAttention: 'Atenció operativa',
+      viewService: 'Ves a servei',
+      viewKitchen: 'Ves a cuina',
+      viewStaff: 'Ves a equip',
+    },
+    loading: 'Carregant l’estat del restaurant…',
     errors: {
       forbidden: "No tens permís per a veure l'operació d'este restaurant.",
       notFound: 'Este restaurant ja no està disponible.',
@@ -1045,12 +1060,16 @@ export default {
   },
   analytics: {
     presets: {
+      label: 'Selecciona el període',
       this_month: 'Este mes',
       last_30: 'Últims 30 dies',
       last_90: '90 dies',
       custom: 'Personalitzat',
+      from: 'Data inicial',
+      to: 'Data final',
       apply: 'Aplica',
     },
+    loading: 'Carregant l’anàlisi…',
     errors: {
       forbidden: "No tens permís per a veure l'anàlisi d'este restaurant.",
       notFound: 'Este restaurant ja no està disponible.',
@@ -1064,6 +1083,7 @@ export default {
       tableTurnover: 'Rotació de taules',
     },
     charts: {
+      dataDetails: 'Mostra les dades',
       revenueTitle: 'Facturació per període',
       revenueEmpty: 'Encara no hi ha vendes en este període.',
       peakHoursTitle: 'Hores punta',

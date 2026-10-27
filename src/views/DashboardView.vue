@@ -5,9 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import DashboardPageHead from '@/components/dashboard/DashboardPageHead.vue'
 import type { DashboardTab } from '@/components/dashboard/DashboardTabs.vue'
-import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
-import DailyOperationBanner from '@/components/shared/DailyOperationBanner.vue'
 import { useOperationalTableDeepLink } from '@/composables/useOperationalTableDeepLink'
 import { provideCatalogRefresh } from '@/composables/useCatalogRefresh'
 import { usePermissions } from '@/composables/usePermissions'
@@ -79,14 +77,17 @@ watch(tab, (value) => {
   }
 })
 
-const health = computed(() => operations.snapshot.value?.operation ?? null)
-const attentionCount = computed(() => operations.snapshot.value?.alerts.length ?? 0)
 </script>
 
 <template>
   <div>
-    <div v-if="restaurantStore.loading" class="flex items-center justify-center py-24">
-      <AProgress />
+    <div v-if="restaurantStore.loading" class="flex max-w-5xl flex-col gap-6" aria-busy="true" role="status">
+      <span class="sr-only">{{ t('operations.loading') }}</span>
+      <div class="h-10 w-2/3 rounded-md bg-surface-subtle motion-safe:animate-pulse motion-reduce:animate-none" />
+      <div class="h-16 rounded-md bg-surface-subtle motion-safe:animate-pulse motion-reduce:animate-none" />
+      <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div v-for="index in 4" :key="index" class="h-24 rounded-md bg-surface-subtle motion-safe:animate-pulse motion-reduce:animate-none" />
+      </div>
     </div>
 
     <ASurface
@@ -114,17 +115,10 @@ const attentionCount = computed(() => operations.snapshot.value?.alerts.length ?
     <template v-else>
       <DashboardPageHead
         v-model:tab="tab"
-        :health="health"
-        :attention-count="attentionCount"
         :refreshing="operations.refreshing.value"
+        :can-refresh="canViewOperations"
         :connection-state="realtime.connectionState.value"
-      />
-
-      <DailyOperationBanner
-        v-if="tab === 'operation' && canViewOperations && operations.snapshot.value?.daily_operation"
-        class="mb-4"
-        :daily-operation="operations.snapshot.value.daily_operation"
-        :can-manage="can('open_daily_operation') || can('close_daily_operation')"
+        @refresh="operations.refetch"
       />
 
       <!-- view_operations missing for the current restaurant: never call
@@ -146,6 +140,7 @@ const attentionCount = computed(() => operations.snapshot.value?.alerts.length ?
         :refreshing="operations.refreshing.value"
         :error="operations.error.value"
         :last-realtime-event="realtime.lastEvent.value"
+        :can-view-reports="canViewReports"
         :pending-table-id="pendingTableId"
         @refresh="operations.refetch"
         @pending-table-consumed="onPendingTableConsumed"

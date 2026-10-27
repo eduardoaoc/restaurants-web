@@ -782,11 +782,13 @@ export default {
       error: 'Live updates connection error',
     },
     tabs: {
+      label: 'Dashboard view',
       operation: 'Operations',
       analysis: 'Analytics',
     },
     health: {
       title: 'Operation',
+      scoreContext: 'Operational score: {score}/100',
       level: {
         healthy: 'Good',
         attention: 'Needs attention',
@@ -805,13 +807,26 @@ export default {
       },
     },
     quick: {
+      title: 'Operational summary',
       occupancy: 'Occupancy',
       occupancyContext: '{percent}% occupied',
       activeOrders: 'Active orders',
+      activeGuests: 'Guests now',
+      receivedToday: 'Received today',
       pendingAttention: 'Pending attention',
       pendingAttentionActive: 'Needs your attention',
       pendingAttentionNone: 'All clear',
     },
+    now: {
+      title: 'Now',
+      clear: 'Everything is in order.',
+      count: 'No situations need attention | 1 situation needs attention | {count} situations need attention',
+      genericAttention: 'Operational attention',
+      viewService: 'View service',
+      viewKitchen: 'View kitchen',
+      viewStaff: 'View team',
+    },
+    loading: 'Loading restaurant status…',
     errors: {
       forbidden: "You don't have permission to view this restaurant's operations.",
       notFound: 'This restaurant is no longer available.',
@@ -1045,12 +1060,16 @@ export default {
   },
   analytics: {
     presets: {
+      label: 'Select period',
       this_month: 'This month',
       last_30: 'Last 30 days',
       last_90: '90 days',
       custom: 'Custom',
+      from: 'Start date',
+      to: 'End date',
       apply: 'Apply',
     },
+    loading: 'Loading analytics…',
     errors: {
       forbidden: "You don't have permission to view this restaurant's analytics.",
       notFound: 'This restaurant is no longer available.',
@@ -1064,6 +1083,7 @@ export default {
       tableTurnover: 'Table turnover',
     },
     charts: {
+      dataDetails: 'View data',
       revenueTitle: 'Revenue by period',
       revenueEmpty: 'No sales for this period yet.',
       peakHoursTitle: 'Peak hours',

@@ -76,6 +76,17 @@ const hoverHour = ref<number | null>(null)
           {{ bucket.hour % 3 === 0 ? `${bucket.hour}h` : '' }}
         </span>
       </div>
+      <details class="mt-3 border-t border-hairline pt-2">
+        <summary class="min-h-11 cursor-pointer py-2 text-body-sm font-medium text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
+          {{ t('analytics.charts.dataDetails') }}
+        </summary>
+        <ul class="grid max-h-64 grid-cols-2 gap-x-4 overflow-y-auto sm:grid-cols-3">
+          <li v-for="bucket in hours" :key="bucket.hour" class="flex justify-between gap-2 border-b border-hairline py-2 text-body-sm">
+            <span>{{ bucket.hour }}h</span>
+            <span class="tabular-nums">{{ formatNumber(bucket.sessions_started, locale) }}</span>
+          </li>
+        </ul>
+      </details>
     </template>
   </div>
 </template>
