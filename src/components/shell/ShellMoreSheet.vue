@@ -9,7 +9,7 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <ASheet id="shell-more-sheet" :open="open" :title="t('appShell.more')" variant="bottom" @update:open="$emit('update:open', $event)" @close="$emit('close')">
+  <ASheet id="shell-more-sheet" anchored :open="open" :title="t('appShell.more')" variant="bottom" @update:open="$emit('update:open', $event)" @close="$emit('close')">
     <div class="shell-more-content">
       <ShellNavigation v-if="items.length" :items="items" mode="sheet" @navigate="$emit('update:open', false)" />
       <div class="shell-more-preferences"><slot name="language" /><slot name="theme" /></div>

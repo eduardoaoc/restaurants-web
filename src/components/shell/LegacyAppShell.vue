@@ -96,7 +96,7 @@ function closeDrawer(): void { drawerOpen.value = false }
           <PhList :size="22" />
         </AIconButton>
         <div class="flex min-w-0 items-center gap-1">
-          <span class="hidden shrink-0 text-title-md font-medium text-on-surface sm:block">{{ t(items.find(item => item.routeName === route.name)?.labelKey ?? (route.name === 'app-day-close-detail' ? 'dayClose.detail.title' : 'common.settings')) }}</span>
+          <span class="hidden shrink-0 text-title-md font-medium text-on-surface sm:block">{{ t(items.find(item => item.routeName === route.name)?.labelKey ?? (route.name === 'app-day-close-detail' ? 'dayClose.detail.title' : items.find(item => item.active)?.labelKey ?? 'common.settings')) }}</span>
           <span class="hidden h-5 w-px shrink-0 bg-outline-variant sm:block" aria-hidden="true" />
           <slot name="restaurant" />
         </div>

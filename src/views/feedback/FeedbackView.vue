@@ -195,21 +195,25 @@ function openDetail(item: CustomerFeedbackListItem): void {
             <li v-for="item in items" :key="item.id">
               <button
                 type="button"
-                class="flex w-full flex-col gap-1.5 py-3 text-left hover:bg-surface-container-low focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                class="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-3 py-3 text-left transition-colors hover:bg-surface-container-low focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_auto]"
                 @click="openDetail(item)"
               >
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                  <span class="text-body-lg font-medium text-on-surface">{{ item.customer_name }}</span>
-                  <span class="inline-flex items-center gap-1 text-body-lg font-semibold text-on-surface">
-                    <PhStar :size="16" weight="fill" class="text-primary" aria-hidden="true" />
-                    {{ item.overall_rating }}/5
+                <span class="min-w-0">
+                  <span class="block truncate text-body-lg font-medium text-on-surface">{{ item.customer_name }}</span>
+                  <span class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-label-md text-on-surface-variant">
+                    <time>{{ timestamp(item.submitted_at) }}</time>
+                    <span aria-hidden="true">·</span>
+                    <span>{{ item.table.name }}</span>
                   </span>
-                </div>
-                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-label-md text-on-surface-variant">
-                  <span>{{ timestamp(item.submitted_at) }}</span>
-                  <span>{{ item.table.name }}</span>
-                  <span>{{ item.waiter ? item.waiter.name : t('feedback.noWaiter') }}</span>
-                </div>
+                </span>
+                <span class="col-span-2 inline-flex min-w-0 items-center gap-2 text-body-sm text-on-surface-variant md:col-span-1">
+                  <PhUsersThree :size="16" class="shrink-0" aria-hidden="true" />
+                  <span class="truncate">{{ item.waiter ? item.waiter.name : t('feedback.noWaiter') }}</span>
+                </span>
+                <span class="col-start-2 row-start-1 inline-flex shrink-0 items-center gap-1.5 text-body-lg font-semibold text-on-surface md:col-start-3">
+                  <PhStar :size="16" weight="fill" class="text-primary" aria-hidden="true" />
+                  {{ item.overall_rating }}<span class="text-body-sm font-normal text-on-surface-variant">/5</span>
+                </span>
               </button>
             </li>
           </ul>

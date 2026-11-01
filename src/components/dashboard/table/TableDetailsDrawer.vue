@@ -21,6 +21,8 @@ import type { SessionBill } from '@/types/table-sessions'
 import { serviceTableStatus } from '@/utils/service-table-status'
 import { describeApiError } from '@/utils/error-message'
 import { formatDuration, formatMoney } from '@/utils/format'
+import type { OperationTiming } from '@/utils/operation-timing'
+import OperationTimeLabel from '@/components/dashboard/operation/OperationTimeLabel.vue'
 import BillReceiptSheet from './BillReceiptSheet.vue'
 import ServiceOrderComposer from '@/components/service/ServiceOrderComposer.vue'
 import TableAccessPanel from './TableAccessPanel.vue'
@@ -38,6 +40,10 @@ const props = defineProps<{
   serviceMode?: boolean
   /** Dashboard uses the modal primitive while retaining its existing body/actions. */
   dashboardMode?: boolean
+  /** Operation board on wide screens: an embedded, non-modal panel beside the map so the whole floor stays visible. Same body/actions. */
+  inlineMode?: boolean
+  /** Operation board: the session age classified against the operational day, so a leftover session reads "since 21/10", not "158h". */
+  sessionTiming?: OperationTiming | null
   initialSection?: 'overview' | 'orders' | 'requests' | 'bill'
 }>()
 
@@ -296,10 +302,11 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
       :title="table.name"
       variant="side"
       size="md"
-      :class="modalMode ? 'service-table-sheet' : 'fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border border-outline-variant bg-surface-container-high p-5 shadow-elevated sm:inset-x-auto sm:inset-y-6 sm:right-6 sm:w-96 sm:rounded-2xl'"
-      :role="modalMode ? undefined : 'dialog'"
+      :class="modalMode ? 'service-table-sheet' : inlineMode ? 'h-full overflow-y-auto overscroll-contain p-4' : 'fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border border-outline-variant bg-surface-container-high p-5 shadow-elevated sm:inset-x-auto sm:inset-y-6 sm:right-6 sm:w-96 sm:rounded-2xl'"
+      :role="modalMode ? undefined : inlineMode ? 'region' : 'dialog'"
       :aria-label="modalMode ? undefined : table.name"
       @close="emit('close')"
+      @keydown.esc="inlineMode && emit('close')"
     >
       <template v-if="serviceMode" #header>{{ table.name }}</template>
       <div v-if="serviceMode" class="mb-3 flex min-w-0 flex-wrap items-center gap-2">
@@ -356,7 +363,13 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
         <div class="mt-4 grid grid-cols-2 gap-2">
           <div class="rounded-lg bg-surface-container p-3">
             <span class="block text-label-md text-on-surface-variant">{{ t('tableDrawer.elapsed') }}</span>
-            <span class="mt-1 block text-title-md font-semibold text-on-surface">{{ formatDuration(table.session.elapsed_seconds) }}</span>
+            <OperationTimeLabel
+              v-if="sessionTiming"
+              :timing="sessionTiming"
+              :timezone="restaurantStore.currentSettings?.timezone ?? 'Europe/Madrid'"
+              class="mt-1 text-title-md font-semibold text-on-surface"
+            />
+            <span v-else class="mt-1 block text-title-md font-semibold text-on-surface">{{ formatDuration(table.session.elapsed_seconds) }}</span>
           </div>
           <div class="rounded-lg bg-surface-container p-3">
             <span class="block text-label-md text-on-surface-variant">{{ t('tableDrawer.guests') }}</span>
@@ -414,7 +427,7 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
           </ASurface>
         </div>
 
-        <div class="mt-4 grid grid-cols-2 gap-2">
+        <div class="mt-4 grid gap-2" :class="inlineMode ? 'grid-cols-1' : 'grid-cols-1 min-[25rem]:grid-cols-2'">
           <AButton v-if="canViewOrders && (!serviceMode || servicePrimaryAction !== 'orders')" variant="tonal" @click="showOrders = !showOrders">
             {{ showOrders ? t('tableDrawer.actions.hideOrders') : t('tableDrawer.actions.viewOrders') }}
           </AButton>
@@ -561,10 +574,6 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
 </template>
 
 <style scoped>
-.service-table-sheet { --service-detail-max: var(--pane-detail); }
-@media (max-width: 767px) {
-  :global(.service-table-sheet) { height: 100%; max-height: 100%; border-radius: 0; }
-}
 .drawer-enter-active,
 .drawer-leave-active {
   transition:

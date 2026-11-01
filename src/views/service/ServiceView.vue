@@ -6,6 +6,7 @@ import {
   PhArrowClockwise,
   PhBellRinging,
   PhBellSimple,
+  PhCaretDown,
   PhHandPalm,
   PhInfo,
   PhReceipt,
@@ -437,8 +438,8 @@ async function rejectSelected(): Promise<void> {
         <p v-else-if="approvals.orders.value.length === 0 && primaryAlerts.length === 0 && nonTableAlerts.length === 0" class="py-2 text-body-md text-fg-muted">
           {{ t('service.now.empty') }}
         </p>
-        <ul v-else class="flex min-w-0 gap-2 overflow-x-auto pb-1 snap-x snap-mandatory" :aria-label="t('service.now.title')">
-          <li v-for="order in approvals.orders.value" :key="`order-${order.id}`" class="w-[min(86vw,22rem)] shrink-0 snap-start rounded-md border border-hairline bg-surface p-3 shadow-raised">
+        <ul v-else class="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3" :aria-label="t('service.now.title')">
+          <li v-for="order in approvals.orders.value" :key="`order-${order.id}`" class="min-w-0 rounded-md border border-hairline bg-surface p-3 shadow-raised">
             <div class="flex min-w-0 items-start gap-2">
               <PhHandPalm :size="24" weight="fill" class="shrink-0 text-accent" aria-hidden="true" />
               <div class="min-w-0 flex-1">
@@ -463,7 +464,7 @@ async function rejectSelected(): Promise<void> {
               {{ describeApiError(approvals.actionError[order.id]!, t) }}
             </p>
           </li>
-          <li v-for="alert in primaryAlerts" :key="`alert-${alert.id}`" class="w-[min(86vw,22rem)] shrink-0 snap-start">
+          <li v-for="alert in primaryAlerts" :key="`alert-${alert.id}`" class="min-w-0">
             <button
               v-if="alert.table_id !== null"
               type="button"
@@ -477,7 +478,7 @@ async function rejectSelected(): Promise<void> {
               </span>
             </button>
           </li>
-          <li v-for="alert in nonTableAlerts" :key="`alert-${alert.id}`" class="w-[min(86vw,22rem)] shrink-0 snap-start">
+          <li v-for="alert in nonTableAlerts" :key="`alert-${alert.id}`" class="min-w-0">
             <div class="flex min-h-16 min-w-0 items-center gap-3 rounded-md border border-hairline bg-surface px-3 py-3 shadow-raised" role="status">
               <AStatusBadge :state="statusForAlert(alert)" :label="t(operationsAlertTypeLabelKey(alert.type) ?? 'operations.alerts.title')" :icon="iconForAlert(alert)" />
               <span class="min-w-0 flex-1">
@@ -537,9 +538,17 @@ async function rejectSelected(): Promise<void> {
         </ul>
       </section>
 
-      <ProductAvailabilityPanel v-if="canChangeAvailability" :key="restaurantStore.currentRestaurantId ?? 0"
-        :products="availability.products.value" :loading="availability.loading.value" :error="availability.error.value"
-        :busy="availability.busy" :errors="availability.errors" @toggle="toggleAvailability" @refresh="realtime.refresh" />
+      <details v-if="canChangeAvailability" class="group min-w-0 rounded-lg border border-hairline bg-surface">
+        <summary class="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 text-body-lg font-semibold text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
+          <span>{{ t('availability.title') }}</span>
+          <PhCaretDown :size="18" class="shrink-0 text-fg-muted transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
+        </summary>
+        <div class="border-t border-hairline p-3 sm:p-4">
+          <ProductAvailabilityPanel :key="restaurantStore.currentRestaurantId ?? 0"
+            :products="availability.products.value" :loading="availability.loading.value" :error="availability.error.value"
+            :busy="availability.busy" :errors="availability.errors" @toggle="toggleAvailability" @refresh="realtime.refresh" />
+        </div>
+      </details>
 
       <details v-if="canSeeOwnFeedback" class="rounded-md border border-hairline bg-surface px-4 py-3">
         <summary class="flex min-h-11 cursor-pointer items-center text-body-lg font-semibold text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">

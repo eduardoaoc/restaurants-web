@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import { PhCaretRight } from '@phosphor-icons/vue'
 
 import DashboardPageHead from '@/components/dashboard/DashboardPageHead.vue'
 import type { DashboardTab } from '@/components/dashboard/DashboardTabs.vue'
+import AButton from '@/components/ui/AButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import { useOperationalTableDeepLink } from '@/composables/useOperationalTableDeepLink'
 import { provideCatalogRefresh } from '@/composables/useCatalogRefresh'
@@ -13,18 +15,22 @@ import { useRestaurantAnalytics } from '@/composables/useRestaurantAnalytics'
 import { useRestaurantOperations } from '@/composables/useRestaurantOperations'
 import { useRestaurantRealtime } from '@/composables/useRestaurantRealtime'
 import { useRestaurantStore } from '@/stores/restaurant'
+import { SERVICE_ACCESS_PERMISSIONS } from '@/types/auth-context'
 import { describeApiError } from '@/utils/error-message'
+import { formatDateOnly } from '@/utils/format'
 import AnalyticsView from './analytics/AnalyticsView.vue'
 import OperationView from './operation/OperationView.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const restaurantStore = useRestaurantStore()
 const refreshCatalog = provideCatalogRefresh()
-const { can, isPlatformAdmin } = usePermissions()
+const { can, canAny, isPlatformAdmin } = usePermissions()
 
-const tab = ref<DashboardTab>('operation')
+// Operation and Analytics are separate pages: the route is the only source
+// of truth for which one is on screen (back/forward and links just work).
+const tab = computed<DashboardTab>(() => (route.name === 'app-dashboard-analytics' ? 'analysis' : 'operation'))
 // CLAUDE.md §16 / Passo 1.2C: don't call GET /operations/live and wait for a
 // 403 when the current restaurant's context already says view_operations is
 // missing — useRestaurantOperations() simply never fetches while this is false.
@@ -44,7 +50,7 @@ const operations = useRestaurantOperations(() => canViewOperations.value)
  */
 const { pendingTableId, onPendingTableConsumed } = useOperationalTableDeepLink(route, router, () => canViewOperations.value)
 watch(pendingTableId, (id) => {
-  if (id !== null) tab.value = 'operation'
+  if (id !== null && tab.value !== 'operation') void router.replace({ name: 'app-dashboard', query: route.query })
 })
 
 // Passo 1.3: same reactive gate as `operations` above — subscribes to
@@ -75,6 +81,15 @@ watch(tab, (value) => {
   if (value === 'analysis' && !analytics.hasLoadedOnce.value) {
     void analytics.load()
   }
+}, { immediate: true })
+
+const canViewService = computed(() => canAny(SERVICE_ACCESS_PERMISSIONS))
+const dayState = computed(() => {
+  const daily = operations.snapshot.value?.daily_operation
+  if (tab.value !== 'operation' || !daily) return null
+  return daily.status === 'open'
+    ? { open: true, label: t('operations.board.dayOpen', { date: formatDateOnly(daily.business_date, locale.value) }) }
+    : { open: false, label: t('operations.board.dayNotOpen') }
 })
 
 </script>
@@ -114,12 +129,21 @@ watch(tab, (value) => {
 
     <template v-else>
       <DashboardPageHead
-        v-model:tab="tab"
+        :tab="tab"
         :refreshing="operations.refreshing.value"
         :can-refresh="canViewOperations"
         :connection-state="realtime.connectionState.value"
+        :day-state="dayState"
         @refresh="operations.refetch"
-      />
+      >
+        <!-- Day closed: the closed-day strip owns the only primary action ("Abrir el día"). -->
+        <template v-if="tab === 'operation' && dayState?.open && canViewService" #cta>
+          <AButton as="RouterLink" :to="{ name: 'app-service' }" variant="secondary" size="sm">
+            {{ t('operations.now.viewService') }}
+            <template #trailing><PhCaretRight /></template>
+          </AButton>
+        </template>
+      </DashboardPageHead>
 
       <!-- view_operations missing for the current restaurant: never call
            GET /operations/live and wait for a 403 (CLAUDE.md §16) — this
@@ -140,7 +164,6 @@ watch(tab, (value) => {
         :refreshing="operations.refreshing.value"
         :error="operations.error.value"
         :last-realtime-event="realtime.lastEvent.value"
-        :can-view-reports="canViewReports"
         :pending-table-id="pendingTableId"
         @refresh="operations.refetch"
         @pending-table-consumed="onPendingTableConsumed"

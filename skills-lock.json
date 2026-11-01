@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "gobkit-free-3d-assets": {
+      "source": "Ariescar/gobkit-free-assets",
+      "sourceType": "github",
+      "skillPath": "skills/gobkit-free-3d-assets/SKILL.md",
+      "computedHash": "c02333d685bea1171f3ffa5b90c924b303977bb0db02494f6864dc48babd1b25"
+    }
+  }
+}

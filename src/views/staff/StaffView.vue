@@ -6,8 +6,9 @@ import { PhMagnifyingGlass, PhPlus, PhUsersThree } from '@phosphor-icons/vue'
 import InvitationItem from '@/components/invitations/InvitationItem.vue'
 import StaffDetailPanel from '@/components/staff/StaffDetailPanel.vue'
 import StaffForm from '@/components/staff/StaffForm.vue'
-import StaffRow from '@/components/staff/StaffRow.vue'
 import AButton from '@/components/ui/AButton.vue'
+import AConfirmDialog from '@/components/ui/AConfirmDialog.vue'
+import ADialog from '@/components/ui/ADialog.vue'
 import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import ATextField from '@/components/ui/ATextField.vue'
@@ -57,6 +58,8 @@ type StatusFilter = 'all' | 'active' | 'inactive'
 
 const panelMode = ref<PanelMode>('none')
 const selectedId = ref<number | null>(null)
+const staffForm = ref<InstanceType<typeof StaffForm> | null>(null)
+const confirmDiscard = ref(false)
 const query = ref('')
 const roleFilter = ref<string>('all')
 
@@ -163,6 +166,33 @@ function startEdit(): void {
   panelMode.value = 'edit'
 }
 
+function beforeStaffClose(): boolean {
+  if ((panelMode.value === 'create' || panelMode.value === 'edit') && staffForm.value?.isDirty) {
+    confirmDiscard.value = true
+    return false
+  }
+  return true
+}
+
+function closeStaffModal(): void {
+  panelMode.value = 'none'
+  selectedId.value = null
+  confirmDiscard.value = false
+}
+
+function discardStaffChanges(): void {
+  confirmDiscard.value = false
+  closeStaffModal()
+}
+
+function cancelStaffForm(): void {
+  if (staffForm.value?.isDirty) {
+    confirmDiscard.value = true
+    return
+  }
+  panelMode.value = selectedMember.value ? 'detail' : 'none'
+}
+
 /**
  * Status travels ALONE in the payload — `{ status: 'active' }` or
  * `{ status: 'inactive' }`, never anything else and never `suspended`, which
@@ -261,7 +291,7 @@ async function onSave(payload: CreateStaffInvitationPayload | UpdateStaffPayload
         </AButton>
       </ASurface>
 
-      <div v-else class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
+      <div v-else class="flex min-w-0 flex-col gap-4">
         <div class="flex flex-col gap-3">
           <ATextField v-model="query" :label="t('staff.searchLabel')" :placeholder="t('staff.searchPlaceholder')">
             <template #leading><PhMagnifyingGlass :size="18" /></template>
@@ -314,69 +344,94 @@ async function onSave(payload: CreateStaffInvitationPayload | UpdateStaffPayload
             {{ t('staff.count', filteredStaff.length) }}
           </p>
 
-          <ASurface tone="container" radius="lg" bordered class="p-2">
-            <p v-if="filteredStaff.length === 0" class="px-2 py-4 text-body-md text-on-surface-variant">
+          <div>
+            <p v-if="filteredStaff.length === 0" class="rounded-lg border border-outline-variant bg-surface-container px-4 py-5 text-body-md text-on-surface-variant">
               {{ t('staff.noResults') }}
             </p>
 
-            <ul v-else class="flex flex-col divide-y divide-outline-variant" :aria-label="t('staff.listLabel')">
-              <li v-for="member in filteredStaff" :key="member.id">
-                <StaffRow
-                  :member="member"
-                  :active-shift="activeShiftByUserId[member.id] ?? null"
-                  :shifts-visible="canReadShifts"
-                  :selected="selectedId === member.id && panelMode !== 'create'"
-                  @select="select(member)"
-                />
+            <ul v-else class="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" :aria-label="t('staff.listLabel')">
+              <li v-for="member in filteredStaff" :key="member.id" class="min-w-0">
+                <button
+                  type="button"
+                  class="group flex aspect-square w-full min-w-0 flex-col rounded-xl border border-outline-variant bg-gradient-to-br from-surface-container-high to-surface px-4 py-4 text-left shadow-[var(--ritma-tactile-shadow)] transition duration-base ease-out hover:border-outline hover:shadow-floating focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus active:translate-y-px active:shadow-flat motion-reduce:transition-none sm:px-5 sm:py-5"
+                  :aria-label="`${t('staff.listLabel')}: ${member.name}`"
+                  @click="select(member)"
+                >
+                  <span class="flex w-full min-w-0 items-start justify-between gap-2">
+                    <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-surface-elevated text-title-md font-semibold text-accent shadow-raised" aria-hidden="true">{{ member.name.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toLocaleUpperCase() }}</span>
+                    <span class="flex flex-wrap justify-end gap-1">
+                      <span v-if="!isStaffActive(member.status)" class="rounded-full border border-outline-variant bg-surface-subtle px-2 py-1 text-label-md text-fg-muted">{{ t('staff.status.badgeInactive') }}</span>
+                      <span v-if="!member.role" class="rounded-full border border-warning/40 bg-warning-container px-2 py-1 text-label-md text-on-warning-container">{{ t('staff.roles.unassigned') }}</span>
+                    </span>
+                  </span>
+                  <span class="mt-auto block min-w-0 pt-6">
+                    <span class="block break-words text-component-title font-semibold text-fg">{{ member.name }}</span>
+                    <span class="mt-1 block text-body-sm text-fg-muted">{{ member.role ? t(staffRoleLabelKey(member.role.slug)) : t('staff.roles.unassigned') }}</span>
+                    <span class="mt-2 block break-all text-caption text-fg-muted">{{ member.email }}</span>
+                  </span>
+                  <span class="mt-4 flex w-full min-w-0 flex-wrap items-end justify-between gap-2 border-t border-hairline pt-3">
+                    <span class="min-w-0 flex-1 text-caption text-fg-muted">
+                      <span v-for="restaurant in member.restaurants" :key="restaurant.id" class="block truncate">{{ restaurant.name }}<span v-if="member.restaurants.length > 1" class="text-fg-subtle"> · {{ restaurant.sub_id }}</span></span>
+                    </span>
+                    <span v-if="canReadShifts && activeShiftByUserId[member.id]" class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-success/30 bg-success-subtle px-2 py-1 text-caption font-medium text-success">
+                      <span class="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />{{ t('staff.shift.onShift') }}
+                    </span>
+                  </span>
+                </button>
               </li>
             </ul>
-          </ASurface>
-        </div>
-
-        <div class="flex flex-col gap-4">
-          <ASurface v-if="panelMode === 'create' || panelMode === 'edit'" tone="container" radius="lg" bordered class="p-4">
-            <h3 class="text-title-md font-medium text-on-surface">
-              {{ panelMode === 'create' ? t('staffInvitations.formTitle') : t('staff.form.editTitle') }}
-            </h3>
-            <div class="mt-3">
-              <StaffForm
-                :key="panelMode === 'edit' ? `edit-${selectedId}` : 'create'"
-                :mode="panelMode === 'create' ? 'create' : 'edit'"
-                :member="panelMode === 'edit' ? (selectedMember ?? undefined) : undefined"
-                :saving="formSaving"
-                :error="formError"
-                @save="onSave"
-                @cancel="panelMode = selectedMember ? 'detail' : 'none'"
-              />
-            </div>
-          </ASurface>
-
-          <StaffDetailPanel
-            v-else-if="panelMode === 'detail' && selectedMember"
-            :key="selectedMember.id"
-            :member="selectedMember"
-            :active-shift="activeShiftByUserId[selectedMember.id] ?? null"
-            :shifts-visible="canReadShifts"
-            :can-edit="canManageUsers"
-            :is-self="isSelfSelected"
-            :status-saving="saving"
-            :status-error="saveError"
-            :can-manage-shift="canManageSelectedShift"
-            :current-restaurant-name="restaurantStore.currentRestaurant?.name ?? null"
-            :shift-saving="shiftSaving"
-            :shift-error="shiftError"
-            @start-shift="onStartShift"
-            @end-shift="onEndShift"
-            @edit="startEdit"
-            @deactivate="changeStatus('inactive')"
-            @reactivate="changeStatus('active')"
-          />
-
-          <ASurface v-else tone="container" radius="lg" bordered class="p-6">
-            <p class="text-body-md text-on-surface-variant">{{ t('staff.selectHint') }}</p>
-          </ASurface>
+          </div>
         </div>
       </div>
     </template>
+
+    <ADialog
+      v-if="panelMode !== 'none'"
+      :title="panelMode === 'create' ? t('staffInvitations.formTitle') : panelMode === 'edit' ? t('staff.form.editTitle') : (selectedMember?.name ?? '')"
+      size="lg"
+      :before-close="beforeStaffClose"
+      @close="closeStaffModal"
+    >
+      <StaffForm
+        v-if="panelMode === 'create' || panelMode === 'edit'"
+        ref="staffForm"
+        :key="panelMode === 'edit' ? `edit-${selectedId}` : 'create'"
+        :mode="panelMode === 'create' ? 'create' : 'edit'"
+        :member="panelMode === 'edit' ? (selectedMember ?? undefined) : undefined"
+        :saving="formSaving"
+        :error="formError"
+        @save="onSave"
+        @cancel="cancelStaffForm"
+      />
+      <StaffDetailPanel
+        v-else-if="selectedMember"
+        :key="selectedMember.id"
+        :member="selectedMember"
+        :active-shift="activeShiftByUserId[selectedMember.id] ?? null"
+        :shifts-visible="canReadShifts"
+        :can-edit="canManageUsers"
+        :is-self="isSelfSelected"
+        :status-saving="saving"
+        :status-error="saveError"
+        :can-manage-shift="canManageSelectedShift"
+        :current-restaurant-name="restaurantStore.currentRestaurant?.name ?? null"
+        :shift-saving="shiftSaving"
+        :shift-error="shiftError"
+        @start-shift="onStartShift"
+        @end-shift="onEndShift"
+        @edit="startEdit"
+        @deactivate="changeStatus('inactive')"
+        @reactivate="changeStatus('active')"
+      />
+    </ADialog>
+    <AConfirmDialog
+      v-if="confirmDiscard"
+      :label="t('operations.editor.unsavedChanges')"
+      :message="t('operations.editor.unsavedChanges')"
+      :confirm-label="t('operations.editor.discard')"
+      confirm-variant="danger"
+      @confirm="discardStaffChanges"
+      @cancel="confirmDiscard = false"
+    />
   </div>
 </template>

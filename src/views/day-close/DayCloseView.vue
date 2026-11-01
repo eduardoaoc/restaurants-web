@@ -374,47 +374,51 @@ const canSubmitClose = computed(() => amountsValid.value && preview.preview.valu
             <p class="text-body-md">{{ movementSuccessMessage }}</p>
           </ASurface>
 
-          <DayCloseStatusCard
-            :period="preview.preview.value.period"
-            :can-close="preview.preview.value.can_close"
-            :blockers="preview.preview.value.blockers"
-            @void="onRequestVoid"
-          />
+          <div class="day-close-layout">
+            <div class="day-close-context">
+              <DayCloseStatusCard
+                :period="preview.preview.value.period"
+                :can-close="preview.preview.value.can_close"
+                :blockers="preview.preview.value.blockers"
+                @void="onRequestVoid"
+              />
+              <DayCloseSectionsSummary :sections="preview.preview.value" :currency="preview.preview.value.financial.currency" :timezone="preview.preview.value.period.timezone" />
+              <DayCloseWarningsCard :warnings="preview.preview.value.warnings" />
+            </div>
 
-          <DayCloseSectionsSummary :sections="preview.preview.value" :currency="preview.preview.value.financial.currency" :timezone="preview.preview.value.period.timezone" />
+            <div class="day-close-form">
+              <DayCloseCashCard
+                :cash="preview.preview.value.cash"
+                :currency="preview.preview.value.financial.currency"
+                :movements="cashMovements.data.value?.movements ?? []"
+                :movements-loading="cashMovements.loading.value"
+                :opening-float-input="openingFloatInput"
+                :counted-cash="countedCash"
+                :cash-left-for-next-day="cashLeftForNextDay"
+                :cash-difference-note="cashDifferenceNote"
+                @update:opening-float-input="openingFloatInput = $event"
+                @update:counted-cash="countedCash = $event"
+                @update:cash-left-for-next-day="cashLeftForNextDay = $event"
+                @update:cash-difference-note="cashDifferenceNote = $event"
+                @add-movement="movementDialogType = $event"
+                @opening-float-blur="onOpeningFloatBlur"
+              />
 
-          <DayCloseWarningsCard :warnings="preview.preview.value.warnings" />
+              <section class="rounded-lg border border-outline-variant bg-surface-container p-5">
+                <label for="day-close-notes" class="text-label-lg font-medium text-on-surface-variant">{{ t('dayClose.notes.label') }}</label>
+                <textarea
+                  id="day-close-notes"
+                  v-model="notes"
+                  rows="3"
+                  class="mt-1.5 w-full rounded-lg border border-outline bg-surface-container-lowest px-3 py-2 text-body-lg text-on-surface placeholder:text-on-surface-variant/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                />
+                <p class="mt-1 text-label-md text-on-surface-variant">{{ t('dayClose.notes.help') }}</p>
+              </section>
 
-          <DayCloseCashCard
-            :cash="preview.preview.value.cash"
-            :currency="preview.preview.value.financial.currency"
-            :movements="cashMovements.data.value?.movements ?? []"
-            :movements-loading="cashMovements.loading.value"
-            :opening-float-input="openingFloatInput"
-            :counted-cash="countedCash"
-            :cash-left-for-next-day="cashLeftForNextDay"
-            :cash-difference-note="cashDifferenceNote"
-            @update:opening-float-input="openingFloatInput = $event"
-            @update:counted-cash="countedCash = $event"
-            @update:cash-left-for-next-day="cashLeftForNextDay = $event"
-            @update:cash-difference-note="cashDifferenceNote = $event"
-            @add-movement="movementDialogType = $event"
-            @opening-float-blur="onOpeningFloatBlur"
-          />
-
-          <section class="rounded-lg border border-outline-variant bg-surface-container p-5">
-            <label for="day-close-notes" class="text-label-lg font-medium text-on-surface-variant">{{ t('dayClose.notes.label') }}</label>
-            <textarea
-              id="day-close-notes"
-              v-model="notes"
-              rows="3"
-              class="mt-1.5 w-full rounded-lg border border-outline bg-surface-container-lowest px-3 py-2 text-body-lg text-on-surface placeholder:text-on-surface-variant/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            />
-            <p class="mt-1 text-label-md text-on-surface-variant">{{ t('dayClose.notes.help') }}</p>
-          </section>
-
-          <div class="flex flex-wrap gap-3">
-            <AButton v-if="canCloseNormal" :disabled="!canSubmitClose" @click="showReviewDialog = true">{{ t('dayClose.review.cta') }}</AButton>
+              <div class="flex flex-wrap gap-3">
+                <AButton v-if="canCloseNormal" :disabled="!canSubmitClose" @click="showReviewDialog = true">{{ t('dayClose.review.cta') }}</AButton>
+              </div>
+            </div>
           </div>
 
           <DayCloseReviewDialog
@@ -466,3 +470,12 @@ const canSubmitClose = computed(() => amountsValid.value && preview.preview.valu
     </template>
   </div>
 </template>
+
+<style scoped>
+.day-close-layout, .day-close-context, .day-close-form { display: grid; min-width: 0; gap: calc(var(--spacing) * 4); }
+.day-close-layout { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1024px) {
+  .day-close-layout { grid-template-columns: minmax(0, 1.15fr) minmax(20rem, .85fr); align-items: start; }
+  .day-close-form { position: sticky; top: calc(var(--bar-top, 0px) + var(--spacing) * 4); }
+}
+</style>

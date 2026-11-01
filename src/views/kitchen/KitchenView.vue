@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { PhArrowClockwise } from '@phosphor-icons/vue'
 import AButton from '@/components/ui/AButton.vue'
 import ASheet from '@/components/ui/ASheet.vue'
+import AStatusBadge from '@/components/ui/AStatusBadge.vue'
 import AKitchenTicket from '@/components/kitchen/AKitchenTicket.vue'
 import KitchenDashboardPanel from '@/components/kitchen/KitchenDashboardPanel.vue'
 import KitchenItems from '@/components/kitchen/KitchenItems.vue'
@@ -14,6 +15,7 @@ import { usePermissions } from '@/composables/usePermissions'
 import { useRestaurantRealtime } from '@/composables/useRestaurantRealtime'
 import { useRestaurantStore } from '@/stores/restaurant'
 import { KITCHEN_ACTIONS, KITCHEN_STATUSES, type KitchenOrder, type KitchenStatus } from '@/types/kitchen'
+import { kitchenUrgency } from '@/utils/kitchen-urgency'
 import { kitchenError } from '@/utils/kitchen-error'
 import { createKitchenRealtimeArrivals } from '@/utils/kitchen-realtime-arrivals'
 
@@ -32,7 +34,10 @@ const realtime = useRestaurantRealtime(() => restaurant.currentRestaurantId, () 
   },
 })
 
-const selectedMobileStatus = ref<KitchenStatus>('confirmed')
+// 'confirmed' orders (the "Aceptar pedido" ones) live in the incoming grid above the board.
+const BOARD_STATUSES = KITCHEN_STATUSES.filter(status => status !== 'confirmed')
+const selectedMobileStatus = ref<KitchenStatus>('accepted')
+const incomingOrders = computed(() => queue.orders.value.filter(order => order.status === 'confirmed'))
 const view = ref<'queue' | 'metrics'>('queue')
 const selectedId = ref<number | null>(null)
 const ticketId = ref<number | null>(null)
@@ -48,7 +53,7 @@ const arrivals = createKitchenRealtimeArrivals()
 watch(() => [restaurant.currentRestaurantId, canView.value] as const, () => {
   selectedId.value = null
   ticketId.value = null
-  selectedMobileStatus.value = 'confirmed'
+  selectedMobileStatus.value = 'accepted'
   view.value = 'queue'
   arrivals.reset()
   highlightedOrders.value = new Set()
@@ -77,9 +82,17 @@ onBeforeUnmount(() => {
   if (highlightTimer) clearTimeout(highlightTimer)
 })
 
-function age(order: KitchenOrder): string {
+function elapsedSeconds(order: KitchenOrder): number {
   // elapsed_seconds is the server baseline. Local time only advances that baseline.
-  const seconds = order.elapsed_seconds + Math.max(0, (now.value - queue.receivedAt.value) / 1000)
+  return order.elapsed_seconds + Math.max(0, (now.value - queue.receivedAt.value) / 1000)
+}
+function urgency(order: KitchenOrder) {
+  // Neutral when the real timestamps are unusable; never inferred from formatted text.
+  if (Number.isNaN(Date.parse(order.created_at)) || !Number.isFinite(order.elapsed_seconds)) return 'unknown'
+  return kitchenUrgency(elapsedSeconds(order))
+}
+function age(order: KitchenOrder): string {
+  const seconds = elapsedSeconds(order)
   return t('kitchen.minutes', { count: new Intl.NumberFormat(locale.value).format(Math.floor(seconds / 60)) })
 }
 function timestamp(value: string): string {
@@ -100,6 +113,10 @@ async function advance(order: KitchenOrder): Promise<void> {
 }
 function openTicket(id: number): void { selectedId.value = null; ticketId.value = id }
 function openDetails(id: number): void { selectedId.value = id }
+function selectTab(status: KitchenStatus): void {
+  if (status !== 'confirmed') selectedMobileStatus.value = status
+  view.value = 'queue'
+}
 function showStatus(status: KitchenStatus): void { selectedMobileStatus.value = status }
 function disableLeavingTicket(element: Element): void { (element as HTMLElement).inert = true }
 </script>
@@ -133,16 +150,36 @@ function disableLeavingTicket(element: Element): void { (element as HTMLElement)
       <p v-if="queue.orders.value.length === 100" class="kds-limit">{{ t('kitchen.limit') }}</p>
 
       <template v-if="view === 'queue'">
+        <section class="kds-incoming" aria-labelledby="kds-incoming-title" data-testid="kds-incoming">
+          <header class="kds-incoming-heading">
+            <h2 id="kds-incoming-title">{{ t('kitchen.incomingTitle') }}</h2>
+            <span class="kds-count tabular-nums" :aria-label="t('kitchen.orderCount', { count: incomingOrders.length })">{{ incomingOrders.length }}</span>
+          </header>
+          <div v-if="queue.loading.value && !queue.orders.value.length" class="kds-incoming-grid kds-column-skeleton" aria-busy="true" :aria-label="t('kitchen.loading')">
+            <div v-for="index in 3" :key="index" class="kds-skeleton-ticket"><span /><span /><span /></div>
+          </div>
+          <p v-else-if="!queue.error.value && incomingOrders.length === 0" class="kds-empty" role="status">{{ t('kitchen.columnEmpty') }}</p>
+          <TransitionGroup v-else name="kds-ticket" tag="div" class="kds-incoming-grid" @before-leave="disableLeavingTicket">
+            <AKitchenTicket v-for="order in incomingOrders" :key="order.id" compact :order="order" :elapsed="age(order)"
+              :urgency="urgency(order)" :urgency-label="urgency(order) === 'unknown' ? undefined : t(`kitchen.urgency.${urgency(order)}`)"
+              :status-label="t(`tableDrawer.orders.status.${order.status}`)"
+              :action-label="canManage && KITCHEN_ACTIONS[order.status] ? t(`kitchen.actions.${KITCHEN_ACTIONS[order.status]}`) : undefined"
+              :waiting-label="t('kitchen.awaitingWaiter')" :action-loading="queue.actingOn[order.id]"
+              :action-disabled="!!queue.error.value" :highlighted="highlightedOrders.has(order.id)"
+              @advance="advance(order)" @details="openDetails(order.id)" />
+          </TransitionGroup>
+        </section>
+
         <fieldset class="kds-mobile-status">
           <legend class="sr-only">{{ t('kitchen.filter') }}</legend>
-          <label v-for="status in KITCHEN_STATUSES" :key="status" class="kds-mobile-status-option">
+          <label v-for="status in BOARD_STATUSES" :key="status" class="kds-mobile-status-option">
             <input v-model="selectedMobileStatus" type="radio" name="kitchen-status" :value="status" @change="showStatus(status)">
             <span>{{ t(`kitchen.columns.${status}`) }}</span>
             <span class="kds-count tabular-nums">{{ orderCount(status) }}</span>
           </label>
         </fieldset>
 
-        <section :aria-label="t(`kitchen.columns.${selectedMobileStatus}`)">
+        <section class="kds-mobile-board" :aria-label="t(`kitchen.columns.${selectedMobileStatus}`)">
           <div v-if="queue.loading.value && !queue.orders.value.length" class="kds-mobile-column kds-mobile-skeleton" aria-busy="true" :aria-label="t('kitchen.loading')">
             <div v-for="index in 2" :key="index" class="kds-skeleton-ticket"><span /><span /><span /></div>
           </div>
@@ -158,7 +195,7 @@ function disableLeavingTicket(element: Element): void { (element as HTMLElement)
         </section>
 
         <section class="kds-columns" :aria-label="t('kitchen.queue')">
-          <article v-for="status in KITCHEN_STATUSES" :key="status" class="kds-column" :aria-labelledby="`kds-column-${status}`">
+          <article v-for="status in BOARD_STATUSES" :key="status" class="kds-column" :aria-labelledby="`kds-column-${status}`">
             <header class="kds-column-heading">
               <h2 :id="`kds-column-${status}`">{{ t(`kitchen.columns.${status}`) }}</h2>
               <span class="kds-count tabular-nums" :aria-label="t('kitchen.orderCount', { count: orderCount(status) })">{{ orderCount(status) }}</span>
@@ -181,7 +218,7 @@ function disableLeavingTicket(element: Element): void { (element as HTMLElement)
 
       <section v-else class="kds-metrics" :aria-label="t('kitchen.dashboard.sections.now')">
         <KitchenDashboardPanel :dashboard="dashboard.dashboard.value" :loading="dashboard.loading.value" :error="dashboard.error.value"
-          @retry="dashboard.refetch" @select-tab="status => { selectedMobileStatus = status; view = 'queue' }" />
+          @retry="dashboard.refetch" @select-tab="selectTab" />
       </section>
 
       <ASheet v-if="selected && !queue.error.value" :title="`${selected.table.name} · ${selected.order_number}`" variant="bottom" size="md" @close="selectedId = null">
@@ -207,13 +244,19 @@ function disableLeavingTicket(element: Element): void { (element as HTMLElement)
 .kds-error { border: 1px solid var(--color-danger); background: var(--color-danger-subtle); color: var(--color-danger); font-size: var(--text-body); }
 .kds-error-row { justify-content: space-between; }
 .kds-limit { color: var(--color-text-secondary); font-size: var(--text-body-sm); }
-.kds-mobile-status { display: none; }
-.kds-columns { display: grid; min-width: 0; max-width: 100%; grid-auto-flow: column; grid-auto-columns: minmax(280px, 1fr); grid-template-columns: repeat(4, minmax(280px, 1fr)); gap: calc(var(--spacing) * 3); overflow-x: auto; overscroll-behavior-inline: contain; scroll-snap-type: inline proximity; padding: 0 0 calc(var(--spacing) * 2); }
-.kds-column { display: flex; min-width: 0; height: min(68dvh, 48rem); min-height: 24rem; flex-direction: column; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--color-border); border-radius: var(--radius-saloa-md); background: var(--color-surface-subtle); scroll-snap-align: start; }
+.kds-mobile-status, .kds-mobile-board { display: none; }
+.kds-incoming { display: flex; min-width: 0; flex-direction: column; gap: calc(var(--spacing) * 2); }
+.kds-incoming-heading { display: flex; align-items: center; gap: calc(var(--spacing) * 2); }
+.kds-incoming-heading h2 { font-size: var(--text-component-title); font-weight: 600; line-height: var(--text-component-title--line-height); }
+/* 1 col mobile, 2 tablet, 3 desktop, 4 only when ≥ ~1250px of content. One row tall; extra rows scroll inside. */
+.kds-incoming-grid { display: grid; min-width: 0; grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr)); align-items: stretch; gap: calc(var(--spacing) * 3); max-height: clamp(13rem, 34dvh, 22rem); overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+.kds-incoming-grid > * { min-width: 0; }
+.kds-columns { display: grid; width: 100%; min-width: 0; max-width: 100%; height: min(64dvh, 44rem); min-height: 22rem; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: calc(var(--spacing) * 3); overflow: hidden; padding: 0 0 calc(var(--spacing) * 2); }
+.kds-column { display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; overscroll-behavior: contain; border: 1px solid var(--color-border); border-radius: var(--radius-saloa-md); background: var(--color-surface-subtle); }
 .kds-column-heading { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; min-height: calc(var(--spacing) * 14); align-items: center; justify-content: space-between; gap: calc(var(--spacing) * 2); padding: calc(var(--spacing) * 3) calc(var(--spacing) * 4); border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
 .kds-column-heading h2 { min-width: 0; font-size: var(--text-component-title); font-weight: 600; line-height: var(--text-component-title--line-height); overflow-wrap: anywhere; }
 .kds-count { display: inline-flex; min-width: 32px; min-height: 32px; flex: 0 0 auto; align-items: center; justify-content: center; padding-inline: calc(var(--spacing) * 2); border-radius: var(--radius-saloa-sm); background: var(--color-surface); color: var(--color-text-primary); font-size: var(--text-body-sm); font-weight: 600; }
-.kds-column-list { display: flex; min-width: 0; flex-direction: column; gap: calc(var(--spacing) * 3); padding: calc(var(--spacing) * 3); }
+.kds-column-list { display: flex; min-width: 0; min-height: 0; flex: 1; flex-direction: column; gap: calc(var(--spacing) * 3); overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; padding: calc(var(--spacing) * 3); }
 .kds-empty { padding: calc(var(--spacing) * 4); color: var(--color-text-secondary); font-size: var(--text-body); }
 .kds-skeleton-ticket { display: flex; min-height: calc(var(--spacing) * 64); flex-direction: column; gap: calc(var(--spacing) * 3); padding: calc(var(--spacing) * 4); border: 1px solid var(--color-border); border-radius: var(--radius-saloa-md); background: var(--color-surface); }
 .kds-skeleton-ticket span { display: block; height: 16px; border-radius: var(--radius-saloa-sm); background: var(--color-surface-subtle); }
@@ -226,17 +269,13 @@ function disableLeavingTicket(element: Element): void { (element as HTMLElement)
 .kds-view :deep(.kds-ticket-enter-active), .kds-view :deep(.kds-ticket-leave-active), .kds-view :deep(.kds-ticket-move) { transition: opacity var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out); }
 .kds-view :deep(.kds-ticket-enter-from), .kds-view :deep(.kds-ticket-leave-to) { opacity: 0; transform: translateY(calc(var(--spacing) * 1)); }
 .kds-view :deep(.kds-ticket-leave-active) { pointer-events: none; }
-@media (min-width: 768px) and (max-width: 1023px) {
-  .kds-columns { grid-template-columns: repeat(2, minmax(280px, 1fr)); }
-}
-@media (min-width: 1024px) and (max-width: 1179px) {
-  .kds-columns { grid-template-columns: repeat(3, minmax(280px, 1fr)); }
-}
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
   .kds-view { gap: calc(var(--spacing) * 3); }
   .kds-header { align-items: flex-start; }
   .kds-header-actions { width: 100%; }
   .kds-header-actions :deep(.a-control) { flex: 1 1 auto; }
+  .kds-columns { display: none; }
+  .kds-mobile-board { display: block; }
   .kds-mobile-status { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: calc(var(--spacing) * 2); min-width: 0; padding: 0; margin: 0; border: 0; }
   .kds-mobile-status-option { position: relative; display: flex; min-width: 0; min-height: 48px; align-items: center; gap: calc(var(--spacing) * 2); padding: calc(var(--spacing) * 2); border: 1px solid var(--color-border-strong); border-radius: var(--radius-saloa-md); background: var(--color-surface); color: var(--color-text-primary); font-size: var(--text-body-sm); font-weight: 500; overflow-wrap: anywhere; cursor: pointer; }
   .kds-mobile-status-option input { position: absolute; width: 1px; height: 1px; opacity: 0; }
@@ -244,8 +283,8 @@ function disableLeavingTicket(element: Element): void { (element as HTMLElement)
   .kds-mobile-status-option:has(input:focus-visible) { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
   .kds-mobile-status-option > span:first-of-type { min-width: 0; flex: 1; }
   .kds-count { min-width: 28px; min-height: 28px; }
-  .kds-mobile-column { display: flex; min-width: 0; flex-direction: column; gap: calc(var(--spacing) * 3); }
-  .kds-columns { display: none; }
+  .kds-mobile-column { display: flex; min-width: 0; max-height: min(70dvh, 44rem); flex-direction: column; gap: calc(var(--spacing) * 3); overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+  .kds-incoming-grid { max-height: clamp(17rem, 46dvh, 28rem); }
 }
 @media (prefers-reduced-motion: reduce) { .kds-columns { scroll-behavior: auto; } .kds-view :deep(.kds-ticket-enter-active), .kds-view :deep(.kds-ticket-leave-active), .kds-view :deep(.kds-ticket-move) { transition: none; } }
 </style>

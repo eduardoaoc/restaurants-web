@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PhArmchair, PhPlus } from '@phosphor-icons/vue'
 
@@ -8,7 +8,7 @@ import FloorPlanCanvas from '@/components/tables/FloorPlanCanvas.vue'
 import AButton from '@/components/ui/AButton.vue'
 import AIconButton from '@/components/ui/AIconButton.vue'
 import AProgress from '@/components/ui/AProgress.vue'
-import ASurface from '@/components/ui/ASurface.vue'
+import ADialog from '@/components/ui/ADialog.vue'
 import ATextField from '@/components/ui/ATextField.vue'
 import { useFloorPlanEditor } from '@/composables/useFloorPlanEditor'
 import type { ReceivedRealtimeEvent } from '@/composables/useRestaurantRealtime'
@@ -127,12 +127,19 @@ function cycleShape(tableId: number, current: string): void {
   editor.updateDraft(tableId, { shape: next })
 }
 
+const discardPrompt = ref<HTMLElement | null>(null)
+
 function requestClose(): void {
-  if (editor.hasUnsavedChanges.value) {
-    confirmingDiscard.value = true
-    return
-  }
-  emit('close')
+  if (allowClose()) emit('close')
+}
+
+/** Every close path (X, Escape, backdrop) shows the same discard prompt. */
+function allowClose(): boolean {
+  if (!editor.hasUnsavedChanges.value) return true
+  confirmingDiscard.value = true
+  // The prompt sits at the top of the scrollable body; bring it into view.
+  void nextTick(() => discardPrompt.value?.focus())
+  return false
 }
 
 function discardAndClose(): void {
@@ -147,130 +154,133 @@ async function saveAndClose(): Promise<void> {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
-    <ASurface tone="high" radius="lg" class="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden shadow-elevated">
-      <div class="flex items-center justify-between border-b border-outline-variant px-5 py-4">
-        <h3 class="text-title-lg font-semibold text-on-surface">{{ t('operations.editor.title') }}</h3>
-        <div class="flex items-center gap-2">
-          <AButton variant="text" :disabled="editor.saving.value" @click="requestClose">{{ t('common.cancel') }}</AButton>
-          <AButton :loading="editor.saving.value" :disabled="!editor.hasUnsavedChanges.value" @click="saveAndClose">
-            {{ t('common.save') }}
-          </AButton>
-        </div>
+  <ADialog
+    :title="t('operations.editor.title')"
+    size="lg"
+    :dismissible="!editor.saving.value"
+    :before-close="allowClose"
+    @close="emit('close')"
+  >
+    <div v-if="confirmingDiscard" ref="discardPrompt" role="alert" tabindex="-1" class="mb-4 scroll-mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md bg-warning-container px-4 py-3 text-on-warning-container">
+      <p class="text-body-md">{{ t('operations.editor.unsavedChanges') }}</p>
+      <div class="flex gap-2">
+        <AButton variant="text" @click="confirmingDiscard = false">{{ t('operations.editor.keepEditing') }}</AButton>
+        <AButton variant="outlined" @click="discardAndClose">{{ t('operations.editor.discard') }}</AButton>
+      </div>
+    </div>
+
+    <!-- Someone else changed the floor plan while this draft has unsaved
+         edits — never silently overwritten, see the composable-level note above. -->
+    <div
+      v-if="remoteChangesPending"
+      class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md bg-primary-container/40 px-4 py-3 text-on-primary-container"
+    >
+      <p class="text-body-md">{{ t('operations.editor.remoteChanged') }}</p>
+      <AButton variant="outlined" @click="reloadRemoteChanges">{{ t('operations.editor.reloadRemote') }}</AButton>
+    </div>
+
+    <p v-if="editor.error.value" class="mb-4 rounded-md bg-critical-container px-3 py-2 text-label-lg text-on-critical-container">
+      {{ describeApiError(editor.error.value, t) }}
+    </p>
+
+    <div>
+      <div v-if="editor.loading.value" class="flex justify-center py-16">
+        <AProgress />
       </div>
 
-      <div v-if="confirmingDiscard" class="flex items-center justify-between gap-3 bg-warning-container px-5 py-3 text-on-warning-container">
-        <p class="text-body-md">{{ t('operations.editor.unsavedChanges') }}</p>
-        <div class="flex gap-2">
-          <AButton variant="text" @click="confirmingDiscard = false">{{ t('operations.editor.keepEditing') }}</AButton>
-          <AButton variant="outlined" @click="discardAndClose">{{ t('operations.editor.discard') }}</AButton>
-        </div>
-      </div>
-
-      <!-- Someone else changed the floor plan while this draft has unsaved
-           edits — never silently overwritten, see the composable-level note above. -->
-      <div
-        v-if="remoteChangesPending"
-        class="flex items-center justify-between gap-3 bg-primary-container/40 px-5 py-3 text-on-primary-container"
-      >
-        <p class="text-body-md">{{ t('operations.editor.remoteChanged') }}</p>
-        <AButton variant="outlined" @click="reloadRemoteChanges">{{ t('operations.editor.reloadRemote') }}</AButton>
-      </div>
-
-      <p v-if="editor.error.value" class="mx-5 mt-3 rounded-md bg-critical-container px-3 py-2 text-label-lg text-on-critical-container">
-        {{ describeApiError(editor.error.value, t) }}
-      </p>
-
-      <div class="flex-1 overflow-y-auto p-5">
-        <div v-if="editor.loading.value" class="flex justify-center py-16">
-          <AProgress />
+      <template v-else-if="editor.floorPlan.value">
+        <!-- Floor selector -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            v-for="floor in editor.floorPlan.value.floors"
+            :key="floor.id"
+            type="button"
+            class="rounded-full px-3 py-1.5 text-label-lg font-medium"
+            :class="selectedFloorId === floor.id ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container-high text-on-surface-variant'"
+            @click="selectFloor(floor.id)"
+          >
+            {{ floor.name }}
+          </button>
+          <ATextField v-model="newFloorName" :label="t('operations.editor.newFloor')" class="w-40" />
+          <AIconButton :label="t('operations.editor.addFloor')" :disabled="editor.saving.value || !newFloorName.trim()" @click="addFloor">
+            <PhPlus :size="16" />
+          </AIconButton>
         </div>
 
-        <template v-else-if="editor.floorPlan.value">
-          <!-- Floor selector -->
-          <div class="flex flex-wrap items-center gap-2">
+        <EmptyState
+          v-if="editor.floorPlan.value.floors.length === 0"
+          :icon="PhArmchair"
+          :message="t('operations.editor.noFloors')"
+          class="mt-6"
+        />
+
+        <template v-else-if="currentFloor">
+          <!-- Zone selector -->
+          <div class="mt-4 flex flex-wrap items-center gap-2">
             <button
-              v-for="floor in editor.floorPlan.value.floors"
-              :key="floor.id"
+              v-for="zone in currentFloor.zones"
+              :key="zone.id"
               type="button"
               class="rounded-full px-3 py-1.5 text-label-lg font-medium"
-              :class="selectedFloorId === floor.id ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container-high text-on-surface-variant'"
-              @click="selectFloor(floor.id)"
+              :class="selectedZoneId === zone.id ? 'bg-secondary-container text-on-secondary-container' : 'bg-surface-container-high text-on-surface-variant'"
+              @click="selectZone(zone.id)"
             >
-              {{ floor.name }}
+              {{ zone.name }}
             </button>
-            <ATextField v-model="newFloorName" :label="t('operations.editor.newFloor')" class="w-40" />
-            <AIconButton :label="t('operations.editor.addFloor')" :disabled="editor.saving.value || !newFloorName.trim()" @click="addFloor">
+            <ATextField v-model="newZoneName" :label="t('operations.editor.newZone')" class="w-40" />
+            <AIconButton :label="t('operations.editor.addZone')" :disabled="editor.saving.value || !newZoneName.trim()" @click="addZone">
               <PhPlus :size="16" />
             </AIconButton>
           </div>
 
           <EmptyState
-            v-if="editor.floorPlan.value.floors.length === 0"
+            v-if="currentFloor.zones.length === 0"
             :icon="PhArmchair"
-            :message="t('operations.editor.noFloors')"
+            :message="t('operations.editor.noZones')"
             class="mt-6"
           />
 
-          <template v-else-if="currentFloor">
-            <!-- Zone selector -->
-            <div class="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                v-for="zone in currentFloor.zones"
-                :key="zone.id"
-                type="button"
-                class="rounded-full px-3 py-1.5 text-label-lg font-medium"
-                :class="selectedZoneId === zone.id ? 'bg-secondary-container text-on-secondary-container' : 'bg-surface-container-high text-on-surface-variant'"
-                @click="selectZone(zone.id)"
-              >
-                {{ zone.name }}
-              </button>
-              <ATextField v-model="newZoneName" :label="t('operations.editor.newZone')" class="w-40" />
-              <AIconButton :label="t('operations.editor.addZone')" :disabled="editor.saving.value || !newZoneName.trim()" @click="addZone">
-                <PhPlus :size="16" />
-              </AIconButton>
+          <template v-else-if="currentZone">
+            <!-- Table palette -->
+            <div class="mt-4 flex gap-2">
+              <AButton variant="outlined" :disabled="editor.saving.value" @click="addTable(2)">
+                {{ t('operations.editor.addTableSeats', 2) }}
+              </AButton>
+              <AButton variant="outlined" :disabled="editor.saving.value" @click="addTable(4)">
+                {{ t('operations.editor.addTableSeats', 4) }}
+              </AButton>
             </div>
 
-            <EmptyState
-              v-if="currentFloor.zones.length === 0"
-              :icon="PhArmchair"
-              :message="t('operations.editor.noZones')"
-              class="mt-6"
+            <p class="mt-2 text-label-md text-on-surface-variant">{{ t('operations.editor.hint') }}</p>
+
+            <FloorPlanCanvas
+              v-model:selected-table-id="selectedTableId"
+              class="mt-3"
+              :tables="currentZone.tables"
+              :layout-for="(table) => editor.mergedLayout(table.id, table.layout)"
+              @move="(tableId, position) => editor.updateDraft(tableId, position)"
             />
 
-            <template v-else-if="currentZone">
-              <!-- Table palette -->
-              <div class="mt-4 flex gap-2">
-                <AButton variant="outlined" :disabled="editor.saving.value" @click="addTable(2)">
-                  {{ t('operations.editor.addTableSeats', 2) }}
-                </AButton>
-                <AButton variant="outlined" :disabled="editor.saving.value" @click="addTable(4)">
-                  {{ t('operations.editor.addTableSeats', 4) }}
-                </AButton>
-              </div>
-
-              <p class="mt-2 text-label-md text-on-surface-variant">{{ t('operations.editor.hint') }}</p>
-
-              <FloorPlanCanvas
-                v-model:selected-table-id="selectedTableId"
-                class="mt-3"
-                :tables="currentZone.tables"
-                :layout-for="(table) => editor.mergedLayout(table.id, table.layout)"
-                @move="(tableId, position) => editor.updateDraft(tableId, position)"
-              />
-
-              <div v-if="selectedTableId" class="mt-3 flex items-center gap-2">
-                <AButton
-                  variant="text"
-                  @click="cycleShape(selectedTableId, editor.mergedLayout(selectedTableId, currentZone.tables.find((tb) => tb.id === selectedTableId)!.layout).shape)"
-                >
-                  {{ t('operations.editor.cycleShape') }}
-                </AButton>
-              </div>
-            </template>
+            <div v-if="selectedTableId" class="mt-3 flex items-center gap-2">
+              <AButton
+                variant="text"
+                @click="cycleShape(selectedTableId, editor.mergedLayout(selectedTableId, currentZone.tables.find((tb) => tb.id === selectedTableId)!.layout).shape)"
+              >
+                {{ t('operations.editor.cycleShape') }}
+              </AButton>
+            </div>
           </template>
         </template>
+      </template>
+    </div>
+
+    <template #footer>
+      <div class="flex gap-2">
+        <AButton variant="text" :disabled="editor.saving.value" @click="requestClose">{{ t('common.cancel') }}</AButton>
+        <AButton :loading="editor.saving.value" :disabled="!editor.hasUnsavedChanges.value" @click="saveAndClose">
+          {{ t('common.save') }}
+        </AButton>
       </div>
-    </ASurface>
-  </div>
+    </template>
+  </ADialog>
 </template>

@@ -16,7 +16,8 @@ function readPersistedPreference(): ThemePreference {
     // localStorage unavailable (private mode, disabled) — fall back silently.
   }
 
-  return 'system'
+  // The current product direction is dark-first; an explicit saved choice still wins.
+  return 'dark'
 }
 
 export const useThemeStore = defineStore('theme', () => {

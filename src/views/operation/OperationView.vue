@@ -1,27 +1,30 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhCaretRight, PhPencilSimple, PhTable } from '@phosphor-icons/vue'
+import { PhCalendarX, PhCaretRight, PhPencilSimple, PhTable } from '@phosphor-icons/vue'
 
 import EmptyState from '@/components/dashboard/EmptyState.vue'
 import AStatStrip from '@/components/dashboard/AStatStrip.vue'
 import RestaurantOnboarding from '@/components/dashboard/RestaurantOnboarding.vue'
-import DashboardNow from '@/components/dashboard/operation/DashboardNow.vue'
-import DashboardTableOverview from '@/components/dashboard/operation/DashboardTableOverview.vue'
-import AButton from '@/components/ui/AButton.vue'
-import ASurface from '@/components/ui/ASurface.vue'
+import AttentionQueue from '@/components/dashboard/operation/AttentionQueue.vue'
 import CapacityPanel from '@/components/dashboard/operation/CapacityPanel.vue'
-import DailyOperationBanner from '@/components/shared/DailyOperationBanner.vue'
+import DashboardTableOverview from '@/components/dashboard/operation/DashboardTableOverview.vue'
 import FloorMapEditor from '@/components/dashboard/operation/FloorMapEditor.vue'
 import KitchenLivePanel from '@/components/dashboard/operation/KitchenLivePanel.vue'
+import RecentActivityPanel from '@/components/dashboard/operation/RecentActivityPanel.vue'
 import RestaurantFloorMap from '@/components/dashboard/operation/RestaurantFloorMap.vue'
 import StaffLivePanel from '@/components/dashboard/operation/StaffLivePanel.vue'
 import TableDetailsDrawer from '@/components/dashboard/table/TableDetailsDrawer.vue'
+import AButton from '@/components/ui/AButton.vue'
+import ASurface from '@/components/ui/ASurface.vue'
+import { useActivityPanelToggle } from '@/composables/useActivityPanelToggle'
 import { usePermissions } from '@/composables/usePermissions'
+import { useRecentActivity } from '@/composables/useRecentActivity'
 import { SERVICE_ACCESS_PERMISSIONS } from '@/types/auth-context'
-import type { OperationsLiveSnapshot, OperationsTable } from '@/types/operations'
+import type { OperationsAlert, OperationsLiveSnapshot, OperationsTable } from '@/types/operations'
 import type { ReceivedRealtimeEvent } from '@/composables/useRestaurantRealtime'
-import { formatMoney, formatNumber } from '@/utils/format'
+import { formatNumber } from '@/utils/format'
+import { classifyOperationAge } from '@/utils/operation-timing'
 
 const props = defineProps<{
   restaurantId: number | null
@@ -33,7 +36,6 @@ const props = defineProps<{
   lastRealtimeEvent: ReceivedRealtimeEvent | null
   /** Carta 8.1B — a table to auto-open once `snapshot` actually has it (deep-link from a QR scan or a bookmarked URL). Null/undefined the rest of the time. */
   pendingTableId?: number | null
-  canViewReports: boolean
 }>()
 
 const emit = defineEmits<{ refresh: []; 'pending-table-consumed': [] }>()
@@ -45,8 +47,12 @@ const canManageFloorPlan = computed(() => can('manage_floor_plan'))
 const canViewService = computed(() => canAny(SERVICE_ACCESS_PERMISSIONS))
 const canViewKitchen = computed(() => canAny(['update_kitchen_status', 'serve_orders']))
 const canViewStaff = computed(() => can('manage_users'))
+const canViewActivity = computed(() => can('view_activity'))
 const canManageDailyOperation = computed(() => can('open_daily_operation') || can('close_daily_operation'))
+const hasSidePanels = computed(() => canViewKitchen.value || canViewStaff.value || canViewActivity.value)
+
 const selectedTableId = ref<number | null>(null)
+const selectedAlertId = ref<string | null>(null)
 const showEditor = ref(false)
 
 /**
@@ -60,6 +66,26 @@ function openFloorEditor(): void {
   showEditor.value = true
 }
 
+// The board reacts to its own width, not the viewport: the shell's rail or
+// expanded sidebar changes the space actually available. The thresholds
+// match the @2xl/@4xl container classes in the template below.
+const board = ref<HTMLElement | null>(null)
+const boardWidth = ref(0)
+let resizeObserver: ResizeObserver | null = null
+const showFloorMap = computed(() => boardWidth.value >= 672)
+const compactQueue = computed(() => boardWidth.value < 896)
+
+function observeBoard(element: HTMLElement | null): void {
+  resizeObserver?.disconnect()
+  if (!element) return
+  boardWidth.value = element.getBoundingClientRect().width
+  resizeObserver = new ResizeObserver(([entry]) => { if (entry) boardWidth.value = entry.contentRect.width })
+  resizeObserver.observe(element)
+}
+onMounted(() => observeBoard(board.value))
+watch(board, observeBoard)
+onBeforeUnmount(() => resizeObserver?.disconnect())
+
 const allTables = computed<OperationsTable[]>(() => {
   if (!props.snapshot) return []
   const fromFloors = props.snapshot.floors.flatMap((floor) => floor.zones.flatMap((zone) => zone.tables))
@@ -72,27 +98,110 @@ const freeTables = computed(() => allTables.value.filter((table) => table.primar
 // restaurant) — every operational panel would just be a wall of empty
 // states in that case, so the onboarding card replaces them instead.
 const hasAnyTables = computed(() => allTables.value.length > 0)
+const timezone = computed(() => props.snapshot?.restaurant.timezone ?? 'Europe/Madrid')
+
+/** Tables whose session began before the current operational day — labelled, never hidden (utils/operation-timing.ts). */
+const previousSessionTableIds = computed<ReadonlySet<number>>(() => {
+  const snapshot = props.snapshot
+  if (!snapshot) return new Set()
+  return new Set(
+    allTables.value
+      .filter((table) => table.session && classifyOperationAge(table.session.elapsed_seconds, snapshot.generated_at, snapshot.daily_operation).kind === 'previous')
+      .map((table) => table.id),
+  )
+})
+
+const selectedSessionTiming = computed(() => {
+  const snapshot = props.snapshot
+  const session = selectedTable.value?.session
+  if (!snapshot || !session) return null
+  return classifyOperationAge(session.elapsed_seconds, snapshot.generated_at, snapshot.daily_operation)
+})
+
+const kitchenOldest = computed(() => {
+  const snapshot = props.snapshot
+  if (!snapshot || snapshot.kitchen.oldest_active_order_age_seconds === null) return null
+  return classifyOperationAge(snapshot.kitchen.oldest_active_order_age_seconds, snapshot.generated_at, snapshot.daily_operation)
+})
+
+const dayNotOpen = computed(() => props.snapshot?.daily_operation.status === 'not_open')
+// Day not open + live sessions/orders = leftovers from an earlier session;
+// say so explicitly instead of letting them read as today's service.
+const leftover = computed(() => {
+  const summary = props.snapshot?.summary
+  if (!dayNotOpen.value || !summary || (summary.active_sessions === 0 && summary.orders.active === 0)) return null
+  return t('operations.board.leftover', {
+    tables: t('operations.board.leftoverTables', summary.active_sessions),
+    orders: t('operations.board.leftoverOrders', summary.orders.active),
+  })
+})
+
+// Four live indicators only. Revenue, trends and comparisons live in
+// Analytics. There is no backend rule for "late orders" on the live read
+// model, so that indicator is not computed here (see the delivery notes).
 const statItems = computed(() => {
   if (!props.snapshot) return []
-  const { summary, restaurant } = props.snapshot
-  const items: Array<{ id: string; label: string; value: string; context?: string }> = [
+  const { summary } = props.snapshot
+  const n = (value: number) => formatNumber(value, locale.value)
+  return [
     {
       id: 'occupied-tables',
-      label: t('operations.quick.occupancy'),
-      value: `${formatNumber(summary.tables.occupied, locale.value)} / ${formatNumber(summary.tables.total, locale.value)}`,
+      label: t('operations.board.kpi.occupiedTables'),
+      value: `${n(summary.tables.occupied)} / ${n(summary.tables.total)}`,
       context: t('operations.quick.occupancyContext', { percent: Math.round(summary.tables.occupancy_rate * 100) }),
     },
-    { id: 'active-orders', label: t('operations.quick.activeOrders'), value: formatNumber(summary.orders.active, locale.value) },
-    { id: 'active-guests', label: t('operations.quick.activeGuests'), value: formatNumber(summary.active_guests, locale.value) },
+    { id: 'active-guests', label: t('operations.quick.activeGuests'), value: n(summary.active_guests) },
+    {
+      id: 'active-orders',
+      label: t('operations.quick.activeOrders'),
+      value: n(summary.orders.active),
+      context: t('operations.board.kpi.activeOrdersContext', { approval: n(summary.orders.waiting_approval), ready: n(summary.orders.ready) }),
+    },
+    {
+      id: 'pending-requests',
+      label: t('operations.board.kpi.requests'),
+      value: n(summary.requests.pending),
+      context: t('operations.board.kpi.requestsContext'),
+    },
   ]
-  if (props.canViewReports) {
-    items.push({
-      id: 'received-today',
-      label: t('operations.quick.receivedToday'),
-      value: formatMoney(summary.sales.received_today, locale.value, restaurant.currency),
-    })
-  }
-  return items
+})
+
+const floorSummary = computed(() => {
+  const summary = props.snapshot?.summary
+  if (!summary) return ''
+  return t('operations.board.floor.summary', {
+    occupied: formatNumber(summary.tables.occupied, locale.value),
+    total: formatNumber(summary.tables.total, locale.value),
+    guests: t('operations.board.queue.guests', summary.active_guests),
+  })
+})
+
+const recentActivity = useRecentActivity(
+  () => props.restaurantId,
+  () => canViewActivity.value && !!props.snapshot,
+  () => props.snapshot?.generated_at ?? null,
+)
+const activityPanel = useActivityPanelToggle()
+
+function selectTable(table: OperationsTable): void {
+  selectedTableId.value = table.id
+  selectedAlertId.value = null
+}
+
+function selectAlert(alert: OperationsAlert): void {
+  selectedAlertId.value = alert.id
+  selectedTableId.value = alert.table_id
+}
+
+function clearSelection(): void {
+  selectedTableId.value = null
+  selectedAlertId.value = null
+}
+
+// A resolved alert disappears from the next snapshot; drop its highlight
+// (the table itself stays open in context).
+watch(() => props.snapshot?.alerts, (alerts) => {
+  if (selectedAlertId.value && !alerts?.some((alert) => alert.id === selectedAlertId.value)) selectedAlertId.value = null
 })
 
 /**
@@ -126,18 +235,19 @@ function onEditorClose(): void {
   showEditor.value = false
   emit('refresh')
 }
+
+const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairline bg-surface'
 </script>
 
 <template>
   <div class="flex flex-col gap-4">
-    <div v-if="loading" class="flex flex-col gap-6" aria-busy="true" role="status">
+    <div v-if="loading" class="flex flex-col gap-4" aria-busy="true" role="status">
       <span class="sr-only">{{ t('operations.loading') }}</span>
-      <div class="h-16 rounded-md bg-surface-subtle motion-safe:animate-pulse motion-reduce:animate-none" />
-      <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div v-for="index in 4" :key="index" class="h-24 rounded-md bg-surface-subtle motion-safe:animate-pulse motion-reduce:animate-none" />
-      </div>
-      <div class="grid min-h-64 grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-        <div v-for="index in 8" :key="index" class="rounded-md bg-surface-subtle motion-safe:animate-pulse motion-reduce:animate-none" />
+      <div class="h-24 rounded-saloa-lg bg-surface-subtle motion-safe:animate-pulse motion-reduce:animate-none" />
+      <div class="grid gap-4 xl:grid-cols-[23fr_54fr_23fr]">
+        <div class="hidden h-[32rem] rounded-saloa-lg bg-surface-subtle motion-safe:animate-pulse motion-reduce:animate-none xl:block" />
+        <div class="h-[32rem] rounded-saloa-lg bg-surface-subtle motion-safe:animate-pulse motion-reduce:animate-none" />
+        <div class="hidden h-[32rem] rounded-saloa-lg bg-surface-subtle motion-safe:animate-pulse motion-reduce:animate-none xl:block" />
       </div>
     </div>
 
@@ -146,7 +256,7 @@ function onEditorClose(): void {
       tone="container"
       radius="lg"
       role="alert"
-      class="max-w-xl border border-error/40 bg-error-container p-6 text-on-error-container"
+      class="flex max-w-xl flex-col items-start gap-3 border border-error/40 bg-error-container p-6 text-on-error-container"
     >
       <p class="text-title-md font-medium">
         {{
@@ -159,27 +269,37 @@ function onEditorClose(): void {
                 : t('operations.errors.generic')
         }}
       </p>
+      <AButton v-if="error.kind !== 'forbidden' && error.kind !== 'not_found'" variant="secondary" size="sm" :loading="refreshing" @click="emit('refresh')">
+        {{ t('operations.board.activity.retry') }}
+      </AButton>
     </ASurface>
 
     <template v-else-if="snapshot">
-      <div class="dashboard-enter flex flex-col gap-8">
-        <div class="flex flex-col gap-4">
-          <DashboardNow
-            :health="snapshot.operation"
-            :alerts="snapshot.alerts"
-            :can-view-service="canViewService"
-          />
-
-          <DailyOperationBanner
-            v-if="snapshot.daily_operation.status === 'not_open'"
-            :daily-operation="snapshot.daily_operation"
-            :can-manage="canManageDailyOperation"
-          />
-
-          <section :aria-label="t('operations.quick.title')">
-            <AStatStrip :items="statItems" />
-          </section>
+      <div class="dashboard-enter flex flex-col gap-4">
+        <!-- Closed day: one compact strip, the page's only primary action. -->
+        <div
+          v-if="dayNotOpen"
+          role="status"
+          class="flex flex-col gap-3 rounded-saloa-lg border border-warning/40 bg-warning-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div class="flex min-w-0 items-start gap-3">
+            <PhCalendarX :size="20" class="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
+            <div class="min-w-0">
+              <p class="text-body-sm font-semibold text-fg">{{ t('dailyOperation.notOpen') }}</p>
+              <p class="text-body-sm text-fg-muted">
+                {{ t('dailyOperation.notOpenStaff') }}
+                <strong v-if="leftover" class="font-semibold text-fg">{{ leftover }}</strong>
+              </p>
+            </div>
+          </div>
+          <AButton v-if="canManageDailyOperation" as="RouterLink" :to="{ name: 'app-day-close' }" size="sm" class="shrink-0">
+            {{ t('dailyOperation.goToOpen') }}
+          </AButton>
         </div>
+
+        <section :aria-label="t('operations.quick.title')">
+          <AStatStrip :items="statItems" />
+        </section>
 
         <RestaurantOnboarding
           v-if="!hasAnyTables"
@@ -188,87 +308,127 @@ function onEditorClose(): void {
           @open-floor-editor="openFloorEditor"
         />
 
-        <template v-else>
-          <!-- The room is the primary object: full content width, so zones keep their real proportions -->
-          <section class="min-w-0" aria-labelledby="dashboard-tables-title">
-            <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
-              <div class="min-w-0">
-                <h2 id="dashboard-tables-title" class="text-section-title font-semibold text-fg">{{ t('operations.floorMap.title') }}</h2>
-                <p class="mt-1 text-body-sm tabular-nums text-fg-muted">
-                  {{ t('operations.floorMap.summary', { tables: snapshot.summary.tables.total, guests: snapshot.summary.active_guests }) }}
-                </p>
+        <div v-else ref="board" class="@container min-w-0">
+          <div class="operation-board grid min-w-0 grid-cols-1 gap-4" :class="hasSidePanels ? 'operation-board--side' : ''">
+            <!-- Left: attention queue. From @4xl its height follows the row and the list scrolls inside. -->
+            <div class="operation-board-queue relative min-w-0">
+              <div :class="[panelClass, '@4xl:absolute @4xl:inset-0']">
+                <AttentionQueue
+                  class="min-h-0 flex-1"
+                  :alerts="snapshot.alerts"
+                  :tables="allTables"
+                  :staff="snapshot.staff"
+                  :generated-at="snapshot.generated_at"
+                  :daily-operation="snapshot.daily_operation"
+                  :timezone="timezone"
+                  :selected-alert-id="selectedAlertId"
+                  :can-view-service="canViewService"
+                  :compact="compactQueue"
+                  @select="selectAlert"
+                />
               </div>
-              <AButton v-if="canManageFloorPlan" variant="secondary" size="sm" @click="openFloorEditor">
-                <template #leading><PhPencilSimple /></template>{{ t('operations.floorMap.edit') }}
-              </AButton>
             </div>
 
-            <div class="lg:hidden">
-              <DashboardTableOverview :tables="allTables" :selected-table-id="selectedTableId" @select="selectedTableId = $event.id" />
-            </div>
-            <div class="hidden lg:block">
-              <RestaurantFloorMap
-                :floors="snapshot.floors"
-                :unassigned-tables="snapshot.unassigned_tables"
-                :selected-table-id="selectedTableId"
-                @select-table="(table) => (selectedTableId = table.id)"
-              />
-            </div>
-
-            <details class="group mt-4 border-t border-hairline">
-              <summary class="flex min-h-11 cursor-pointer list-none items-center gap-2 text-body-sm font-medium text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
-                <PhCaretRight :size="16" class="text-fg-muted transition-transform duration-base ease-out group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
-                {{ t('operations.capacity.title') }}
-              </summary>
-              <div class="pb-2 pl-6">
-                <CapacityPanel :tables="allTables" :active-guests="snapshot.summary.active_guests" />
-              </div>
-            </details>
-          </section>
-
-          <!-- Context summaries share one row in equal columns; they never compete with the room for width -->
-          <div v-if="canViewKitchen || canViewStaff" class="grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-2">
-            <section v-if="canViewKitchen" class="min-w-0" aria-labelledby="dashboard-kitchen-title">
-              <div class="mb-3 flex min-h-11 items-center justify-between gap-3">
-                <h2 id="dashboard-kitchen-title" class="text-component-title font-semibold text-fg">{{ t('operations.kitchen.title') }}</h2>
-                <AButton as="RouterLink" :to="{ name: 'app-kitchen' }" variant="ghost" size="sm">
-                  {{ t('operations.now.viewKitchen') }}
-                  <template #trailing><PhCaretRight /></template>
+            <!-- Centre: the room, the board's primary object. -->
+            <section class="operation-board-floor min-w-0" :class="panelClass" aria-labelledby="dashboard-tables-title">
+              <header class="flex flex-wrap items-start justify-between gap-3 border-b border-hairline px-4 py-3">
+                <div class="min-w-0">
+                  <h2 id="dashboard-tables-title" class="text-component-title font-semibold text-fg">{{ t('operations.board.floor.title') }}</h2>
+                  <p class="mt-0.5 text-body-sm tabular-nums text-fg-muted">{{ floorSummary }}</p>
+                </div>
+                <AButton v-if="canManageFloorPlan" variant="secondary" size="sm" @click="openFloorEditor">
+                  <template #leading><PhPencilSimple /></template>{{ t('operations.floorMap.edit') }}
                 </AButton>
+              </header>
+
+              <div class="min-w-0 flex-1 p-4">
+                  <RestaurantFloorMap
+                    v-if="showFloorMap"
+                    :floors="snapshot.floors"
+                    :unassigned-tables="snapshot.unassigned_tables"
+                    :selected-table-id="selectedTableId"
+                    :previous-session-table-ids="previousSessionTableIds"
+                    @select-table="selectTable"
+                  />
+                  <DashboardTableOverview v-else :tables="allTables" :selected-table-id="selectedTableId" :previous-session-table-ids="previousSessionTableIds" @select="selectTable" />
+
+                  <details class="group mt-3">
+                    <summary class="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 text-body-sm font-medium text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
+                      <PhCaretRight :size="16" class="text-fg-muted transition-transform duration-base ease-out group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
+                      {{ t('operations.capacity.title') }}
+                    </summary>
+                    <div class="pb-1 pl-6">
+                      <CapacityPanel :tables="allTables" :active-guests="snapshot.summary.active_guests" />
+                    </div>
+                  </details>
               </div>
-              <KitchenLivePanel :kitchen="snapshot.kitchen" />
             </section>
 
-            <section v-if="canViewStaff" class="min-w-0" aria-labelledby="dashboard-staff-title">
-              <div class="mb-3 flex min-h-11 items-center justify-between gap-3">
-                <h2 id="dashboard-staff-title" class="text-component-title font-semibold text-fg">{{ t('operations.staff.title') }}</h2>
-                <AButton as="RouterLink" :to="{ name: 'app-staff' }" variant="ghost" size="sm">
-                  {{ t('operations.now.viewStaff') }}
-                  <template #trailing><PhCaretRight /></template>
+            <!-- Right: follow-up blocks, each under its existing route gate. -->
+            <div v-if="hasSidePanels" class="operation-board-side grid min-w-0 grid-cols-1 content-start items-start gap-4">
+              <section v-if="canViewKitchen" :class="panelClass" class="p-4" aria-labelledby="dashboard-kitchen-title">
+                <div class="mb-3 flex items-center justify-between gap-2">
+                  <h2 id="dashboard-kitchen-title" class="min-w-0 text-component-title font-semibold text-fg">{{ t('operations.kitchen.title') }}</h2>
+                  <AButton as="RouterLink" :to="{ name: 'app-kitchen' }" variant="ghost" size="sm" class="-mr-2 shrink-0 whitespace-nowrap">
+                    {{ t('operations.now.viewKitchen') }}
+                    <template #trailing><PhCaretRight /></template>
+                  </AButton>
+                </div>
+                <KitchenLivePanel :orders="snapshot.summary.orders" :oldest="kitchenOldest" :timezone="timezone" />
+              </section>
+
+              <section v-if="canViewStaff" :class="panelClass" class="p-4" aria-labelledby="dashboard-staff-title">
+                <div class="mb-3 flex items-center justify-between gap-2">
+                  <h2 id="dashboard-staff-title" class="min-w-0 text-component-title font-semibold text-fg">{{ t('operations.staff.title') }}</h2>
+                  <AButton as="RouterLink" :to="{ name: 'app-staff' }" variant="ghost" size="sm" class="-mr-2 shrink-0 whitespace-nowrap">
+                    {{ t('operations.now.viewStaff') }}
+                    <template #trailing><PhCaretRight /></template>
+                  </AButton>
+                </div>
+                <StaffLivePanel
+                  :staff="snapshot.staff"
+                  :generated-at="snapshot.generated_at"
+                  :daily-operation="snapshot.daily_operation"
+                  :timezone="timezone"
+                >
+                  <template #more="{ hiddenCount }">
+                    <AButton v-if="hiddenCount > 0" as="RouterLink" :to="{ name: 'app-staff' }" variant="ghost" size="sm" full-width class="mt-1">
+                      {{ t('operations.board.staff.more', { count: hiddenCount }) }}
+                    </AButton>
+                  </template>
+                </StaffLivePanel>
+              </section>
+
+              <section v-if="canViewActivity" :class="panelClass" class="p-4" aria-labelledby="dashboard-activity-title">
+                <h2 id="dashboard-activity-title" class="mb-3 text-component-title font-semibold text-fg">{{ t('operations.board.activity.title') }}</h2>
+                <RecentActivityPanel
+                  :events="recentActivity.events.value"
+                  :loading="recentActivity.loading.value"
+                  :error="recentActivity.error.value"
+                  :timezone="timezone"
+                  @retry="recentActivity.retry"
+                />
+                <AButton variant="ghost" size="sm" full-width class="mt-2" @click="activityPanel.open()">
+                  {{ t('operations.board.activity.viewAll') }}
                 </AButton>
-              </div>
-              <StaffLivePanel :staff="snapshot.staff" />
-            </section>
+              </section>
+            </div>
           </div>
-        </template>
-
-        <DailyOperationBanner
-          v-if="snapshot.daily_operation.status !== 'not_open'"
-          :daily-operation="snapshot.daily_operation"
-          :can-manage="canManageDailyOperation"
-        />
+        </div>
       </div>
     </template>
 
     <EmptyState v-else :icon="PhTable" :message="t('operations.noData')" />
 
+    <!-- Table details open in the shared centred modal at every width. -->
     <TableDetailsDrawer
       :table="selectedTable"
       :staff="snapshot?.staff ?? []"
       :free-tables="freeTables"
       :currency="snapshot?.restaurant.currency ?? 'EUR'"
       dashboard-mode
-      @close="selectedTableId = null"
+      :session-timing="selectedSessionTiming"
+      @close="clearSelection"
       @refresh="onDrawerRefresh"
     />
 
@@ -282,6 +442,26 @@ function onEditorClose(): void {
 </template>
 
 <style scoped>
+/*
+ * Board composition (docs/design/dashboard-map.webp): queue | room | follow-up
+ * at ~23/54/23 once the board is ≥1024px wide; queue | room with follow-up
+ * below from 896px; a single stacked column under that. Container-based so
+ * the shell's rail vs. expanded sidebar is accounted for.
+ */
+@container (min-width: 42rem) {
+  .operation-board-side { grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+}
+@container (min-width: 56rem) {
+  .operation-board { grid-template-columns: minmax(16rem, 18rem) minmax(0, 1fr); }
+  .operation-board-queue { grid-column: 1; grid-row: 1; }
+  .operation-board-floor { grid-column: 2; grid-row: 1; }
+  .operation-board-side { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container (min-width: 64rem) {
+  .operation-board--side { grid-template-columns: minmax(15rem, 23fr) minmax(0, 54fr) minmax(15rem, 23fr); }
+  .operation-board--side .operation-board-side { grid-column: 3; grid-row: 1; grid-template-columns: minmax(0, 1fr); }
+}
+
 /* SALOA §10.2 generic entrance: first paint only, opacity + 4px rise; nothing moves when motion is reduced. */
 @media (prefers-reduced-motion: no-preference) {
   .dashboard-enter { animation: dashboard-enter var(--duration-base) var(--ease-out) both; }

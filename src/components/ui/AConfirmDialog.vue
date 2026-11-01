@@ -27,10 +27,10 @@ const { t } = useI18n()
 
     <template #footer>
       <div class="flex gap-3">
-        <AButton variant="secondary" class="flex-1" :disabled="loading" @click="emit('cancel')">
+        <AButton variant="secondary" :disabled="loading" @click="emit('cancel')">
           {{ t('common.cancel') }}
         </AButton>
-        <AButton :variant="confirmVariant" class="flex-1" :loading="loading" @click="emit('confirm')">
+        <AButton :variant="confirmVariant" :loading="loading" @click="emit('confirm')">
           {{ confirmLabel }}
         </AButton>
       </div>

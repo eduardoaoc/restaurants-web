@@ -1,0 +1,45 @@
+document.documentElement.dataset.theme='dark';
+const attention=document.querySelector('.attention');
+attention.className='panel attention original-attention';
+attention.innerHTML='<h2>Atención ahora</h2><div class="segmented attention-tabs"><button class="selected">Ahora 0</button><button data-detail="Anteriores (6)">Anteriores 6</button></div><div class="attention-empty"><span class="check-icon">✓</span><p>Nada pendiente en el servicio actual.</p><button class="text-button" data-detail="Anteriores (6)">Anteriores (6)　›</button></div>';
+document.querySelector('.dashboard-grid').prepend(attention);
+document.querySelector('.breadcrumb').innerHTML='<strong>Panel</strong><span class="header-divider"></span><span class="restaurant-name">▱ AFORO Malvarrosa　⌄</span>';
+document.querySelector('.eyebrow').remove();document.querySelector('.title-dot').remove();
+document.querySelector('.date').innerHTML='▣ <strong>Día abierto · 28 oct 2026</strong><span class="connection"><i></i> Tiempo real conectado</span>';
+document.querySelector('.legend').open=true;
+document.querySelector('.brand').innerHTML='<span class="original-brand">R</span>';
+document.querySelector('.brand').setAttribute('aria-label','Ritma');
+document.querySelector('.profile small').remove();
+document.querySelector('[data-detail="Ver cocina"]').textContent='Ver cocina　›';document.querySelector('[data-detail="Ver equipo"]').textContent='Ver equipo　›';
+const paths={Panel:'M3 17a9 9 0 0 1 18 0v3H3z M12 16l4-6 M6 14h1 M11 8v1 M17 14h1',Cocina:'M7 14V9a4 4 0 0 1-2-7 4 4 0 0 1 7 0 4 4 0 0 1 7 0 4 4 0 0 1-2 7v5 M7 18h10v4H7z',Servicio:'M5 17h14l-2-3V9a5 5 0 0 0-10 0v5z M10 21h4',Carta:'M12 5C9 3 5 3 2 4v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-4-1-7-1-10 1v15',Mesas:'M6 10V7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3 M6 10H3v8h18v-8h-3v5H6z M6 18v3 M18 18v3',Equipo:'M15 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0 M5 21v-2a7 7 0 0 1 14 0v2 M19 4a3 3 0 0 1 0 6 M22 19v-2a5 5 0 0 0-3-4 M5 4a3 3 0 0 0 0 6 M2 19v-2a5 5 0 0 1 3-4',Feedback:'m12 2 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z','Cierre diario':'M4 9h16l2 12H2z M7 9V3h10v6 M7 13h1 M11 13h1 M15 13h1 M6 17h12'};
+function icon(name){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]||paths.Mesas}"/></svg>`}
+const navItems=[['◫','Panel'],['♧','Cocina'],['♧','Servicio'],['▥','Carta'],['▤','Cierre diario'],['▦','Mesas'],['♧','Equipo'],['☆','Feedback']];
+document.querySelector('#nav').innerHTML=navItems.map(([icon,label],i)=>`<button class="nav-item ${i===0?'active':''}" ${i?'data-detail="'+label+'"':'aria-current="page"'}><span>${icon}</span>${label}${i===0?'<i></i>':''}</button>`).join('');
+document.querySelectorAll('.nav-item>span').forEach((el,i)=>el.innerHTML=icon(navItems[i][1]));
+function table(n){const occupied=n===11;return `<button class="table ${[1,3,6,9,12,14].includes(n)?'round':''} ${[4,8,13].includes(n)?'wide':''} ${occupied?'occupied':''}" data-detail="Mesa ${String(n).padStart(2,'0')}" aria-label="Mesa ${n}, ${occupied?'pedido listo, sesión anterior, sin camarero asignado':'libre'}">${occupied?'<span class="warning-dot" title="Sin camarero asignado">!</span>':''}<span class="chair">${occupied?'♧':'♧'}</span><strong>Mesa ${String(n).padStart(2,'0')}</strong>${occupied?'<small>↶ Anterior</small>':''}</button>`}
+document.querySelector('#interior').innerHTML=Array.from({length:8},(_,i)=>table(i+1)).join('');
+document.querySelector('#terrace').innerHTML=Array.from({length:6},(_,i)=>table(i+9)).join('');
+document.querySelectorAll('.chair').forEach(el=>el.innerHTML=icon(el.closest('.occupied')?'Servicio':'Mesas'));
+document.querySelector('#team').innerHTML=[['LM','Lorena Martín'],['DN','Diego Navarro'],['LR','Lucía Romero']].map(([initials,name])=>`<div class="person"><span class="avatar">${initials}</span><div><strong>${name}</strong><small>0 mesas · 0 clientes</small></div><span class="time">73h12m</span></div>`).join('');
+document.querySelector('#activity').innerHTML=[['Pedido aprobado','655','28/10, 09:39'],['Pedido aprobado','656','28/10, 09:39'],['Pedido aprobado','657','28/10, 09:39'],['Pedido aprobado','658','28/10, 09:39'],['Pedido listo','654','27/10, 21:37'],['Preparación iniciada','654','27/10, 21:37']].map(([label,id,time])=>`<div class="event"><span class="event-icon">${label==='Pedido listo'?'♧':'▤'}</span><div><strong>${label}</strong><small>Mesa 11 · Pedido #${id} · Elena Ferrer</small><time>${time}</time></div></div>`).join('');
+const theme=document.querySelector('#theme');
+theme.textContent='☾';theme.setAttribute('aria-label','Modo oscuro');theme.disabled=true;
+const dialog=document.querySelector('#detail');document.addEventListener('click',e=>{const button=e.target.closest('[data-detail]');if(!button)return;const title=button.dataset.detail;document.querySelector('#detail-title').textContent=title;document.querySelector('#detail-copy').textContent=title.startsWith('Mesa ')?(title==='Mesa 11'?'Pedido listo · Sesión anterior · Sin camarero asignado.':'Libre. La captura no incluye más detalles de esta mesa.'):'Esta vista previa conserva el acceso existente. La captura no incluye el contenido de esta sección; se diseñará cuando esté disponible.';dialog.showModal()});
+document.querySelector('#close-dialog').onclick=()=>dialog.close();document.querySelector('#dialog-done').onclick=()=>dialog.close();dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close()});
+document.querySelector('#refresh').onclick=()=>{const toast=document.querySelector('#toast');toast.textContent='Vista previa actualizada · Sin conexión a datos reales';toast.classList.add('visible');setTimeout(()=>toast.classList.remove('visible'),3500)};
+// Navigation follows the supplied sidebar reference using existing Ritma destinations.
+document.querySelector('.brand').innerHTML='<span class="original-brand">R</span><span class="brand-word">ritma<b>·</b></span>';
+document.querySelectorAll('.nav-item').forEach((button,i)=>{button.innerHTML='<span>'+icon(navItems[i][1])+'</span><span class="nav-text">'+navItems[i][1]+'</span>';button.title=navItems[i][1]});
+const collapse=document.createElement('button');collapse.className='collapse-sidebar';collapse.setAttribute('aria-expanded','true');collapse.setAttribute('aria-label','Contraer menú lateral');collapse.innerHTML='<span>‹‹</span><span class="collapse-label">Contraer menú</span>';document.querySelector('.sidebar').append(collapse);collapse.onclick=()=>{const closed=document.documentElement.classList.toggle('nav-collapsed');collapse.setAttribute('aria-expanded',String(!closed));collapse.setAttribute('aria-label',closed?'Expandir menú lateral':'Contraer menú lateral');collapse.firstElementChild.textContent=closed?'››':'‹‹'};
+// Preserve the existing header actions; restyle them as individual reference tiles.
+const topActions=document.querySelector('.top-actions');
+const bell=topActions.querySelector('[data-detail="Notificaciones"]');bell.innerHTML=icon('Servicio');
+theme.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z"/></svg>';
+const profileTile=document.createElement('div');profileTile.className='top-profile';profileTile.append(topActions.querySelector('.avatar'),topActions.querySelector('.profile'));profileTile.querySelector('.profile').insertAdjacentHTML('beforeend','<small>Owner</small>');topActions.append(profileTile);
+if(!location.pathname.includes('servicio.html')){document.querySelectorAll('[data-detail="Servicio"],[data-detail="Ver servicio"]').forEach(el=>{el.removeAttribute('data-detail');el.onclick=()=>location.href='/servicio.html'})}
+if(!location.pathname.includes('feedback.html')){document.querySelectorAll('[data-detail="Feedback"]').forEach(el=>{el.removeAttribute('data-detail');el.onclick=()=>location.href='/feedback.html'})}
+if(!location.pathname.includes('equipo.html')){document.querySelectorAll('[data-detail="Equipo"],[data-detail="Ver equipo"]').forEach(el=>{el.removeAttribute('data-detail');el.onclick=()=>location.href='/equipo.html'})}
+if(!location.pathname.includes('cocina.html')){document.querySelectorAll('[data-detail="Cocina"],[data-detail="Ver cocina"]').forEach(el=>{el.removeAttribute('data-detail');el.onclick=()=>location.href='/cocina.html'})}
+if(!location.pathname.includes('cierre.html')){document.querySelectorAll('[data-detail="Cierre diario"]').forEach(el=>{el.removeAttribute('data-detail');el.onclick=()=>location.href='/cierre.html'})}
+if(!location.pathname.includes('carta.html')){document.querySelectorAll('[data-detail="Carta"]').forEach(el=>{el.removeAttribute('data-detail');el.onclick=()=>location.href='/carta.html'})}
+if(!location.pathname.includes('mesas.html')){document.querySelectorAll('[data-detail="Mesas"],[data-detail="Editar mapa"]').forEach(el=>{el.removeAttribute('data-detail');el.onclick=()=>location.href='/mesas.html'})}

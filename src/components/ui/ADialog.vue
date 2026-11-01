@@ -2,7 +2,7 @@
 import AOverlay from './AOverlay.vue'
 import type { OverlayProps } from './overlay'
 defineOptions({ inheritAttrs: false })
-withDefaults(defineProps<OverlayProps & { size?: 'sm' | 'md' }>(), { open: true, size: 'md', dismissible: true, closeOnScrim: true, closeOnEscape: true })
+withDefaults(defineProps<OverlayProps & { size?: 'sm' | 'md' | 'lg' }>(), { open: true, size: 'md', dismissible: true, closeOnScrim: true, closeOnEscape: true })
 defineEmits<{ close: []; 'update:open': [boolean]; 'close-error': [unknown] }>()
 </script>
 

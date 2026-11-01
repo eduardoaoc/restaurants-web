@@ -47,6 +47,15 @@ const role = ref<StaffRoleSlug>('waiter')
 const assignments = ref<AssignmentDraft[]>([])
 
 const localErrors = ref<Record<string, string>>({})
+const initialDraft = ref('')
+
+const draft = computed(() => JSON.stringify({
+  name: name.value,
+  email: email.value,
+  role: role.value,
+  assignments: assignments.value,
+}))
+const isDirty = computed(() => draft.value !== initialDraft.value)
 
 /** Only restaurants the signed-in user may actually reach — never a free-typed id (§22). */
 const availableRestaurants = computed(() => restaurantStore.availableRestaurants)
@@ -60,10 +69,18 @@ function seed(): void {
     ? member.restaurants.map((restaurant) => ({ restaurantId: restaurant.id, employeeCode: restaurant.sub_id }))
     : [{ restaurantId: restaurantStore.currentRestaurantId, employeeCode: '' }]
   localErrors.value = {}
+  initialDraft.value = JSON.stringify({
+    name: name.value,
+    email: email.value,
+    role: role.value,
+    assignments: assignments.value,
+  })
 }
 
 seed()
 watch(() => props.member, seed)
+
+defineExpose({ isDirty })
 
 function addAssignment(): void {
   assignments.value = [...assignments.value, { restaurantId: null, employeeCode: '' }]

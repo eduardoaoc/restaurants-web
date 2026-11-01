@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import { PhClockCounterClockwise } from '@phosphor-icons/vue'
 
 import AStatusBadge from '@/components/ui/AStatusBadge.vue'
 import type { OperationsTable } from '@/types/operations'
@@ -7,7 +8,12 @@ import { formatDuration } from '@/utils/format'
 import { serviceTableStatus } from '@/utils/service-table-status'
 import { floorTableTone } from './floor-table-tone'
 
-defineProps<{ tables: OperationsTable[]; selectedTableId: number | null }>()
+withDefaults(defineProps<{
+  tables: OperationsTable[]
+  selectedTableId: number | null
+  /** Sessions opened before the current operational day (utils/operation-timing.ts). */
+  previousSessionTableIds?: ReadonlySet<number>
+}>(), { previousSessionTableIds: () => new Set<number>() })
 const emit = defineEmits<{ select: [OperationsTable] }>()
 const { t } = useI18n()
 </script>
@@ -32,7 +38,8 @@ const { t } = useI18n()
         />
         <span v-if="table.session" class="flex w-full min-w-0 flex-wrap gap-x-2 gap-y-1 text-label-md tabular-nums text-fg-muted">
           <span>{{ t('tableDrawer.guests') }}: {{ table.session.guest_count }}</span>
-          <span>{{ formatDuration(table.session.elapsed_seconds) }}</span>
+          <span v-if="previousSessionTableIds.has(table.id)" class="inline-flex items-center gap-1"><PhClockCounterClockwise :size="12" aria-hidden="true" />{{ t('operations.board.timing.previousSession') }}</span>
+          <span v-else>{{ formatDuration(table.session.elapsed_seconds) }}</span>
         </span>
       </button>
     </li>

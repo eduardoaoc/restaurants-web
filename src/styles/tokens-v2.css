@@ -28,9 +28,15 @@
   --color-warning-subtle: #fbf0dc;
   --color-danger: #c0261a;
   --color-danger-subtle: #fbe9e7;
+  --color-wait-fresh: #2f6b4a;
+  --color-wait-fresh-accent: #85B99B;
+  --color-wait-mid: #7a5c12;
+  --color-wait-mid-accent: #D1B16C;
+  --color-wait-long: #a63d37;
+  --color-wait-long-accent: #D98580;
   --color-info: #3a5a7a;
   --color-info-subtle: #e8eef4;
-  --color-scrim: rgba(16, 16, 15, 0.40);
+  --color-scrim: rgba(16, 16, 15, 0.32);
 
 }
 
@@ -70,6 +76,9 @@
   --form-max: 720px;
   --dialog-sm: 400px;
   --dialog-md: 560px;
+  --dialog-lg: 880px;
+  /* Modal scrim: a light dim plus a subtle blur, never a frosted panel. */
+  --scrim-blur: 4px;
 
   --icon-sm: 16px;
   --icon-md: 20px;
@@ -102,15 +111,23 @@
     --color-warning-subtle: #2b2210;
     --color-danger: #ff7a6e;
     --color-danger-subtle: #2e1614;
+    --color-wait-fresh: #85B99B;
+    --color-wait-fresh-accent: #85B99B;
+    --color-wait-mid: #D1B16C;
+    --color-wait-mid-accent: #D1B16C;
+    --color-wait-long: #D98580;
+    --color-wait-long-accent: #D98580;
     --color-info: #8fb4d9;
     --color-info-subtle: #152230;
-    --color-scrim: rgba(0, 0, 0, 0.56);
+    --color-scrim: rgba(0, 0, 0, 0.48);
     /* Raised needs surface + hairline; floating also needs a hairline (§8).
      * Shadow utilities alone deliberately do not set background or border.
      */
     --elevation-raised: var(--elevation-flat);
+    --elevation-raised: var(--elevation-flat);
     --elevation-floating: 0 8px 24px rgb(0 0 0 / .40);
     --elevation-modal: 0 24px 48px rgb(0 0 0 / .50);
+    --ritma-tactile-shadow: 0 4px 10px rgb(0 0 0 / .24), inset 0 1px rgb(255 255 255 / .055);
   }
 }
 
@@ -136,12 +153,31 @@
   --color-warning-subtle: #2b2210;
   --color-danger: #ff7a6e;
   --color-danger-subtle: #2e1614;
+  --color-wait-fresh: #85B99B;
+  --color-wait-fresh-accent: #85B99B;
+  --color-wait-mid: #D1B16C;
+  --color-wait-mid-accent: #D1B16C;
+  --color-wait-long: #D98580;
+  --color-wait-long-accent: #D98580;
   --color-info: #8fb4d9;
   --color-info-subtle: #152230;
-  --color-scrim: rgba(0, 0, 0, 0.56);
+  --color-scrim: rgba(0, 0, 0, 0.48);
+  --elevation-raised: var(--elevation-flat);
   --elevation-raised: var(--elevation-flat);
   --elevation-floating: 0 8px 24px rgb(0 0 0 / .40);
   --elevation-modal: 0 24px 48px rgb(0 0 0 / .50);
+  --ritma-tactile-shadow: 0 4px 10px rgb(0 0 0 / .24), inset 0 1px rgb(255 255 255 / .055);
+}
+
+/* Keep the system palette canonical; add a quiet tactile lift for the dark reference components. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ritma-tactile-shadow: 0 4px 10px rgb(0 0 0 / .24), inset 0 1px rgb(255 255 255 / .055);
+  }
+}
+
+:root[data-theme='dark'] {
+  --ritma-tactile-shadow: 0 4px 10px rgb(0 0 0 / .24), inset 0 1px rgb(255 255 255 / .055);
 }
 
 @media (prefers-contrast: more) {

@@ -65,11 +65,14 @@ const sheet = await readFile('src/components/ui/AOverlay.vue', 'utf8')
 const ticketCss = postcss.parse(ticket.split('<style scoped>')[1].split('</style>')[0])
 const declarations = []
 ticketCss.walkDecls(decl => declarations.push([decl.parent.selector ?? '', decl.prop, decl.value]))
-assert.match(view, /ref<KitchenStatus>\('confirmed'\)/, 'queue begins at the first real operational status')
-assert.match(view, /grid-template-columns: repeat\(2, minmax\(280px, 1fr\)\)/)
-assert.match(view, /grid-template-columns: repeat\(3, minmax\(280px, 1fr\)\)/)
-assert.match(view, /grid-template-columns: repeat\(4, minmax\(280px, 1fr\)\)/)
-assert.match(view, /@media \(max-width: 767px\)/, 'compact view selects one status at a time')
+assert.match(view, /ref<KitchenStatus>\('accepted'\)/, 'mobile board begins at the first non-incoming status; confirmed orders live in the incoming grid')
+assert.match(view, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/, 'desktop board keeps the remaining three states; confirmed orders are in the incoming grid')
+assert.match(view, /\.kds-incoming-grid \{[^}]*auto-fill[^}]*overflow-y: auto/s, 'incoming orders render in a responsive grid with internal scroll')
+assert.match(view, /\.kds-column-list \{[^}]*overflow-y: auto/s, 'each state has its own vertical ticket scroll')
+assert.match(view, /\.kds-column-heading \{[^}]*position: sticky/s, 'state headings remain visible while tickets scroll')
+assert.match(view, /@media \(max-width: 1023px\)/, 'compact layouts switch states before the board becomes too narrow')
+assert.match(view, /\.kds-columns \{ display: none; \}/, 'the desktop board is hidden while compact state filters are active')
+assert.match(view, /\.kds-mobile-column \{[^}]*overflow-y: auto/s, 'compact ticket list scrolls vertically')
 assert.match(view, /@media \(prefers-reduced-motion: reduce\)/)
 assert.ok(declarations.some(([, prop, value]) => prop === 'min-height' && value === '56px'), 'primary KDS action target is 56px')
 assert.ok(declarations.some(([, prop, value]) => prop === 'min-height' && value === '48px'), 'secondary details target is at least 48px')
@@ -78,3 +81,11 @@ assert.ok(sheet.includes('env(safe-area-inset-bottom)'), 'ticket details retain 
 assert.match(view, /var\(--duration-base\)/, 'status moves use the SALOA 200ms motion token')
 assert.match(view, /prefers-reduced-motion: reduce/, 'status motion respects reduced motion')
 console.log('PASS: KDS status/action contract, ticket content/actions, responsive breakpoints, touch targets and motion structure')
+
+{
+  const { kitchenUrgency, KITCHEN_WAIT_THRESHOLDS } = await import('../src/utils/kitchen-urgency.ts')
+  assert.deepEqual(KITCHEN_WAIT_THRESHOLDS, { midSeconds: 300, longSeconds: 600 })
+  const cases = [[0, 'fresh'], [299, 'fresh'], [299.9, 'fresh'], [300, 'mid'], [599, 'mid'], [600, 'long'], [15254 * 60, 'long'],
+    [NaN, 'unknown'], [-1, 'unknown'], [undefined, 'unknown'], [null, 'unknown'], [Infinity, 'unknown']]
+  for (const [seconds, expected] of cases) assert.equal(kitchenUrgency(seconds), expected, `${seconds} -> ${expected}`)
+}

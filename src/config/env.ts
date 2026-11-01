@@ -40,5 +40,7 @@ export function validateEnv(env: BuildEnv, mode: string) {
     key: read('VITE_REVERB_APP_KEY'), host: read('VITE_REVERB_HOST'),
     port: Number(read('VITE_REVERB_PORT')), tls: read('VITE_REVERB_SCHEME') === 'https',
   } : null
-  return { target, apiUrl, publicAppUrl, realtimeConfigured, reverb, shellV2: read('VITE_SHELL_V2') === 'true' }
+  // The integrated app shell is the default for authenticated frontend routes.
+  // Keep an explicit false available for a temporary local rollback.
+  return { target, apiUrl, publicAppUrl, realtimeConfigured, reverb, shellV2: read('VITE_SHELL_V2') !== 'false' }
 }

@@ -16,6 +16,8 @@
   "dependencies": {
     "@phosphor-icons/vue": "^2.2.1",
     "@tailwindcss/vite": "^4.3.3",
+    "@tresjs/cientos": "^5.10.1",
+    "@tresjs/core": "^5.10.1",
     "axios": "^1.20.0",
     "laravel-echo": "^2.5.0",
     "oh-my-sdd": "^1.0.0",
@@ -23,6 +25,7 @@
     "pusher-js": "^8.6.0",
     "qrcode-generator": "^2.0.4",
     "tailwindcss": "^4.3.3",
+    "three": "^0.187.0",
     "vue": "^3.5.41",
     "vue-i18n": "^11.4.10",
     "vue-router": "^5.3.1"

@@ -6,6 +6,7 @@ import AStatusBadge from '@/components/ui/AStatusBadge.vue'
 import type { KitchenOrder, KitchenStatus } from '@/types/kitchen'
 import KitchenItems from './KitchenItems.vue'
 import { KITCHEN_STATUS_PRESENTATION } from '@/utils/kitchen-status-presentation'
+import type { KitchenUrgency } from '@/utils/kitchen-urgency'
 
 const props = defineProps<{
   order: KitchenOrder
@@ -16,6 +17,9 @@ const props = defineProps<{
   actionDisabled?: boolean
   waitingLabel: string
   highlighted?: boolean
+  compact?: boolean
+  urgency?: KitchenUrgency
+  urgencyLabel?: string
 }>()
 const emit = defineEmits<{ advance: []; details: [] }>()
 const { t } = useI18n()
@@ -23,10 +27,11 @@ const presentation = (status: KitchenStatus) => KITCHEN_STATUS_PRESENTATION[stat
 </script>
 
 <template>
-  <article class="kds-ticket" :class="{ 'kds-ticket--new': highlighted }" :data-order-number="order.order_number">
-    <div class="kds-ticket-time" :aria-label="elapsed">
-      <PhClock :size="24" aria-hidden="true" />
+  <article class="kds-ticket" :class="{ 'kds-ticket--new': highlighted, 'kds-ticket--compact': compact }" :data-order-number="order.order_number" :data-urgency="urgency">
+    <div class="kds-ticket-time" :aria-label="urgencyLabel ? `${elapsed}, ${urgencyLabel}` : elapsed">
+      <PhClock :size="compact ? 20 : 24" aria-hidden="true" />
       <span class="tabular-nums">{{ elapsed }}</span>
+      <span v-if="urgencyLabel" class="kds-ticket-urgency">{{ urgencyLabel }}</span>
     </div>
     <header class="kds-ticket-heading">
       <h3 class="kds-ticket-table">{{ order.table.name }}</h3>
@@ -37,7 +42,7 @@ const presentation = (status: KitchenStatus) => KITCHEN_STATUS_PRESENTATION[stat
     <KitchenItems :items="order.items" :note="order.order_note" />
 
     <div class="kds-ticket-actions">
-      <AButton v-if="actionLabel" class="kds-ticket-advance" size="lg" full-width :loading="actionLoading" :disabled="actionDisabled" @click="emit('advance')">
+      <AButton v-if="actionLabel" class="kds-ticket-advance" :size="compact ? 'md' : 'lg'" full-width :loading="actionLoading" :disabled="actionDisabled" @click="emit('advance')">
         {{ actionLabel }}
       </AButton>
       <p v-else class="kds-ticket-waiting">{{ waitingLabel }}</p>
@@ -62,7 +67,22 @@ const presentation = (status: KitchenStatus) => KITCHEN_STATUS_PRESENTATION[stat
 .kds-ticket-details { display: inline-flex; min-width: 48px; min-height: 48px; align-self: center; align-items: center; justify-content: center; gap: calc(var(--spacing) * 1); padding: 0 calc(var(--spacing) * 3); border: 0; border-radius: var(--radius-saloa-md); background: transparent; color: var(--color-primary-text); font: inherit; font-size: var(--text-body-sm); font-weight: 500; cursor: pointer; touch-action: manipulation; }
 .kds-ticket-details:hover { background: var(--color-surface-subtle); }
 .kds-ticket-details:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
-.kds-ticket--new { animation: kds-ticket-new 600ms var(--ease-out) both; }
+.kds-ticket--new { animation: kds-ticket-new 600ms var(--ease-out) backwards; }
 @keyframes kds-ticket-new { from { background: var(--color-primary-subtle); } to { background: var(--color-surface); } }
+/* Compact (incoming grid) variant + subtle wait urgency. Colour supports, never replaces, the text label. */
+.kds-ticket--compact { height: 100%; gap: calc(var(--spacing) * 2); padding: calc(var(--spacing) * 3); }
+.kds-ticket--compact .kds-ticket-time { font-size: var(--text-body); line-height: var(--text-body--line-height); flex-wrap: wrap; }
+.kds-ticket--compact .kds-ticket-table { font-size: var(--text-body); }
+.kds-ticket--compact .kds-ticket-number { font-size: var(--text-body-sm); }
+.kds-ticket--compact .kds-ticket-actions { flex-direction: row; flex-wrap: wrap; align-items: center; }
+.kds-ticket--compact .kds-ticket-advance { min-height: 44px; flex: 1 1 8rem; width: auto; }
+.kds-ticket--compact .kds-ticket-waiting { min-height: 44px; flex: 1 1 8rem; }
+.kds-ticket--compact .kds-ticket-details { min-height: 44px; }
+.kds-ticket-urgency { font-size: var(--text-body-sm); font-weight: 600; }
+.kds-ticket[data-urgency]:not([data-urgency='unknown']) { border-color: color-mix(in srgb, var(--urgency-accent) 55%, var(--color-border)); background: color-mix(in srgb, var(--urgency-accent) 9%, var(--color-surface)); }
+.kds-ticket[data-urgency]:not([data-urgency='unknown']) .kds-ticket-time { color: var(--urgency-text); }
+.kds-ticket[data-urgency='fresh'] { --urgency-accent: var(--color-wait-fresh-accent); --urgency-text: var(--color-wait-fresh); }
+.kds-ticket[data-urgency='mid'] { --urgency-accent: var(--color-wait-mid-accent); --urgency-text: var(--color-wait-mid); }
+.kds-ticket[data-urgency='long'] { --urgency-accent: var(--color-wait-long-accent); --urgency-text: var(--color-wait-long); }
 @media (prefers-reduced-motion: reduce) { .kds-ticket--new { animation: none; } }
 </style>

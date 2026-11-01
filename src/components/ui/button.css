@@ -67,6 +67,12 @@
   :root:not([data-theme='light']) .a-control[data-variant='danger']:not([data-disabled='true']) { color: var(--color-on-primary); }
 }
 :root[data-theme='dark'] .a-control[data-variant='danger']:not([data-disabled='true']) { color: var(--color-on-primary); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .a-control:not([data-disabled='true']) { box-shadow: var(--ritma-tactile-shadow); }
+  :root:not([data-theme='light']) .a-control:active:not([aria-disabled='true']) { box-shadow: inset 2px 3px 6px rgb(0 0 0 / .22); }
+}
+:root[data-theme='dark'] .a-control:not([data-disabled='true']) { box-shadow: var(--ritma-tactile-shadow); }
+:root[data-theme='dark'] .a-control:active:not([aria-disabled='true']) { box-shadow: inset 2px 3px 6px rgb(0 0 0 / .22); }
 @media (prefers-reduced-motion: reduce) {
   .a-control { transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out); }
   .a-control:active:not([aria-disabled='true']) { transform: none; }

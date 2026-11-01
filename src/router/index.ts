@@ -128,6 +128,14 @@ const router = createRouter({
           component: () => import('@/views/DashboardView.vue'),
         },
         {
+          // Analytics is its own page (own URL, back/forward, deep link) but
+          // stays under the same "Panel" destination: the nav's prefix rule
+          // keeps it active, and DashboardView switches by route name.
+          path: 'dashboard/analytics',
+          name: 'app-dashboard-analytics',
+          component: () => import('@/views/DashboardView.vue'),
+        },
+        {
           path: 'menu',
           name: 'app-menu',
           component: () => import('@/views/menu/MenuView.vue'),
@@ -262,7 +270,7 @@ router.beforeEach(async (to) => {
     // (Passo 3.4 §9 — a cashier holding only record_payments/close_bill/
     // handle_table_requests is the exact account this closes the gap for;
     // kitchen already had this, billing-only accounts were the real miss).
-    if (to.name === 'app-dashboard' && !canAny(['view_operations', 'view_reports'])) {
+    if ((to.name === 'app-dashboard' || to.name === 'app-dashboard-analytics') && !canAny(['view_operations', 'view_reports'])) {
       if (can('update_kitchen_status')) return { name: 'app-kitchen' }
       // SERVICE_ACCESS_PERMISSIONS includes view_operations too, but this
       // branch only runs once that's already known false above — harmless,

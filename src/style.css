@@ -150,6 +150,7 @@
   --container-form: var(--form-max);
   --container-dialog-sm: var(--dialog-sm);
   --container-dialog-md: var(--dialog-md);
+  --container-dialog-lg: var(--dialog-lg);
 }
 
 /* P0 compatibility is property-specific: never redirect primary fills.
