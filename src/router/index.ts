@@ -46,7 +46,7 @@ declare module 'vue-router' {
      * whether the current session may accept.
      */
     invitation?: boolean
-    /**
+    /**D
      * Password recovery pages: reachable signed in or not, like
      * `invitation` (a signed-in person may also reset a password).
      */
@@ -57,6 +57,12 @@ declare module 'vue-router' {
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      path: '/dev/restaurant-3d',
+      name: 'restaurant-3d-lab',
+      component: () => import('@/views/experiments/Restaurant3DView.vue'),
+      meta: { requiresAuth: true },
+    },
     { path: '/', redirect: '/app' },
     {
       path: '/login',
