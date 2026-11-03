@@ -1,13 +1,40 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
+import ASnackbar from '@/components/ui/ASnackbar.vue'
 import RestaurantScene from '@/components/restaurant-3d/RestaurantScene.vue'
 import type { RestaurantSceneMode } from '@/components/restaurant-3d/scene-mode'
+import { useRestaurantFloorLayout } from '@/composables/useRestaurantFloorLayout'
+import { floorLayoutService } from '@/services/floor-layout.service'
+import { useRestaurantStore } from '@/stores/restaurant'
+import { describeApiError } from '@/utils/error-message'
+import type { RestaurantLayoutDocument } from '@/types/restaurant-3d/restaurant-layout'
 
 const modes: { value: RestaurantSceneMode; label: string }[] = [
   { value: 'operation', label: 'Operación' },
   { value: 'edit', label: 'Editar salón' },
 ]
 const mode = ref<RestaurantSceneMode>('operation')
+
+const { t } = useI18n()
+const restaurantStore = useRestaurantStore()
+const route = useRoute()
+
+// Development only: `?source=mock` shows the seven-table mock, never persisted.
+const useMock = import.meta.env.DEV && route.query.source === 'mock'
+
+// The restaurant list may not be loaded when this route is opened directly.
+onMounted(() => void restaurantStore.load())
+
+const restaurantId = computed(() => (useMock ? null : restaurantStore.currentRestaurantId))
+const { state, layout, error, revision, reload } = useRestaurantFloorLayout(restaurantId)
+
+const saveLayout = (document: RestaurantLayoutDocument) => {
+  const id = restaurantId.value
+  if (id === null) return Promise.reject(new Error('No restaurant selected'))
+  return floorLayoutService.replace(id, document)
+}
 </script>
 
 <template>
@@ -40,7 +67,46 @@ const mode = ref<RestaurantSceneMode>('operation')
       </span>
     </header>
 
-    <RestaurantScene :mode="mode" />
+    <RestaurantScene
+      v-if="useMock"
+      :mode="mode"
+    />
+    <p
+      v-else-if="!restaurantStore.loading && restaurantId === null"
+      class="lab-status"
+      role="status"
+    >
+      {{ t('floorLayout.noRestaurant') }}
+    </p>
+    <p
+      v-else-if="state === 'loading' || state === 'idle'"
+      class="lab-status"
+      role="status"
+    >
+      {{ t('floorLayout.loading') }}
+    </p>
+    <div
+      v-else-if="state === 'error'"
+      class="lab-status"
+      role="alert"
+    >
+      <p>{{ t('floorLayout.loadFailed') }} {{ error ? describeApiError(error, t) : '' }}</p>
+      <button
+        type="button"
+        class="mode-switch__option lab-retry"
+        @click="reload"
+      >
+        {{ t('floorLayout.retry') }}
+      </button>
+    </div>
+    <RestaurantScene
+      v-else-if="layout"
+      :key="`${restaurantId}-${revision}`"
+      :mode="mode"
+      :layout="layout"
+      :save="saveLayout"
+    />
+    <ASnackbar />
   </main>
 </template>
 
@@ -101,6 +167,21 @@ h1 {
 .mode-switch__option:focus-visible {
   outline: 2px solid #f2eae3;
   outline-offset: 2px;
+}
+
+.lab-status {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  min-height: 320px;
+  border: 1px dashed #343434;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.lab-retry {
+  border: 1px solid #343434;
 }
 
 .experimental {

@@ -35,8 +35,22 @@ export interface RestaurantLayout {
   tables: RestaurantTableConfig[]
 }
 
-/** Serialisable form of a layout (what a future save/load would exchange). */
+/** Floor size (metres) and editor grid step, as persisted with a layout. */
+export interface RestaurantFloorSpec {
+  width: number
+  depth: number
+  gridStep: number
+}
+
+/**
+ * Persisted form of a layout (Layout V1) — exactly what the backend stores
+ * and returns at `/restaurants/{id}/floor-layout`. Configuration only: no
+ * guests, orders, events or any other operational state.
+ * Table `id` is a UUID minted by the editor when the table is created and is
+ * the table's stable identity; `number` is editable business data.
+ */
 export interface RestaurantLayoutDocument {
   version: 1
+  floor: RestaurantFloorSpec
   tables: RestaurantTableConfig[]
 }

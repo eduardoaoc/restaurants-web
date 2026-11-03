@@ -2021,4 +2021,13 @@ export default {
       contact: 'Contact',
     },
   },
+  floorLayout: {
+    save: 'Save changes',
+    saving: 'Saving…',
+    saved: 'Floor layout saved.',
+    loading: 'Loading the floor layout…',
+    loadFailed: 'The floor layout could not be loaded.',
+    retry: 'Retry',
+    noRestaurant: 'Select a restaurant to see its floor.',
+  },
 }

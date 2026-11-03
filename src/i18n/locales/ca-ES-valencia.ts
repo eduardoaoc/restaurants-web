@@ -2021,4 +2021,13 @@ export default {
       contact: 'Contacte',
     },
   },
+  floorLayout: {
+    save: 'Guardar els canvis',
+    saving: 'Guardant…',
+    saved: 'Disposició guardada.',
+    loading: 'Carregant la disposició de la sala…',
+    loadFailed: "No s'ha pogut carregar la disposició de la sala.",
+    retry: 'Reintenta',
+    noRestaurant: 'Selecciona un restaurant per veure la seua sala.',
+  },
 }

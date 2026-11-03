@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { TresCanvas } from '@tresjs/core'
+import { useI18n } from 'vue-i18n'
+import { normalizeApiError } from '@/api/errors'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { describeApiError } from '@/utils/error-message'
 import TableDetailsDrawer from '@/components/dashboard/table/TableDetailsDrawer.vue'
 import { mockLayout } from '@/data/restaurant-3d/mock-layout'
 import { mockEvents } from '@/data/restaurant-3d/mock-events'
 import { mockOperationalState } from '@/data/restaurant-3d/mock-operational-state'
-import type { RestaurantLayout } from '@/types/restaurant-3d/restaurant-layout'
+import type { RestaurantLayout, RestaurantLayoutDocument } from '@/types/restaurant-3d/restaurant-layout'
 import type { RestaurantOperationalState } from '@/types/restaurant-3d/restaurant-operations'
 import CameraRig from './CameraRig.vue'
 import AddTablePanel from './AddTablePanel.vue'
@@ -24,16 +28,24 @@ import { SCENE_MODE_BEHAVIOR, type RestaurantSceneMode } from './scene-mode'
 import { useEditableLayout } from './use-editable-layout'
 import { useSceneClock } from './use-scene-clock'
 
-const props = withDefaults(defineProps<{ mode?: RestaurantSceneMode }>(), { mode: 'operation' })
+const props = withDefaults(defineProps<{
+  mode?: RestaurantSceneMode
+  /** Layout to edit/show. Read once on mount: re-key the component to load another. */
+  layout?: RestaurantLayout
+  /**
+   * Persists a layout document and resolves with the canonical one the server
+   * stored. Without it the scene is not persistable and shows no save action.
+   */
+  save?: (document: RestaurantLayoutDocument) => Promise<RestaurantLayoutDocument>
+}>(), { mode: 'operation', layout: () => mockLayout, save: undefined })
 const behavior = computed(() => SCENE_MODE_BEHAVIOR[props.mode])
 
-// Later this can come from props / a store; for now the lab uses the mock.
 // Both modes read the same editable in-memory copy, so edits survive a mode switch.
-const source: RestaurantLayout = mockLayout
+const source: RestaurantLayout = props.layout
 // Recorded state exists only for the mock's own tables; every other table resolves to "available".
 const operationalState: RestaurantOperationalState = mockOperationalState
 const stateOf = (tableId: string) => resolveTableState(operationalState, tableId)
-const { tables, isDirty, tableById, moveTable, rotateTable, addTable, duplicateTable, removeTable, updateTable } =
+const { tables, isDirty, markSaved, toDocument, tableById, moveTable, rotateTable, addTable, duplicateTable, removeTable, updateTable } =
   useEditableLayout(source, { minSeatsFor: (tableId) => minSeatsForState(operationalState, tableId) })
 
 // One badge per target for this POC: its highest-priority event.
@@ -72,6 +84,29 @@ function onTableSelect(tableId: string, release: { x: number; y: number }): void
 
 function clearSelection(): void {
   selectedTableId.value = null
+}
+
+// --- Saving ------------------------------------------------------------------
+// One request at a time. A failure leaves the working copy and the dirty flag
+// untouched; a success rebases the baseline without touching newer edits.
+const { t } = useI18n()
+const snackbar = useSnackbar()
+const saving = ref(false)
+const canSave = computed(() => props.save !== undefined && isDirty.value && !saving.value)
+
+async function onSave(): Promise<void> {
+  if (!props.save || !canSave.value) return
+  const sent = toDocument()
+  saving.value = true
+  try {
+    const canonical = await props.save(sent)
+    markSaved(canonical.tables, sent.tables)
+    snackbar.showSnackbar({ message: t('floorLayout.saved'), kind: 'success' })
+  } catch (cause) {
+    snackbar.showSnackbar({ message: describeApiError(normalizeApiError(cause), t), kind: 'danger', duration: 8000 })
+  } finally {
+    saving.value = false
+  }
 }
 
 // --- Layout editing ---------------------------------------------------------
@@ -143,8 +178,11 @@ if (import.meta.env.DEV) {
   for (const problem of validateLayout(source)) {
     console.warn(`[restaurant-3d] ${problem}`)
   }
-  for (const problem of validateOperationalState(source, operationalState, mockEvents)) {
-    console.warn(`[restaurant-3d] ${problem}`)
+  // The recorded mock state/events only describe the mock layout's tables.
+  if (source === mockLayout) {
+    for (const problem of validateOperationalState(source, operationalState, mockEvents)) {
+      console.warn(`[restaurant-3d] ${problem}`)
+    }
   }
 }
 
@@ -252,11 +290,26 @@ const cameraPosition: [number, number, number] = [8, 12, 12.5]
         @create="onAddTable"
         @cancel="addPanelOpen = false"
       />
-      <span
-        v-if="isDirty"
-        class="editor-dirty"
-        role="status"
-      >Cambios sin guardar</span>
+      <div
+        v-if="isDirty || (behavior.layoutEditing && save)"
+        class="editor-save"
+      >
+        <span
+          v-if="isDirty"
+          class="editor-dirty"
+          role="status"
+        >Cambios sin guardar</span>
+        <button
+          v-if="behavior.layoutEditing && save"
+          type="button"
+          class="editor-add editor-save__button"
+          :disabled="!canSave"
+          :aria-busy="saving"
+          @click="onSave"
+        >
+          {{ saving ? t('floorLayout.saving') : t('floorLayout.save') }}
+        </button>
+      </div>
       <EditorToolbar
         v-if="behavior.layoutEditing && editSelectedTable"
         :table="editSelectedTable"
@@ -306,6 +359,17 @@ const cameraPosition: [number, number, number] = [8, 12, 12.5]
   font: inherit;
   font-size: 13px;
   cursor: pointer;
+}
+
+.editor-save {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-save__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .editor-add:focus-visible {

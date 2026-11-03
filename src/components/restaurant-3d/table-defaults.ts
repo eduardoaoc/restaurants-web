@@ -21,18 +21,19 @@ export function suggestTableNumber(tables: Pick<RestaurantTableConfig, 'number'>
   return candidate
 }
 
-let clientIdCounter = 0
-
 /**
- * Client-side id for a table that has no backend id yet: `new-table-<uuid>`.
- * It is a string like every other id, serialisable, and the `new-` prefix lets
- * a later save tell client tables (to create) from persisted ones.
+ * Stable identity of a table: a UUID v4 minted when the table is created. The
+ * backend accepts it as-is (it validates the format, never rewrites it), so
+ * the id never changes between creation, save and reload. Falls back to
+ * `getRandomValues` where `randomUUID` is unavailable (non-secure contexts).
  */
-export function createClientTableId(): string {
-  const unique = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${(clientIdCounter += 1)}-${Math.random().toString(36).slice(2, 8)}`
-  return `new-table-${unique}`
+export function createTableId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
 /**

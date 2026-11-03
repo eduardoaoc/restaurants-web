@@ -5,10 +5,10 @@ import type {
   RestaurantLayoutDocument,
   RestaurantTableConfig,
 } from '@/types/restaurant-3d/restaurant-layout'
-import { ROTATION_STEP } from './floor'
+import { FLOOR, GRID_STEP, ROTATION_STEP } from './floor'
 import { type EditorIssue, type TableDraft, noFreeSpaceIssue, validateTableDraft, validateTablePlacement } from './editor-validation'
 import { normalizeRotation, snapAndClampToFloor } from './layout-editing'
-import { createClientTableId, findFreePosition, suggestTableNumber } from './table-defaults'
+import { createTableId, findFreePosition, suggestTableNumber } from './table-defaults'
 
 export type EditResult =
   | { ok: true; table: RestaurantTableConfig }
@@ -33,18 +33,19 @@ const signature = (tables: RestaurantTableConfig[]) =>
 
 /**
  * In-memory, editable copy of a layout. The source layout is never mutated;
- * nothing is persisted. `toDocument()` is the shape a later save would send.
+ * this composable persists nothing itself — `toDocument()` is what gets sent,
+ * and `markSaved()` rebases the dirty baseline once the server confirmed it.
  * Every structural edit (add / duplicate / update) is validated by
  * `editor-validation` and reports `{ ok: false, issues }` instead of applying.
  */
 export function useEditableLayout(source: RestaurantLayout, options: EditableLayoutOptions = {}) {
-  const initialSignature = signature(source.tables)
+  const baselineSignature = ref(signature(source.tables))
   const tables = ref<RestaurantTableConfig[]>(source.tables.map(cloneTable))
 
   const tableById = (id: string) => tables.value.find((table) => table.id === id)
   const othersOf = (id: string) => tables.value.filter((table) => table.id !== id)
 
-  const isDirty = computed(() => signature(tables.value) !== initialSignature)
+  const isDirty = computed(() => signature(tables.value) !== baselineSignature.value)
 
   function moveTable(id: string, wanted: FloorPosition): void {
     const table = tableById(id)
@@ -72,7 +73,7 @@ export function useEditableLayout(source: RestaurantLayout, options: EditableLay
     return { ok: true, table: tables.value[tables.value.length - 1] }
   }
 
-  const addTable = (draft: TableDraft): EditResult => place(draft, 0, undefined, createClientTableId())
+  const addTable = (draft: TableDraft): EditResult => place(draft, 0, undefined, createTableId())
 
   /** Same shape, capacity and rotation; next free number; nearest free spot. Nothing operational is copied. */
   function duplicateTable(id: string): EditResult {
@@ -82,7 +83,7 @@ export function useEditableLayout(source: RestaurantLayout, options: EditableLay
       { number: suggestTableNumber(tables.value), shape: source.shape, seats: source.seats },
       source.rotation,
       source.position,
-      createClientTableId(),
+      createTableId(),
     )
   }
 
@@ -111,7 +112,23 @@ export function useEditableLayout(source: RestaurantLayout, options: EditableLay
     return { ok: true, table }
   }
 
-  const toDocument = (): RestaurantLayoutDocument => ({ version: 1, tables: tables.value.map(cloneTable) })
+  const toDocument = (): RestaurantLayoutDocument => ({
+    version: 1,
+    floor: { width: FLOOR.width, depth: FLOOR.depth, gridStep: GRID_STEP },
+    tables: tables.value.map(cloneTable),
+  })
 
-  return { tables, isDirty, tableById, moveTable, rotateTable, addTable, duplicateTable, removeTable, updateTable, toDocument }
+  /**
+   * The server accepted `sent` and returned `canonical`. The saved document
+   * becomes the new clean baseline. Edits made while the request was in
+   * flight are never discarded: the working copy is only replaced by the
+   * canonical one if it still equals what was sent; otherwise it stays as is
+   * and remains dirty relative to the new baseline.
+   */
+  function markSaved(canonical: RestaurantTableConfig[], sent: RestaurantTableConfig[]): void {
+    baselineSignature.value = signature(canonical)
+    if (signature(tables.value) === signature(sent)) tables.value = canonical.map(cloneTable)
+  }
+
+  return { tables, isDirty, markSaved, tableById, moveTable, rotateTable, addTable, duplicateTable, removeTable, updateTable, toDocument }
 }

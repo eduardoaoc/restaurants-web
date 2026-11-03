@@ -2028,4 +2028,13 @@ export default {
       contact: 'Contacto',
     },
   },
+  floorLayout: {
+    save: 'Guardar cambios',
+    saving: 'Guardando…',
+    saved: 'Disposición guardada.',
+    loading: 'Cargando la disposición del salón…',
+    loadFailed: 'No se pudo cargar la disposición del salón.',
+    retry: 'Reintentar',
+    noRestaurant: 'Selecciona un restaurante para ver su salón.',
+  },
 }
