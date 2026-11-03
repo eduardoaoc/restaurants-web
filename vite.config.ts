@@ -1,5 +1,6 @@
 import path from 'node:path'
 
+import { templateCompilerOptions } from '@tresjs/core'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, loadEnv } from 'vite'
@@ -9,7 +10,8 @@ import { validateEnv } from './src/config/env.ts'
 export default defineConfig(({ mode }) => {
   validateEnv(loadEnv(mode, process.cwd(), 'VITE_'), mode)
   return {
-    plugins: [vue(), tailwindcss()],
+    // TresJS' documented template options: its <Tres*> tags are renderer elements, not Vue components.
+    plugins: [vue({ ...templateCompilerOptions }), tailwindcss()],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, 'src'),
