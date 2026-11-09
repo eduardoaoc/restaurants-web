@@ -29,6 +29,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+/assets-source/
 
 # oh-my-sdd runtime state (never versioned)
 .oh-my-sdd/runtime/

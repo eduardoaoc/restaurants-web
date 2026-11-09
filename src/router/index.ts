@@ -63,6 +63,24 @@ const router = createRouter({
       component: () => import('@/views/experiments/Restaurant3DView.vue'),
       meta: { requiresAuth: true },
     },
+    // Development-only laboratory (Phase 3.1A): no API, no auth, not in prod builds.
+    ...(import.meta.env.DEV
+      ? [{
+          path: '/dev/restaurant-characters',
+          name: 'restaurant-characters-lab',
+          component: () => import('@/views/experiments/RestaurantCharactersView.vue'),
+          meta: { public: true },
+        }]
+      : []),
+    // Development-only fixture harness for the real 3D floor scene (no auth, no API, not in prod builds).
+    ...(import.meta.env.DEV
+      ? [{
+          path: '/dev/restaurant-3d-fixture',
+          name: 'restaurant-3d-fixture',
+          component: () => import('@/views/experiments/Restaurant3DFixtureView.vue'),
+          meta: { public: true },
+        }]
+      : []),
     { path: '/', redirect: '/app' },
     {
       path: '/login',

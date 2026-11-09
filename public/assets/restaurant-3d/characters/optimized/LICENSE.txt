@@ -1,0 +1,2 @@
+Ultimate Modular Men / Women by Quaternius - CC0 1.0 Universal.
+Converted glTF -> GLB (prune, dedup, KHR_mesh_quantization). Skeleton, skinning, 24 animation clips and materials preserved.

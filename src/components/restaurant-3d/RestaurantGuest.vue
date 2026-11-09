@@ -9,11 +9,16 @@ import { CHAIR_SEAT_HEIGHT, GUEST_ANCHOR_HEIGHT, SCENE_COLORS } from './table-ge
  * direction the guest faces, so rotating the group by `rotationY` points them
  * at the table. Placeholder only — no rig, no animation.
  */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   guest: RestaurantGuestPlacement
   /** Highest-priority event targeting this guest, if any. */
   badge?: OperationalBadgeModel
-}>()
+  /**
+   * Draw the placeholder body. Off when the animated customers draw the guest instead: the group
+   * then only carries the badge anchor, exactly where it always was.
+   */
+  body?: boolean
+}>(), { body: true })
 
 const anchorData: OperationalAnchorData = {
   targetType: 'guest',
@@ -29,6 +34,7 @@ const seat = CHAIR_SEAT_HEIGHT
     :rotation="[0, guest.rotationY, 0]"
     :name="guest.id"
   >
+    <template v-if="body">
     <!-- Torso -->
     <TresMesh
       :position="[0, seat + 0.27, -0.05]"
@@ -88,6 +94,7 @@ const seat = CHAIR_SEAT_HEIGHT
           :roughness="0.85"
         />
       </TresMesh>
+    </template>
     </template>
 
     <!-- Anchor above the head: guest-targeted events hang here. -->

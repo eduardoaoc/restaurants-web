@@ -9,11 +9,12 @@ import TableDetailsDrawer from '@/components/dashboard/table/TableDetailsDrawer.
 import { mockLayout } from '@/data/restaurant-3d/mock-layout'
 import { mockEvents } from '@/data/restaurant-3d/mock-events'
 import { mockOperationalState } from '@/data/restaurant-3d/mock-operational-state'
-import type { RestaurantLayout, RestaurantLayoutDocument } from '@/types/restaurant-3d/restaurant-layout'
+import type { FloorPosition, RestaurantLayout, RestaurantLayoutDocument } from '@/types/restaurant-3d/restaurant-layout'
 import type { RestaurantOperationalState } from '@/types/restaurant-3d/restaurant-operations'
 import CameraRig from './CameraRig.vue'
 import AddTablePanel from './AddTablePanel.vue'
 import EditorToolbar from './EditorToolbar.vue'
+import RestaurantCustomers, { type CustomerStats, type NavDebugOptions } from './RestaurantCustomers.vue'
 import RestaurantTable from './RestaurantTable.vue'
 import TableEditController from './TableEditController.vue'
 import { LAB_CURRENCY, toOperationsTable } from './table-detail-adapter'
@@ -37,16 +38,39 @@ const props = withDefaults(defineProps<{
    * stored. Without it the scene is not persistable and shows no save action.
    */
   save?: (document: RestaurantLayoutDocument) => Promise<RestaurantLayoutDocument>
-}>(), { mode: 'operation', layout: () => mockLayout, save: undefined })
+  /**
+   * Recorded operational state (guests, status). Read once on mount like `layout`. Defaults to the
+   * mock; the dev fixture view passes generated guest counts to exercise 1/5/10/20 customers.
+   */
+  operationalState?: RestaurantOperationalState
+  /**
+   * Where customers walk in and out (floor metres). Absent = no arrival/departure animation: guests just
+   * appear seated / vanish, exactly as before. The restaurant's real entrance is not part of the layout contract yet.
+   */
+  entrance?: FloorPosition | null
+  /** DEV only: navigation overlays (paths / obstacles). Nothing is drawn when absent. */
+  navDebug?: NavDebugOptions
+}>(), { mode: 'operation', layout: () => mockLayout, save: undefined, operationalState: () => mockOperationalState, entrance: null, navDebug: undefined })
+const emit = defineEmits<{
+  tableSelected: [tableId: string | null]
+  entranceStatus: [value: { ok: boolean; reason?: string }]
+  navFailure: [message: string]
+  stats: [value: CustomerStats]
+}>()
 const behavior = computed(() => SCENE_MODE_BEHAVIOR[props.mode])
 
 // Both modes read the same editable in-memory copy, so edits survive a mode switch.
 const source: RestaurantLayout = props.layout
 // Recorded state exists only for the mock's own tables; every other table resolves to "available".
-const operationalState: RestaurantOperationalState = mockOperationalState
+const operationalState: RestaurantOperationalState = props.operationalState
 const stateOf = (tableId: string) => resolveTableState(operationalState, tableId)
 const { tables, isDirty, markSaved, toDocument, tableById, moveTable, rotateTable, addTable, duplicateTable, removeTable, updateTable } =
   useEditableLayout(source, { minSeatsFor: (tableId) => minSeatsForState(operationalState, tableId) })
+
+// Animated customers replace the placeholder guest bodies; if their assets cannot load, fall back to the placeholders.
+const customersFailed = ref(false)
+const hiddenChairs = ref<Record<string, number[]>>({})
+const customerStats = ref<CustomerStats | null>(null)
 
 // One badge per target for this POC: its highest-priority event.
 const topEvents = selectTopEventPerTarget(mockEvents)
@@ -154,6 +178,8 @@ function onRemoveTable(): void {
 }
 
 // A different selection starts without the previous table's message or an open add panel.
+watch(selectedTableId, (id) => emit('tableSelected', id))
+
 watch(editSelectedId, (id) => {
   editError.value = null
   if (id) addPanelOpen.value = false
@@ -172,7 +198,18 @@ let removeApiGuard: (() => void) | undefined
 onMounted(() => {
   removeApiGuard = installLabApiGuard()
 })
-onBeforeUnmount(() => removeApiGuard?.())
+// DEV only: edit the layout while customers are moving (the UI cannot: editing cancels movement first).
+if (import.meta.env.DEV) {
+  ;(window as unknown as { __floorEdit?: unknown }).__floorEdit = {
+    removeTable: (id: string) => removeTable(id),
+    rotateTable: (id: string, direction: 1 | -1 = 1) => rotateTable(id, direction),
+    tables: () => tables.value.map((t) => ({ id: t.id, rotation: t.rotation, x: t.position.x, z: t.position.z })),
+  }
+}
+onBeforeUnmount(() => {
+  if (import.meta.env.DEV) delete (window as unknown as { __floorEdit?: unknown }).__floorEdit
+  removeApiGuard?.()
+})
 
 if (import.meta.env.DEV) {
   for (const problem of validateLayout(source)) {
@@ -254,7 +291,23 @@ const cameraPosition: [number, number, number] = [8, 12, 12.5]
         :now="now"
         :selected="behavior.layoutEditing ? table.id === editSelectedId : table.id === selectedTableId"
         :show-operational="behavior.showOperational"
+        :guest-bodies="customersFailed"
+        :hidden-chairs="hiddenChairs[table.id]"
         @select="onTableSelect"
+      />
+
+      <!-- Seated customers: one per explicit guest record; hidden while the layout is being edited. -->
+      <RestaurantCustomers
+        :tables="tables"
+        :states="operationalState"
+        :enabled="behavior.showOperational"
+        :entrance="entrance"
+        :debug="navDebug"
+        @stats="customerStats = $event; emit('stats', $event)"
+        @failed="customersFailed = true"
+        @chairs-hidden="hiddenChairs = $event"
+        @entrance="emit('entranceStatus', $event)"
+        @nav-failure="emit('navFailure', $event)"
       />
 
       <TableEditController
@@ -270,6 +323,27 @@ const cameraPosition: [number, number, number] = [8, 12, 12.5]
         :orbit-enabled="!draggingTable"
       />
     </TresCanvas>
+
+    <dl
+      v-if="customerStats && behavior.showOperational"
+      class="dev-stats"
+      data-dev-stats
+    >
+      <div><dt>Customers</dt><dd data-stat="customers">{{ customerStats.customers }}</dd></div>
+      <div><dt>Chairs moving</dt><dd data-stat="chairs">{{ customerStats.chairs }}</dd></div>
+      <div><dt>Arrivals</dt><dd data-stat="arrivals">{{ customerStats.arrivals }}</dd></div>
+      <div><dt>Departures</dt><dd data-stat="departures">{{ customerStats.departures }}</dd></div>
+      <div><dt>Nav failures</dt><dd data-stat="navFailures">{{ customerStats.navFailures }}</dd></div>
+      <div><dt>Path objects</dt><dd data-stat="pathObjects">{{ customerStats.pathObjects }}</dd></div>
+      <div><dt>Mixers/frame</dt><dd data-stat="mixers">{{ customerStats.mixers }}</dd></div>
+      <div><dt>Anim CPU</dt><dd data-stat="animMs">{{ customerStats.animMs }} ms</dd></div>
+      <div><dt>Chair CPU</dt><dd data-stat="chairMs">{{ customerStats.chairMs }} ms</dd></div>
+      <div><dt>Draw calls</dt><dd data-stat="calls">{{ customerStats.calls }}</dd></div>
+      <div><dt>Triangles</dt><dd data-stat="triangles">{{ customerStats.triangles }}</dd></div>
+      <div><dt>Geometries</dt><dd data-stat="geometries">{{ customerStats.geometries }}</dd></div>
+      <div><dt>Textures</dt><dd data-stat="textures">{{ customerStats.textures }}</dd></div>
+      <div><dt>FPS</dt><dd data-stat="fps">{{ customerStats.fps }}</dd></div>
+    </dl>
 
     <div
       class="editor-overlay"
@@ -335,6 +409,27 @@ const cameraPosition: [number, number, number] = [8, 12, 12.5]
 </template>
 
 <style scoped>
+/* Development only: customer rendering statistics (the component only emits them in dev builds). */
+.dev-stats {
+  position: absolute;
+  inset: 12px auto auto 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 4px 10px;
+  width: min(560px, calc(100% - 24px));
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid #343434;
+  border-radius: 12px;
+  background: rgb(15 15 16 / 0.72);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.dev-stats dt { white-space: nowrap; }
+.dev-stats dt { opacity: 0.6; }
+.dev-stats dd { margin: 0; font-variant-numeric: tabular-nums; }
+
 .editor-overlay {
   position: absolute;
   inset: auto 16px 16px 16px;

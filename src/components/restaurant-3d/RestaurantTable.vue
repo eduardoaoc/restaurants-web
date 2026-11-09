@@ -38,7 +38,11 @@ const props = withDefaults(defineProps<{
    * layout editing: presentation only, the state itself is untouched.
    */
   showOperational?: boolean
-}>(), { showOperational: true })
+  /** Draw placeholder guest bodies (off when animated customers are drawn by the scene). */
+  guestBodies?: boolean
+  /** Chair indexes drawn by an animated prop instead (customer sitting down / standing up): hide the static one. */
+  hiddenChairs?: readonly number[]
+}>(), { showOperational: true, guestBodies: true, hiddenChairs: () => [] })
 
 const emit = defineEmits<{
   /** A click anywhere on the table: top, base, chairs or its hit area. */
@@ -66,10 +70,13 @@ function onPointerUp(event: TablePointerEvent): void {
 // Invisible footprint (table + chairs) so selection doesn't depend on hitting thin legs.
 const HIT_PADDING = 0.9
 const HIT_HEIGHT = 1.1
+/** Seated customers reach ~1.35 m, so the hit area covers them and clicking one selects its table. */
+const HIT_HEIGHT_WITH_CUSTOMERS = 1.5
 
 const dimensions = computed(() => getTableDimensions(props.table.shape, props.table.seats))
 const chairs = computed(() => getChairPlacements(props.table))
 const guests = computed(() => getGuestPlacements(props.table, props.state?.guests ?? []))
+const hitHeight = computed(() => (props.showOperational && !props.guestBodies && guests.value.length ? HIT_HEIGHT_WITH_CUSTOMERS : HIT_HEIGHT))
 
 function badgeFor(targetType: 'table' | 'guest', targetId: string) {
   const event = props.events?.get(targetKey(targetType, targetId))
@@ -119,10 +126,10 @@ const backY = CHAIR_SEAT_HEIGHT + CHAIR_BACK_HEIGHT / 2
     @pointerup="onPointerUp"
   >
     <!-- Hit area: fully transparent, never drawn, only raycast -->
-    <TresMesh :position="[0, HIT_HEIGHT / 2, 0]">
+    <TresMesh :position="[0, hitHeight / 2, 0]">
       <TresBoxGeometry
-        :key="`hit-${dimensions.width}-${dimensions.depth}`"
-        :args="[dimensions.width + HIT_PADDING, HIT_HEIGHT, dimensions.depth + HIT_PADDING]"
+        :key="`hit-${dimensions.width}-${dimensions.depth}-${hitHeight}`"
+        :args="[dimensions.width + HIT_PADDING, hitHeight, dimensions.depth + HIT_PADDING]"
       />
       <TresMeshBasicMaterial
         transparent
@@ -191,6 +198,7 @@ const backY = CHAIR_SEAT_HEIGHT + CHAIR_BACK_HEIGHT / 2
       :key="index"
       :position="[chair.x, 0, chair.z]"
       :rotation="[0, chair.rotationY, 0]"
+      :visible="!hiddenChairs.includes(index)"
     >
       <TresMesh
         :position="[0, CHAIR_SEAT_HEIGHT - 0.025, 0]"
@@ -227,6 +235,7 @@ const backY = CHAIR_SEAT_HEIGHT + CHAIR_BACK_HEIGHT / 2
       v-for="guest in (showOperational ? guests : [])"
       :key="guest.id"
       :guest="guest"
+      :body="guestBodies"
       :badge="badgeFor('guest', guest.id)"
     />
 
