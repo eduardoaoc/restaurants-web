@@ -19,9 +19,11 @@ import EditorToolbar from './EditorToolbar.vue'
 import EntranceFloorMarker from './EntranceFloorMarker.vue'
 import EntrancePanel from './EntrancePanel.vue'
 import { cameraFit } from './camera-fit'
+import { chooseQuality, detectDeviceHints } from './graphics-quality'
 import { snapToGrid } from './layout-editing'
 import { entranceLimits, suggestEntrance, validateEntrancePlacement, type EntranceValidation } from './entrance-validation'
 import RestaurantCustomers, { type CustomerStats, type NavDebugOptions } from './RestaurantCustomers.vue'
+import ChairInstances from './ChairInstances.vue'
 import RestaurantTable from './RestaurantTable.vue'
 import TableEditController from './TableEditController.vue'
 import { LAB_CURRENCY, toOperationsTable } from './table-detail-adapter'
@@ -440,6 +442,8 @@ if (import.meta.env.DEV) {
 // Three-quarter view from above, aimed at the middle of the table layout.
 // Narrow (portrait) screens see far less of the floor at the desktop distance, so the camera starts further back along the
 // same viewing direction. Decided once at mount from the scene's expected aspect; the direction and target are unchanged.
+// Chosen once per mount (see graphics-quality.ts): predictable, no mid-session quality changes.
+const quality = chooseQuality(detectDeviceHints())
 const cameraDistance = cameraFit(window.innerWidth / Math.max(320, Math.min(720, window.innerHeight - 190)))
 const cameraPosition: [number, number, number] = [8 * cameraDistance, 12 * cameraDistance, 12.5 * cameraDistance]
 </script>
@@ -452,6 +456,7 @@ const cameraPosition: [number, number, number] = [8 * cameraDistance, 12 * camer
     <TresCanvas
       clear-color="#151515"
       shadows
+      :dpr="quality.dpr"
     >
       <!-- Câmera inicial estilo isométrico -->
       <TresPerspectiveCamera
@@ -473,8 +478,8 @@ const cameraPosition: [number, number, number] = [8 * cameraDistance, 12 * camer
         :intensity="2.5"
         color="#fff0d8"
         cast-shadow
-        :shadow-mapSize-width="2048"
-        :shadow-mapSize-height="2048"
+        :shadow-mapSize-width="quality.shadowMapSize"
+        :shadow-mapSize-height="quality.shadowMapSize"
         :shadow-camera-left="-FLOOR.width / 2"
         :shadow-camera-right="FLOOR.width / 2"
         :shadow-camera-top="FLOOR.width / 2"
@@ -514,8 +519,12 @@ const cameraPosition: [number, number, number] = [8 * cameraDistance, 12 * camer
         :mapping-label="behavior.layoutEditing ? mappingText(table) : undefined"
         :show-operational="behavior.showOperational && hasOperationalMapping(table.id)"
         :guest-bodies="customersFailed"
-        :hidden-chairs="hiddenChairs[table.id]"
         @select="onTableSelect"
+      />
+
+      <ChairInstances
+        :tables="tables"
+        :hidden="hiddenChairs"
       />
 
       <!-- Seated customers: one per explicit guest record; hidden while the layout is being edited. -->

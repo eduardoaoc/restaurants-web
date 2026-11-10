@@ -13,14 +13,10 @@ import { targetKey, toBadge } from './operational-events'
 import { RING_MARGIN } from './ring-style'
 import { tableVisualState } from './visual-state'
 import {
-  CHAIR_BACK_HEIGHT,
-  CHAIR_SEAT_HEIGHT,
-  CHAIR_SEAT_SIZE,
   SCENE_COLORS,
   TABLE_ANCHOR_HEIGHT,
   TABLE_HEIGHT,
   TABLE_TOP_THICKNESS,
-  getChairPlacements,
   getGuestPlacements,
   getTableDimensions,
 } from './table-geometry'
@@ -50,9 +46,7 @@ const props = withDefaults(defineProps<{
   showOperational?: boolean
   /** Draw placeholder guest bodies (off when animated customers are drawn by the scene). */
   guestBodies?: boolean
-  /** Chair indexes drawn by an animated prop instead (customer sitting down / standing up): hide the static one. */
-  hiddenChairs?: readonly number[]
-}>(), { showOperational: true, guestBodies: true, hiddenChairs: () => [], operationalFlags: () => [] })
+}>(), { showOperational: true, guestBodies: true, operationalFlags: () => [] })
 
 const emit = defineEmits<{
   /** A click anywhere on the table: top, base, chairs or its hit area. */
@@ -84,7 +78,6 @@ const HIT_HEIGHT = 1.1
 const HIT_HEIGHT_WITH_CUSTOMERS = 1.5
 
 const dimensions = computed(() => getTableDimensions(props.table.shape, props.table.seats))
-const chairs = computed(() => getChairPlacements(props.table))
 const guests = computed(() => getGuestPlacements(props.table, props.state?.guests ?? []))
 const hitHeight = computed(() => (props.showOperational && !props.guestBodies && guests.value.length ? HIT_HEIGHT_WITH_CUSTOMERS : HIT_HEIGHT))
 
@@ -125,7 +118,6 @@ const legPositions = computed<[number, number, number][]>(() => {
   return [[x, legHeight / 2, z], [-x, legHeight / 2, z], [x, legHeight / 2, -z], [-x, legHeight / 2, -z]]
 })
 
-const backY = CHAIR_SEAT_HEIGHT + CHAIR_BACK_HEIGHT / 2
 </script>
 
 <template>
@@ -136,7 +128,10 @@ const backY = CHAIR_SEAT_HEIGHT + CHAIR_BACK_HEIGHT / 2
     @pointerup="onPointerUp"
   >
     <!-- Hit area: fully transparent, never drawn, only raycast -->
-    <TresMesh :position="[0, hitHeight / 2, 0]">
+    <TresMesh
+      :position="[0, hitHeight / 2, 0]"
+      :visible="false"
+    >
       <TresBoxGeometry
         :key="`hit-${dimensions.width}-${dimensions.depth}-${hitHeight}`"
         :args="[dimensions.width + HIT_PADDING, hitHeight, dimensions.depth + HIT_PADDING]"
@@ -204,43 +199,7 @@ const backY = CHAIR_SEAT_HEIGHT + CHAIR_BACK_HEIGHT / 2
       </TresMesh>
     </template>
 
-    <!-- Chairs: one per seat, facing the table -->
-    <TresGroup
-      v-for="(chair, index) in chairs"
-      :key="index"
-      :position="[chair.x, 0, chair.z]"
-      :rotation="[0, chair.rotationY, 0]"
-      :visible="!hiddenChairs.includes(index)"
-    >
-      <TresMesh
-        :position="[0, CHAIR_SEAT_HEIGHT - 0.025, 0]"
-        cast-shadow
-        receive-shadow
-      >
-        <TresBoxGeometry :args="[CHAIR_SEAT_SIZE, 0.05, CHAIR_SEAT_SIZE]" />
-        <TresMeshStandardMaterial
-          :color="SCENE_COLORS.chair"
-          :roughness="0.7"
-        />
-      </TresMesh>
-      <TresMesh
-        :position="[0, backY, -(CHAIR_SEAT_SIZE / 2 - 0.02)]"
-        cast-shadow
-      >
-        <TresBoxGeometry :args="[CHAIR_SEAT_SIZE, CHAIR_BACK_HEIGHT, 0.04]" />
-        <TresMeshStandardMaterial
-          :color="SCENE_COLORS.chair"
-          :roughness="0.7"
-        />
-      </TresMesh>
-      <TresMesh
-        :position="[0, (CHAIR_SEAT_HEIGHT - 0.05) / 2, 0]"
-        cast-shadow
-      >
-        <TresBoxGeometry :args="[0.06, CHAIR_SEAT_HEIGHT - 0.05, 0.06]" />
-        <TresMeshStandardMaterial :color="SCENE_COLORS.tableBase" />
-      </TresMesh>
-    </TresGroup>
+    <!-- Chairs are drawn once for the whole floor by ChairInstances (instanced), not per table. -->
 
     <!-- Seated guests, one per occupied seat -->
     <RestaurantGuest
