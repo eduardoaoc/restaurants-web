@@ -6,7 +6,7 @@ import type { RestaurantLayout } from '@/types/restaurant-3d/restaurant-layout'
 export type FloorLayoutLoadState = 'idle' | 'loading' | 'ready' | 'error'
 
 /** Shown for a restaurant that has never saved a layout: explicitly empty, never the dev mock. */
-const emptyLayout = (): RestaurantLayout => ({ tables: [] })
+const emptyLayout = (): RestaurantLayout => ({ revision: 0, tables: [] })
 
 /**
  * Loads the saved 3D floor layout of the given restaurant (reloading when it
@@ -42,7 +42,7 @@ export function useRestaurantFloorLayout(restaurantId: Ref<number | null>) {
     try {
       const document = await floorLayoutService.get(id, current.signal)
       if (mine !== generation) return
-      layout.value = document ? { tables: document.tables } : emptyLayout()
+      layout.value = document ? { revision: document.revision ?? 0, tables: document.tables, ...(document.entrance === undefined ? {} : { entrance: document.entrance }) } : emptyLayout()
       revision.value += 1
       state.value = 'ready'
     } catch (cause) {

@@ -10,7 +10,7 @@ export interface OperationalSessionSnapshot {
 
 export interface OperationalTableSnapshot {
   id: number
-  restaurant_id: number
+  restaurant_id?: number
   primary_status: string
   session: OperationalSessionSnapshot | null
 }

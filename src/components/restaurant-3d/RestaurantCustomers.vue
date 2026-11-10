@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useLoop, useTres } from '@tresjs/core'
 import { Group, type Mesh, Vector3 } from 'three'
 import type { FloorPosition, RestaurantTableConfig } from '@/types/restaurant-3d/restaurant-layout'
@@ -121,6 +121,7 @@ const STAGGER_MS = 1300
 const lod = new AnimationLod()
 const APPROACH_COLOR = '#22D3EE'
 const STAND_COLOR = '#F59E0B'
+const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
 
 const placements = computed(() => computeCustomerPlacements(props.tables, props.states))
 // The grid is rebuilt only when the layout (tables) changes; computed caches it otherwise.
@@ -250,13 +251,50 @@ async function spawnSeated(placement: CustomerPlacement) {
   pending.delete(id)
   if (!actor) return
   const want = desired.get(id)
-  if (want) actor.setSeat(seatOf(want))
+  if (want) actor.setSeat(seatOf(want), want.tableId, want.seatIndex)
   actors.set(id, actor)
   refreshList()
 }
 
+function finishForReducedMotion(): void {
+  for (const [id, actor] of [...leaving]) {
+    leaving.delete(id)
+    handles.get(id)?.finish()
+    handles.delete(id)
+    pendingPaths.delete(id)
+    actor.cancelTransition()
+    actor.dispose()
+  }
+  for (const [id, actor] of [...actors]) {
+    const result = actor.cancelTransition()
+    if (result === 'dispose') {
+      actors.delete(id)
+      actor.dispose()
+    }
+    handles.get(id)?.finish()
+    handles.delete(id)
+    pendingPaths.delete(id)
+  }
+  overlay.clear()
+  handles.clear()
+  pendingPaths.clear()
+  releaseAllMovers()
+  const queued = queue
+  queue = []
+  for (const placement of queued) {
+    pending.delete(placement.guestId)
+    if (desired.has(placement.guestId)) void spawnSeated(placement)
+  }
+  refreshList()
+}
+
+function onReducedMotionChange(event: MediaQueryListEvent): void {
+  if (event.matches) finishForReducedMotion()
+}
+
 async function spawnArrival(placement: CustomerPlacement) {
   const id = placement.guestId
+  if (reducedMotionQuery.matches) return spawnSeated(placement)
   const entrance = entrancePoint.value
   const check = entranceOk.value
   // Only animate with a usable entrance and a route; otherwise report and show the guest seated (state is untouched).
@@ -268,7 +306,18 @@ async function spawnArrival(placement: CustomerPlacement) {
   const actor = await create(placement)
   pending.delete(id)
   if (!actor) return
-  const seat = seatOf(placement)
+  const current = desired.get(id)
+  if (!current) {
+    actor.dispose()
+    return
+  }
+  actor.setSeat(seatOf(current), current.tableId, current.seatIndex)
+  if (reducedMotionQuery.matches) {
+    actors.set(id, actor)
+    refreshList()
+    return
+  }
+  const seat = seatOf(current)
   const plan = planArrival(grid.value, entrance, seat, actor.standLocalZ)
   if (!plan.ok) {
     fail(`arrival ${id}: ${plan.reason}`)
@@ -297,7 +346,7 @@ function depart(id: string, actor: GuestActor, seat: SeatFrame) {
   actors.delete(id)
   const entrance = entrancePoint.value
   const check = entranceOk.value
-  if (!props.enabled || !entrance || !check?.ok) {
+  if (!props.enabled || reducedMotionQuery.matches || !entrance || !check?.ok) {
     actor.cancelTransition()
     actor.dispose()
     refreshList()
@@ -352,7 +401,7 @@ watch(placements, (next) => {
   for (const [id, actor] of [...actors]) {
     const want = desired.get(id)
     if (want) {
-      actor.setSeat(seatOf(want))
+      actor.setSeat(seatOf(want), want.tableId, want.seatIndex)
     } else {
       depart(id, actor, previous.get(id) ? seatOf(previous.get(id)!) : actor.seatFrame)
     }
@@ -515,6 +564,8 @@ onBeforeRender(({ delta }) => {
   }
 })
 
+onMounted(() => reducedMotionQuery.addEventListener('change', onReducedMotionChange))
+
 // DEV-only inspection aids.
 if (import.meta.env.DEV) {
   const world = new Vector3()
@@ -556,6 +607,7 @@ if (import.meta.env.DEV) {
 }
 
 onBeforeUnmount(() => {
+  reducedMotionQuery.removeEventListener('change', onReducedMotionChange)
   if (import.meta.env.DEV) delete (window as unknown as { __floorLab?: unknown }).__floorLab
   alive = false
   for (const actor of [...actors.values(), ...leaving.values()]) {

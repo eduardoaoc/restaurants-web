@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { PhArrowClockwise, PhArrowCounterClockwise } from '@phosphor-icons/vue'
 import type { RestaurantTableConfig } from '@/types/restaurant-3d/restaurant-layout'
 import type { TableDraft } from './editor-validation'
 import TableConfigFields from './TableConfigFields.vue'
+import TableMappingPanel from './TableMappingPanel.vue'
+import { parseCoordinate } from './layout-editing'
 import { type TableFormState, draftFromForm, formFromTable } from './table-form'
+import type { BackendTableOption } from './table-mapping'
 
 /**
  * Selected-table panel: number, shape and capacity (applied as each field is
@@ -13,18 +17,39 @@ import { type TableFormState, draftFromForm, formFromTable } from './table-form'
  */
 const props = defineProps<{
   table: RestaurantTableConfig
+  layoutTables: readonly RestaurantTableConfig[]
+  backendTables: readonly BackendTableOption[]
+  restaurantId: number | null
+  mappingLoading?: boolean
+  mappingLoadError?: string | null
   /** Why the last edit was refused, if it was. */
   error?: string | null
 }>()
 const emit = defineEmits<{
   rotate: [direction: 1 | -1]
   update: [patch: Partial<TableDraft>]
+  map: [backendTableId: number | null]
+  position: [position: { x: number; z: number }]
   duplicate: []
   remove: []
 }>()
 
 const title = computed(() => `Mesa ${String(props.table.number).padStart(2, '0')}`)
-const metres = (value: number) => value.toFixed(2)
+const { t } = useI18n()
+const px = ref<number | string>(props.table.position.x)
+const pz = ref<number | string>(props.table.position.z)
+// Dragging, rotating or a refused edit changes the real position: the fields always show the real one.
+watch(() => [props.table.id, props.table.position.x, props.table.position.z], () => {
+  px.value = props.table.position.x
+  pz.value = props.table.position.z
+})
+/** Typed coordinates go through the layout (grid snap, floor, overlap); a refusal snaps the fields back. */
+async function commitPosition(): Promise<void> {
+  emit('position', { x: parseCoordinate(px.value), z: parseCoordinate(pz.value) })
+  await nextTick()
+  px.value = props.table.position.x
+  pz.value = props.table.position.z
+}
 
 const form = ref<TableFormState>(formFromTable(props.table))
 const confirmingDelete = ref(false)
@@ -66,16 +91,28 @@ async function commit(): Promise<void> {
       @commit="commit"
     />
 
-    <dl class="editor-toolbar__readout">
-      <div>
-        <dt>Posición</dt>
-        <dd>X: {{ metres(table.position.x) }} · Z: {{ metres(table.position.z) }}</dd>
-      </div>
-      <div>
-        <dt>Rotación</dt>
-        <dd>{{ table.rotation }}°</dd>
-      </div>
-    </dl>
+    <TableMappingPanel
+      v-if="restaurantId !== null"
+      :table="table"
+      :layout-tables="layoutTables"
+      :backend-tables="backendTables"
+      :restaurant-id="restaurantId"
+      :loading="mappingLoading"
+      :load-error="mappingLoadError"
+      @map="emit('map', $event)"
+    />
+
+    <div class="editor-toolbar__position">
+      <label class="editor-toolbar__field">
+        <span>{{ t('floorLayout.editor.positionX') }}</span>
+        <input v-model="px" type="number" inputmode="decimal" step="0.25" @change="commitPosition" @keydown.enter="commitPosition">
+      </label>
+      <label class="editor-toolbar__field">
+        <span>{{ t('floorLayout.editor.positionZ') }}</span>
+        <input v-model="pz" type="number" inputmode="decimal" step="0.25" @change="commitPosition" @keydown.enter="commitPosition">
+      </label>
+      <p class="editor-toolbar__rotation">{{ t('floorLayout.editor.rotation', { degrees: table.rotation }) }}</p>
+    </div>
 
     <div class="editor-toolbar__actions">
       <button
@@ -152,6 +189,7 @@ async function commit(): Promise<void> {
 
 <style scoped>
 .editor-toolbar {
+  box-sizing: border-box;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -159,7 +197,7 @@ async function commit(): Promise<void> {
   padding: 10px 14px;
   border: 1px solid #343434;
   border-radius: 14px;
-  max-width: min(100%, 46rem);
+  width: min(100%, 46rem);
   background: rgb(23 24 28 / 0.92);
   color: #f2eae3;
 }
@@ -252,4 +290,20 @@ async function commit(): Promise<void> {
   color: #ffb4a8;
   font-size: 12px;
 }
+
+.editor-toolbar__position { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: min(100%, 30rem); }
+.editor-toolbar__field { display: grid; gap: 4px; min-width: 0; font-size: 12px; font-weight: 600; }
+.editor-toolbar__field input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: 10px;
+  background: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-on-surface);
+  font: inherit;
+}
+.editor-toolbar__field input:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
+.editor-toolbar__rotation { grid-column: 1 / -1; margin: 0; font-size: 12px; color: rgb(242 234 227 / 0.72); }
 </style>

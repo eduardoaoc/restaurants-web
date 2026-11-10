@@ -48,8 +48,8 @@ const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
 export class GuestActor {
   readonly group = new Group()
   readonly guestId: string
-  readonly tableId: string
-  readonly seatIndex: number
+  tableId: string
+  seatIndex: number
   mixerUpdated = false
   /** Reported once when a departing/failed actor has finished and may be disposed. */
   onGone: (() => void) | null = null
@@ -157,7 +157,14 @@ export class GuestActor {
   }
 
   /** Layout changed while seated: follow the chair. */
-  setSeat(seat: SeatFrame) {
+  setSeat(seat: SeatFrame, tableId = this.tableId, seatIndex = this.seatIndex) {
+    const movedToAnotherTable = tableId !== this.tableId || seatIndex !== this.seatIndex
+    // Session transfers keep the guest identity but change its visual table.
+    // The current actor cannot safely retarget an in-flight route, so settle it
+    // and move directly to the authoritative destination seat.
+    if (movedToAnotherTable && this.current !== 'seated') this.cancelTransition()
+    this.tableId = tableId
+    this.seatIndex = seatIndex
     this.seat = seat
     if (this.current === 'seated') this.applyChairFrame(this.standZ)
   }

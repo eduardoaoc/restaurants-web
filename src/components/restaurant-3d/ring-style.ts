@@ -67,4 +67,11 @@ export const EDITOR_SELECTION_BANDS: RingBand[] = [
   { from: 0.05, to: 0.16, color: '#f2eae3', opacity: 0.22 },
 ]
 
+/** Editor-only tones: a faint hover outline, and a red outline for a placement that is refused. */
+export const EDITOR_HOVER_BANDS: RingBand[] = [{ from: 0, to: 0.04, color: '#f2eae3', opacity: 0.5 }]
+export const EDITOR_INVALID_BANDS: RingBand[] = [
+  { from: 0, to: 0.06, color: '#ef4444', opacity: 1 },
+  { from: 0.06, to: 0.2, color: '#ef4444', opacity: 0.3 },
+]
+
 export const SELECTION_BAND: RingBand = { from: -0.17, to: -0.13, color: '#f2eae3', opacity: 0.7 }

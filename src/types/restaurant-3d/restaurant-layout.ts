@@ -34,6 +34,8 @@ export interface RestaurantTableConfig {
 }
 
 export interface RestaurantLayout {
+  /** Server revision this layout was loaded at (0 = the restaurant has no saved layout yet). */
+  revision?: number
   tables: RestaurantTableConfig[]
   /** Optional configured walk-in point in the same floor coordinates. */
   entrance?: FloorPosition | null
@@ -55,6 +57,8 @@ export interface RestaurantFloorSpec {
  */
 export interface RestaurantLayoutDocument {
   version: 1
+  /** Server-assigned on read and in the save response; never sent in the body (see `expected_revision`). */
+  revision?: number
   floor: RestaurantFloorSpec
   entrance?: FloorPosition | null
   tables: RestaurantTableConfig[]

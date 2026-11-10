@@ -153,6 +153,12 @@ export class NavGrid {
     return true
   }
 
+  /** Whether the grid cell containing `p` is walkable (the A* start cell for a route beginning at `p`). */
+  startCellFree(p: Pt): boolean {
+    const [c, r] = this.cellOf(p)
+    return this.free(c, r)
+  }
+
   /** Segment is walkable when sampled points (every ~third of a cell) are all free. */
   lineFree(a: Pt, b: Pt): boolean {
     const step = this.options.cell / 3

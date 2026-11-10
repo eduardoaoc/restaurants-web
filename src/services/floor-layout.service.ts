@@ -9,6 +9,7 @@ import type {
 /** Wire shape of `data.floor_layout` (Layout V1 + the server's `updated_at`). */
 interface FloorLayoutPayload {
   version: number
+  revision?: number
   floor: { width: number; depth: number; gridStep: number }
   tables: Array<{
     id: string
@@ -59,9 +60,22 @@ function toDocument(payload: FloorLayoutPayload): RestaurantLayoutDocument {
   }))
   return {
     version: 1,
+    // A server that predates revisions reports none; 0 would then be refused as stale by a newer one, which is the safe side.
+    revision: payload.revision ?? 0,
     floor: { width, depth, gridStep },
     ...(payload.entrance === undefined ? {} : { entrance: payload.entrance }),
     tables,
+  }
+}
+
+/** The save was refused (HTTP 409): the layout changed since the client loaded it. Nothing was written. */
+export class FloorLayoutConflictError extends Error {
+  readonly currentRevision: number | null
+
+  constructor(currentRevision: number | null) {
+    super('Floor layout revision conflict')
+    this.name = 'FloorLayoutConflictError'
+    this.currentRevision = currentRevision
   }
 }
 
@@ -79,13 +93,26 @@ export const floorLayoutService = {
     return data.data.floor_layout ? toDocument(data.data.floor_layout) : null
   },
 
-  /** Returns the canonical document the server stored. */
-  async replace(restaurantId: number, document: RestaurantLayoutDocument): Promise<RestaurantLayoutDocument> {
-    const { data } = await http.put<FloorLayoutEnvelope & { message: string }>(
-      `/api/v1/restaurants/${restaurantId}/floor-layout`,
-      document,
-    )
-    if (!data.data.floor_layout) throw new UnsupportedFloorLayoutError('empty response')
-    return toDocument(data.data.floor_layout)
+  /**
+   * Returns the canonical document the server stored (with its new revision). `expectedRevision` is the revision the
+   * edit was based on; a stale one is refused with `FloorLayoutConflictError` and nothing is written.
+   */
+  async replace(restaurantId: number, document: RestaurantLayoutDocument, expectedRevision: number): Promise<RestaurantLayoutDocument> {
+    const { revision: _ignored, ...body } = document
+    void _ignored
+    try {
+      const { data } = await http.put<FloorLayoutEnvelope & { message: string }>(
+        `/api/v1/restaurants/${restaurantId}/floor-layout`,
+        { ...body, expected_revision: expectedRevision },
+      )
+      if (!data.data.floor_layout) throw new UnsupportedFloorLayoutError('empty response')
+      return toDocument(data.data.floor_layout)
+    } catch (cause) {
+      const response = (cause as { response?: { status?: number; data?: { code?: string; data?: { current_revision?: number } } } }).response
+      if (response?.status === 409 && response.data?.code === 'floor_layout_revision_conflict') {
+        throw new FloorLayoutConflictError(response.data.data?.current_revision ?? null)
+      }
+      throw cause
+    }
   },
 }

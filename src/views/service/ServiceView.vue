@@ -197,6 +197,8 @@ function toOperationsTable(table: FloorPlanTable): OperationsTable {
     session: table.active_session
       ? {
           id: table.active_session.id,
+          status: 'occupied',
+          opened_at: table.active_session.opened_at,
           started_at: table.active_session.opened_at,
           elapsed_seconds: Math.max(0, Math.floor((Date.now() - new Date(table.active_session.opened_at).getTime()) / 1000)),
           guest_count: table.active_session.guest_count,

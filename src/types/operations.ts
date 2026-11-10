@@ -85,6 +85,8 @@ export interface TableAssignedWaiter {
 
 export interface TableActiveSession {
   id: number
+  status: string
+  opened_at: string
   started_at: string
   elapsed_seconds: number
   guest_count: number

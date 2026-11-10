@@ -19,6 +19,10 @@ import type { RestaurantTableConfig } from '@/types/restaurant-3d/restaurant-lay
 const props = defineProps<{
   enabled: boolean
   tables: RestaurantTableConfig[]
+  /** The draft entrance (null = none). Its marker is draggable like a table. */
+  entrance?: { x: number; z: number } | null
+  /** Tap-to-place: the next floor tap (not an orbit drag) puts the entrance there. */
+  placingEntrance?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -26,9 +30,18 @@ const emit = defineEmits<{
   move: [tableId: string, position: { x: number; z: number }]
   /** True from the press on a table until its release. */
   dragging: [active: boolean]
+  selectEntrance: []
+  entranceDragging: [active: boolean]
+  moveEntrance: [position: { x: number; z: number }]
+  /** The entrance press ended: validate the final position. */
+  dropEntrance: []
+  hoverEntrance: [hovered: boolean]
+  hoverTable: [tableId: string | null]
 }>()
 
 const CLICK_MOVE_TOLERANCE_PX = 6
+/** A press on a table is a SELECTION until the pointer travels this far (fingers are less steady than a mouse). */
+const DRAG_START_PX = { mouse: 5, pen: 6, touch: 10 } as const
 const { camera, scene, renderer } = useTres()
 
 const raycaster = new Raycaster()
@@ -43,16 +56,47 @@ function aim(event: PointerEvent): void {
   if (camera.value) raycaster.setFromCamera(pointer, camera.value)
 }
 
-/** The table group (named after the table id) a ray from the pointer hits first. */
-function pickTableId(event: PointerEvent): string | null {
+const ENTRANCE_NAME = 'entrance-marker'
+
+/** The nearest thing a ray from the pointer hits: a table (group named after its id) or the entrance hit disc. */
+function pickTarget(event: PointerEvent): { kind: 'table'; id: string } | { kind: 'entrance' } | null {
   aim(event)
   if (!scene.value) return null
   for (const { object } of raycaster.intersectObjects(scene.value.children, true)) {
     for (let node: Object3D | null = object; node; node = node.parent) {
-      if (props.tables.some((table) => table.id === node?.name)) return node.name
+      if (node.name === ENTRANCE_NAME) return props.entrance ? { kind: 'entrance' } : null
+      const name = node.name
+      if (props.tables.some((table) => table.id === name)) return { kind: 'table', id: name }
     }
   }
   return null
+}
+
+let hovering = false
+let hoveredTable: string | null = null
+let hoverFrame = 0
+let lastHover: PointerEvent | null = null
+/** Hover raycasts the whole scene: at most once per frame, never while a gesture is running, never for touch. */
+function onHover(event: PointerEvent): void {
+  if (!props.enabled || stopGesture || event.pointerType === 'touch') return
+  lastHover = event
+  if (hoverFrame) return
+  hoverFrame = requestAnimationFrame(() => {
+    hoverFrame = 0
+    const e = lastHover
+    if (!e || !props.enabled || stopGesture) return
+    const target = pickTarget(e)
+    const over = target?.kind === 'entrance'
+    if (over !== hovering) {
+      hovering = over
+      emit('hoverEntrance', over)
+    }
+    const table = target?.kind === 'table' ? target.id : null
+    if (table !== hoveredTable) {
+      hoveredTable = table
+      emit('hoverTable', table)
+    }
+  })
 }
 
 /** Where the pointer's ray meets the floor plane, or null (ray parallel / behind). */
@@ -67,29 +111,58 @@ function onPointerDown(event: PointerEvent): void {
   if (!props.enabled || event.button !== 0) return
   // Editor controls sit inside the same host as the canvas: their presses are not floor clicks.
   if (event.target instanceof Element && event.target.closest('[data-editor-ui]')) return
-  const tableId = pickTableId(event)
-  const table = props.tables.find((candidate) => candidate.id === tableId)
+  const target = pickTarget(event)
+  const table = target?.kind === 'table' ? props.tables.find((candidate) => candidate.id === target.id) : undefined
   const start = floorPoint(event)
 
   if (stopGesture) {
     stopGesture()
     emit('dragging', false)
+    emit('entranceDragging', false)
   }
-  if (table && start) {
-    // Keep the grab point: the table follows the pointer without jumping.
-    const offset = { x: table.position.x - start.x, z: table.position.z - start.z }
+  if (target?.kind === 'entrance' && props.entrance && start) {
+    // Same grab-offset rule as a table: no jump under the finger. Placement is validated on release, not per move.
+    const offset = { x: props.entrance.x - start.x, z: props.entrance.z - start.z }
     event.stopPropagation()
-    emit('select', table.id)
-    emit('dragging', true)
+    emit('selectEntrance')
+    emit('entranceDragging', true)
     const onMove = (move: PointerEvent) => {
       const point = floorPoint(move)
-      if (point) emit('move', table.id, { x: point.x + offset.x, z: point.z + offset.z })
+      if (point) emit('moveEntrance', { x: point.x + offset.x, z: point.z + offset.z })
     }
-    listen(onMove, () => emit('dragging', false))
+    listen(onMove, () => {
+      emit('entranceDragging', false)
+      emit('dropEntrance')
+    })
+  } else if (table && start) {
+    // The press selects (and keeps the camera still). The table only follows the pointer after a deliberate drag, and
+    // the grab offset is taken at that moment, so it never jumps and a shaky tap never moves it.
+    const pressed = { x: event.clientX, y: event.clientY }
+    const threshold = DRAG_START_PX[event.pointerType === 'touch' ? 'touch' : event.pointerType === 'pen' ? 'pen' : 'mouse']
+    let offset: { x: number; z: number } | null = null
+    event.stopPropagation()
+    emit('select', table.id)
+    const onMove = (move: PointerEvent) => {
+      const point = floorPoint(move)
+      if (!point) return
+      if (!offset) {
+        if (Math.hypot(move.clientX - pressed.x, move.clientY - pressed.y) < threshold) return
+        offset = { x: table.position.x - point.x, z: table.position.z - point.z }
+        emit('dragging', true)
+        return
+      }
+      emit('move', table.id, { x: point.x + offset.x, z: point.z + offset.z })
+    }
+    listen(onMove, () => { if (offset) emit('dragging', false) })
   } else {
     const pressed = { x: event.clientX, y: event.clientY }
     listen(undefined, (up) => {
-      if (Math.hypot(up.clientX - pressed.x, up.clientY - pressed.y) <= CLICK_MOVE_TOLERANCE_PX) emit('select', null)
+      if (Math.hypot(up.clientX - pressed.x, up.clientY - pressed.y) > CLICK_MOVE_TOLERANCE_PX) return
+      const where = props.placingEntrance ? floorPoint(up) : null
+      if (where) {
+        emit('moveEntrance', where)
+        emit('dropEntrance')
+      } else emit('select', null)
     })
   }
 }
@@ -116,10 +189,15 @@ function attach(): void {
   detach()
   const target = renderer.domElement.parentElement ?? renderer.domElement
   target.addEventListener('pointerdown', onPointerDown, true)
+  target.addEventListener('pointermove', onHover)
   host = target
 }
 function detach(): void {
   host?.removeEventListener('pointerdown', onPointerDown, true)
+  host?.removeEventListener('pointermove', onHover)
+  if (hoverFrame) { cancelAnimationFrame(hoverFrame); hoverFrame = 0 }
+  if (hovering) { hovering = false; emit('hoverEntrance', false) }
+  if (hoveredTable !== null) { hoveredTable = null; emit('hoverTable', null) }
   host = null
 }
 
@@ -133,6 +211,7 @@ watch(
       if (stopGesture) {
         stopGesture()
         emit('dragging', false)
+        emit('entranceDragging', false)
       }
     }
   },

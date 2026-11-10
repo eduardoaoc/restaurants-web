@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { RestaurantTableConfig } from '@/types/restaurant-3d/restaurant-layout'
+import type { TableMappingState } from './table-mapping'
 import type { OperationalEvent } from '@/types/restaurant-3d/operational-event'
 import type { OperationalAnchorData, RestaurantTableState } from '@/types/restaurant-3d/restaurant-operations'
 import OperationalBadge from './OperationalBadge.vue'
+import OperationsFlagBadge from './OperationsFlagBadge.vue'
 import RestaurantGuest from './RestaurantGuest.vue'
 import TableInfoLabel from './TableInfoLabel.vue'
 import TableStatusRing from './TableStatusRing.vue'
@@ -29,10 +31,18 @@ const props = withDefaults(defineProps<{
   state?: RestaurantTableState
   /** Top event per target (`targetKey`), already reduced by priority. */
   events?: Map<string, OperationalEvent>
+  /** Literal backend Operations Live flags; never converted into synthetic events. */
+  operationalFlags?: readonly string[]
   /** Reference time (ms) for relative labels such as "Espera 18 min". */
   now?: number
   /** This table is the one currently open in the detail sheet (or picked in the editor). */
   selected?: boolean
+  /** Mapping status is shown only in edit mode; it carries no operational data. */
+  mappingState?: TableMappingState
+  mappingLabel?: string
+  /** Edit mode only: pointer hover, and a placement the layout refused (overlap). */
+  hovered?: boolean
+  invalid?: boolean
   /**
    * Operational layer (status ring, badges, guests, occupancy line). Off in
    * layout editing: presentation only, the state itself is untouched.
@@ -42,7 +52,7 @@ const props = withDefaults(defineProps<{
   guestBodies?: boolean
   /** Chair indexes drawn by an animated prop instead (customer sitting down / standing up): hide the static one. */
   hiddenChairs?: readonly number[]
-}>(), { showOperational: true, guestBodies: true, hiddenChairs: () => [] })
+}>(), { showOperational: true, guestBodies: true, hiddenChairs: () => [], operationalFlags: () => [] })
 
 const emit = defineEmits<{
   /** A click anywhere on the table: top, base, chairs or its hit area. */
@@ -140,13 +150,15 @@ const backY = CHAIR_SEAT_HEIGHT + CHAIR_BACK_HEIGHT / 2
 
     <!-- Ring on the floor around the table; none while it is neutral (available) -->
     <TableStatusRing
-      v-if="visualState !== 'neutral' || selected"
+      v-if="visualState !== 'neutral' || selected || hovered || invalid"
       :selection-style="showOperational ? 'operation' : 'editor'"
       :width="dimensions.width"
       :depth="dimensions.depth"
       :round="table.shape === 'round'"
       :visual-state="visualState"
       :selected="selected"
+      :hovered="hovered"
+      :invalid="invalid"
     />
 
     <!-- Table top -->
@@ -250,6 +262,8 @@ const backY = CHAIR_SEAT_HEIGHT + CHAIR_BACK_HEIGHT / 2
         :occupied-at="state?.occupiedAt ?? null"
         :now="now ?? Date.now()"
         :identity-only="!showOperational"
+        :mapping-state="mappingState"
+        :mapping-label="mappingLabel"
       />
     </TresGroup>
 
@@ -259,6 +273,9 @@ const backY = CHAIR_SEAT_HEIGHT + CHAIR_BACK_HEIGHT / 2
       :name="`anchor:table:${table.id}`"
       :user-data="anchorData"
     >
+      <TresGroup v-if="showOperational && operationalFlags.length" :position="[0, 0.25, 0]">
+        <OperationsFlagBadge :flags="operationalFlags" />
+      </TresGroup>
       <OperationalBadge
         v-if="tableBadge"
         :badge="tableBadge"

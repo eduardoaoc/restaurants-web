@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { OperationalVisualState } from '@/types/restaurant-3d/operational-event'
 import { buildRingBand } from './ring-geometry'
-import { EDITOR_SELECTION_BANDS, RING_MARGIN, SELECTION_BAND, getRingBands } from './ring-style'
+import { EDITOR_HOVER_BANDS, EDITOR_INVALID_BANDS, EDITOR_SELECTION_BANDS, RING_MARGIN, SELECTION_BAND, getRingBands } from './ring-style'
 
 /**
  * Glowing floor ring around an active table, in the table's local space (so it
@@ -18,6 +18,9 @@ const props = defineProps<{
   selected?: boolean
   /** `editor`: a plain, clearly visible outline instead of the thin operational line. */
   selectionStyle?: 'operation' | 'editor'
+  /** Editor only: pointer is over the table / its placement is being refused. */
+  hovered?: boolean
+  invalid?: boolean
 }>()
 
 const BLENDING_NORMAL = 1
@@ -29,7 +32,8 @@ const bands = computed(() => {
   const halfDepth = props.depth / 2 + RING_MARGIN
   const cornerRadius = props.round ? halfWidth : 0.6
   const selection = props.selectionStyle === 'editor' ? EDITOR_SELECTION_BANDS : [SELECTION_BAND]
-  const all = props.selected ? [...getRingBands(props.visualState), ...selection] : getRingBands(props.visualState)
+  const tone = props.invalid ? EDITOR_INVALID_BANDS : props.hovered && !props.selected ? EDITOR_HOVER_BANDS : []
+  const all = [...getRingBands(props.visualState), ...(props.selected ? selection : []), ...tone]
   return all.map((band, index) => ({
     ...band,
     key: `${props.visualState}-${index}-${halfWidth}-${halfDepth}-${cornerRadius}`,

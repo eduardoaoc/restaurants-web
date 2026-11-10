@@ -20,6 +20,8 @@ const props = defineProps<{
   now: number
   /** Table name only (layout editing): no occupancy line. */
   identityOnly?: boolean
+  mappingState?: 'unmapped' | 'mapped' | 'missing' | 'conflict'
+  mappingLabel?: string
 }>()
 
 const title = computed(() => `Mesa ${String(props.tableNumber).padStart(2, '0')}`)
@@ -41,6 +43,11 @@ const detail = computed(() =>
       :class="{ 'table-info-label--available': occupiedAt === null || identityOnly }"
     >
       <span class="table-info-label__title">{{ title }}</span>
+      <span
+        v-if="identityOnly && mappingLabel"
+        class="table-info-label__mapping"
+        :class="`table-info-label__mapping--${mappingState ?? 'unmapped'}`"
+      >{{ mappingLabel }}</span>
       <span
         v-if="!identityOnly"
         class="table-info-label__detail"
@@ -76,6 +83,16 @@ const detail = computed(() =>
   font-variant-numeric: tabular-nums;
   color: rgb(242 234 227 / 0.72);
 }
+
+.table-info-label__mapping {
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.table-info-label__mapping--mapped { background: #244734; color: #b8edc7; }
+.table-info-label__mapping--unmapped { background: #3b3b3b; color: #f2eae3; }
+.table-info-label__mapping--missing, .table-info-label__mapping--conflict { background: #632c27; color: #ffd8d3; }
 
 .table-info-label--available {
   background: rgb(23 24 28 / 0.45);

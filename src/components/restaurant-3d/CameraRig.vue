@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onBeforeUnmount, shallowRef, watch } from 'vue'
+import { onBeforeUnmount, onMounted, shallowRef, watch } from 'vue'
 import { useTres } from '@tresjs/core'
 import { OrbitControls } from '@tresjs/cientos'
 import { PerspectiveCamera } from 'three'
+import { cameraFit } from './camera-fit'
 
 /**
  * OrbitControls plus the "focus a table" camera move. Lives inside the
@@ -25,7 +26,9 @@ const props = withDefaults(defineProps<{
   focus: { x: number; z: number } | null
   /** Off while a table is being dragged in the editor, so the camera doesn't orbit. */
   orbitEnabled?: boolean
-}>(), { orbitEnabled: true })
+  /** The `cameraFit` the starting pose was built with (the owner estimated it before the canvas had a size). */
+  initialFit?: number
+}>(), { orbitEnabled: true, initialFit: 1 })
 
 const DURATION_MS = 300
 /** Camera-to-target distance when focused (the default view sits at ~18 m). */
@@ -158,7 +161,50 @@ watch(
   },
 )
 
-onBeforeUnmount(cancelAnimation)
+// --- Responsive framing -------------------------------------------------------------------------------------------
+// When the scene is resized (rotation, window, dock layout) the camera moves along its own viewing direction to the
+// distance that suits the new aspect. Only while the person has not moved the camera themselves and no table is
+// focused: an intentional view is never reset. Debounced, and a no-op when the fit barely changes.
+let appliedFit = props.initialFit
+let userMovedCamera = false
+let fitTimer: ReturnType<typeof setTimeout> | undefined
+const onUserStart = () => { userMovedCamera = true }
+
+function refit(): void {
+  const cam = perspectiveCamera()
+  const ctl = orbit()
+  if (!cam || !ctl || userMovedCamera || props.focus || frame !== null) return
+  const fit = cameraFit(sizes.width.value / Math.max(1, sizes.height.value))
+  if (Math.abs(fit - appliedFit) < 0.03) return
+  const ratio = fit / appliedFit
+  cam.position.set(
+    ctl.target.x + (cam.position.x - ctl.target.x) * ratio,
+    ctl.target.y + (cam.position.y - ctl.target.y) * ratio,
+    ctl.target.z + (cam.position.z - ctl.target.z) * ratio,
+  )
+  appliedFit = fit
+  ctl.update()
+}
+
+watch([sizes.width, sizes.height], () => {
+  clearTimeout(fitTimer)
+  fitTimer = setTimeout(refit, 150)
+})
+onMounted(() => {
+  // The controls object arrives after mount; attach once it exists.
+  const attach = (): void => {
+    const target = orbit() as (ControlsLike & { addEventListener?: (type: string, fn: () => void) => void }) | null
+    if (target?.addEventListener) target.addEventListener('start', onUserStart)
+    else setTimeout(attach, 50)
+  }
+  attach()
+  fitTimer = setTimeout(refit, 0) // the real canvas size may differ from the estimate made at setup
+})
+
+onBeforeUnmount(() => {
+  cancelAnimation()
+  clearTimeout(fitTimer)
+})
 </script>
 
 <template>
@@ -169,7 +215,7 @@ onBeforeUnmount(cancelAnimation)
     :damping-factor="0.08"
     :target="[0.8, 0.4, 0]"
     :min-distance="6"
-    :max-distance="30"
+    :max-distance="42"
     :max-polar-angle="Math.PI / 2.1"
   />
 </template>

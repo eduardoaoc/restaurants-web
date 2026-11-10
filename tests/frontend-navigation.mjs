@@ -12,6 +12,7 @@ try {
   const rp = await server.ssrLoadModule('/src/components/restaurant-3d/navigation/route-path.ts')
   const ci = await server.ssrLoadModule('/src/components/restaurant-3d/characters/chair-interaction.ts')
   const place = await server.ssrLoadModule('/src/components/restaurant-3d/characters/customer-placement.ts')
+  const { GuestActor } = await server.ssrLoadModule('/src/components/restaurant-3d/characters/guest-actor.ts')
   const { mockLayout } = await server.ssrLoadModule('/src/data/restaurant-3d/mock-layout.ts')
   const { guestFixture } = await server.ssrLoadModule('/src/data/restaurant-3d/guest-fixtures.ts')
 
@@ -30,6 +31,21 @@ try {
   const rectDist = (lx, lz, cz) => Math.hypot(Math.max(Math.abs(lx) - 0.22, 0), Math.max(Math.abs(lz - cz) - 0.22, 0))
 
   check('30 seats are covered by the fixture', () => assert.equal(full.length, 30))
+
+  check('session transfer keeps the actor identity and relocates its existing seated actor', () => {
+    const actor = Object.create(GuestActor.prototype)
+    Object.assign(actor, {
+      guestId: '900:seat:0', tableId: 'source-layout', seatIndex: 0, current: 'seated', standZ: 0.5,
+      seat: { x: 1, z: 1, yaw: 0, ref: { tableId: 'source-layout', chairIndex: 0 } },
+      group: { position: { set(x, y, z) { this.x = x; this.y = y; this.z = z } }, rotation: { y: 0 } },
+      model: { position: { set(x, y, z) { this.x = x; this.y = y; this.z = z } } },
+    })
+    actor.setSeat({ x: 4, z: -2, yaw: 1, ref: { tableId: 'destination-layout', chairIndex: 0 } }, 'destination-layout', 0)
+    assert.equal(actor.guestId, '900:seat:0')
+    assert.equal(actor.tableId, 'destination-layout')
+    assert.equal(actor.seatIndex, 0)
+    assert.deepEqual([actor.group.position.x, actor.group.position.z], [4, -2])
+  })
 
   check('entrance validation: inside ok, outside floor and inside furniture rejected', () => {
     assert.deepEqual(nav.validateEntrance(grid, entrance), { ok: true })

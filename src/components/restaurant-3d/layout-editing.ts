@@ -8,6 +8,17 @@ export function snapToGrid(value: number, step = GRID_STEP): number {
   return Math.round(value / step) * step + 0
 }
 
+/**
+ * A coordinate typed into a number field. `v-model` on `<input type="number">` yields a number (or '' when empty),
+ * so both are handled; anything that is not a finite number is NaN, never silently 0.
+ */
+export function parseCoordinate(value: unknown): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : NaN
+  if (typeof value !== 'string' || value.trim() === '') return NaN
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : NaN
+}
+
 /** Rotation in degrees, wrapped to [0, 360). */
 export function normalizeRotation(degrees: number): number {
   return ((degrees % 360) + 360) % 360

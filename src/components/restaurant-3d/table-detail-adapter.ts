@@ -39,6 +39,8 @@ export function toOperationsTable(
   const session = state && occupiedAt !== null
     ? {
         id: labSessionId(table),
+        status: 'occupied',
+        opened_at: occupiedAt,
         started_at: occupiedAt,
         elapsed_seconds: Math.max(0, Math.floor((now - Date.parse(occupiedAt)) / 1000)),
         guest_count: state.guests.length,
