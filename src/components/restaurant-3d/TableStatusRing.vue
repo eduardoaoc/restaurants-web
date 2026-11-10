@@ -36,7 +36,9 @@ const bands = computed(() => {
   const all = [...getRingBands(props.visualState), ...(props.selected ? selection : []), ...tone]
   return all.map((band, index) => ({
     ...band,
-    key: `${props.visualState}-${index}-${halfWidth}-${halfDepth}-${cornerRadius}`,
+    // The key must identify the band's own look: a hovered ring turning into a selected one reuses index 0, and
+    // patching a live buffer attribute with new `args` throws inside TresJS, so a different band has to remount.
+    key: `${props.visualState}-${index}-${band.from}-${band.to}-${band.color}-${halfWidth}-${halfDepth}-${cornerRadius}`,
     // Stacked a hair apart so overlapping bands never z-fight.
     y: FLOOR_LIFT + index * 0.001,
     mesh: buildRingBand(halfWidth, halfDepth, cornerRadius, band.from, band.to),
