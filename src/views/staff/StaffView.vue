@@ -18,7 +18,7 @@ import { usePermissions } from '@/composables/usePermissions'
 import { useAuthStore } from '@/stores/auth'
 import { useRestaurantStore } from '@/stores/restaurant'
 import { describeApiError } from '@/utils/error-message'
-import { isStaffActive, staffRoleLabelKey } from '@/utils/staff'
+import { isStaffActive, staffMatchesId, staffRoleLabelKey } from '@/utils/staff'
 import type { CreateStaffInvitationPayload } from '@/types/invitation'
 import type { StaffMember, StaffStatus, UpdateStaffPayload } from '@/types/staff'
 
@@ -111,6 +111,7 @@ const filteredStaff = computed(() => {
 
     const roleLabel = member.role ? t(staffRoleLabelKey(member.role.slug)) : ''
     return (
+      staffMatchesId(needle, member.id) ||
       member.name.toLowerCase().includes(needle) ||
       member.email.toLowerCase().includes(needle) ||
       roleLabel.toLowerCase().includes(needle)
@@ -371,7 +372,7 @@ async function onSave(payload: CreateStaffInvitationPayload | UpdateStaffPayload
                   </span>
                   <span class="mt-4 flex w-full min-w-0 flex-wrap items-end justify-between gap-2 border-t border-hairline pt-3">
                     <span class="min-w-0 flex-1 text-caption text-fg-muted">
-                      <span v-for="restaurant in member.restaurants" :key="restaurant.id" class="block truncate">{{ restaurant.name }}<span v-if="member.restaurants.length > 1" class="text-fg-subtle"> · {{ restaurant.sub_id }}</span></span>
+                      <span v-for="restaurant in member.restaurants" :key="restaurant.id" class="block truncate">{{ restaurant.name }}</span>
                     </span>
                     <span v-if="canReadShifts && activeShiftByUserId[member.id]" class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-success/30 bg-success-subtle px-2 py-1 text-caption font-medium text-success">
                       <span class="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />{{ t('staff.shift.onShift') }}

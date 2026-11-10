@@ -82,8 +82,8 @@ assert.equal(classifyOperationAge(-5, generatedAt, openDay).kind, 'invalid')
 assert.equal(classifyOperationAge(null, generatedAt, openDay).kind, 'invalid')
 
 const queueTables = [
-  { id: 1, name: 'T1', number: 1, capacity: 4, zone_id: 1, layout: {}, primary_status: 'ready', flags: [], session: { id: 1, started_at: '', elapsed_seconds: 900, guest_count: 2, assigned_waiter: { id: 9, name: 'Ana', sub_id: null } }, orders: { open_count: 2, waiting_approval: 0, preparing: 0, ready: 2 }, billing: null },
-  { id: 2, name: 'T2', number: 2, capacity: 4, zone_id: 1, layout: {}, primary_status: 'bill_requested', flags: [], session: { id: 2, started_at: '', elapsed_seconds: 900, guest_count: 3, assigned_waiter: null }, orders: { open_count: 0, waiting_approval: 0, preparing: 0, ready: 0 }, billing: null },
+  { id: 1, name: 'T1', number: 1, capacity: 4, zone_id: 1, layout: {}, primary_status: 'ready', flags: [], session: { id: 1, started_at: '', elapsed_seconds: 900, guest_count: 2, guest_count_version: 1, assigned_waiter: { id: 9, name: 'Ana', sub_id: null } }, orders: { open_count: 2, waiting_approval: 0, preparing: 0, ready: 2 }, billing: null },
+  { id: 2, name: 'T2', number: 2, capacity: 4, zone_id: 1, layout: {}, primary_status: 'bill_requested', flags: [], session: { id: 2, started_at: '', elapsed_seconds: 900, guest_count: 3, guest_count_version: 1, assigned_waiter: null }, orders: { open_count: 0, waiting_approval: 0, preparing: 0, ready: 0 }, billing: null },
 ]
 const alerts = [
   { id: 'a1', type: 'order_ready', severity: 'warning', table_id: 1, table_session_id: 1, user_id: null, age_seconds: 90 },
@@ -110,7 +110,7 @@ const table = {
   id: 8, name: 'Terrace 8', number: 8, capacity: 4, zone_id: 2,
   layout: { x: 0.5, y: 0.5, rotation: 0, shape: 'square', width: 84, height: 64 },
   primary_status: 'occupied', flags: [],
-  session: { id: 12, started_at: '2026-10-26T12:00:00Z', elapsed_seconds: 1200, guest_count: 3, assigned_waiter: null },
+  session: { id: 12, started_at: '2026-10-26T12:00:00Z', elapsed_seconds: 1200, guest_count: 3, guest_count_version: 1, assigned_waiter: null },
   orders: { open_count: 1, waiting_approval: 0, preparing: 1, ready: 0 }, billing: null,
 }
 let selectedTable = null

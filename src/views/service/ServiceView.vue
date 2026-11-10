@@ -200,6 +200,7 @@ function toOperationsTable(table: FloorPlanTable): OperationsTable {
           started_at: table.active_session.opened_at,
           elapsed_seconds: Math.max(0, Math.floor((Date.now() - new Date(table.active_session.opened_at).getTime()) / 1000)),
           guest_count: table.active_session.guest_count,
+          guest_count_version: table.active_session.guest_count_version,
           assigned_waiter: null,
         }
       : null,

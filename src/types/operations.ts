@@ -88,6 +88,7 @@ export interface TableActiveSession {
   started_at: string
   elapsed_seconds: number
   guest_count: number
+  guest_count_version: number
   assignment_status?: 'assigned' | 'pending'
   assigned_waiter: TableAssignedWaiter | null
 }

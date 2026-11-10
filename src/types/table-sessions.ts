@@ -18,6 +18,7 @@ export interface TableSession {
   table_id: number
   restaurant_id: number
   guest_count: number
+  guest_count_version: number
   status: string
   payment_status: string
   opened_at: string
@@ -33,6 +34,11 @@ export interface TableSession {
 
 export interface OpenTablePayload {
   guest_count: number
+}
+
+export interface UpdateGuestCountPayload {
+  guest_count: number
+  expected_version: number
 }
 
 export interface TransferSessionPayload {

@@ -17,8 +17,10 @@ interface FloorLayoutPayload {
     seats: number
     position: { x: number; z: number }
     rotation: number
+    backendTableId?: number | null
   }>
   updated_at: string | null
+  entrance?: { x: number; z: number } | null
 }
 
 interface FloorLayoutEnvelope {
@@ -53,8 +55,14 @@ function toDocument(payload: FloorLayoutPayload): RestaurantLayoutDocument {
     seats: table.seats,
     position: { x: table.position.x, z: table.position.z },
     rotation: table.rotation,
+    ...(table.backendTableId === undefined ? {} : { backendTableId: table.backendTableId }),
   }))
-  return { version: 1, floor: { width, depth, gridStep }, tables }
+  return {
+    version: 1,
+    floor: { width, depth, gridStep },
+    ...(payload.entrance === undefined ? {} : { entrance: payload.entrance }),
+    tables,
+  }
 }
 
 /**

@@ -26,6 +26,7 @@ export interface RealtimeEventEnvelope {
 export type RealtimeEventName =
   | 'table.session.opened'
   | 'table.session.closed'
+  | 'table.session.guest_count_changed'
   | 'table.session.transferred'
   | 'table.waiter.assigned'
   | 'table.waiter.reassigned'
@@ -51,6 +52,7 @@ export type RealtimeEventName =
 export const REALTIME_EVENT_NAMES: readonly RealtimeEventName[] = [
   'table.session.opened',
   'table.session.closed',
+  'table.session.guest_count_changed',
   'table.session.transferred',
   'table.waiter.assigned',
   'table.waiter.reassigned',

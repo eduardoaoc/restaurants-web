@@ -30,7 +30,7 @@ const table = {
   id: 11, name: 'Terrace 12 with a long translated name', number: 12, capacity: 4, zone_id: 3,
   layout: { x: null, y: null, rotation: null, shape: null, width: null, height: null },
   primary_status: 'occupied', flags: [],
-  session: { id: 2, started_at: '2026-10-26T11:00:00Z', elapsed_seconds: 1850, guest_count: 3,
+  session: { id: 2, started_at: '2026-10-26T11:00:00Z', elapsed_seconds: 1850, guest_count: 3, guest_count_version: 1,
     assigned_waiter: { id: 9, name: 'A very long waiter name' } },
   orders: { open_count: 0, waiting_approval: 0, preparing: 0, ready: 0 }, billing: null,
 }

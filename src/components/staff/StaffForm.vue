@@ -38,7 +38,6 @@ const roleSelectId = useId()
 
 interface AssignmentDraft {
   restaurantId: number | null
-  employeeCode: string
 }
 
 const name = ref('')
@@ -66,8 +65,8 @@ function seed(): void {
   email.value = member?.email ?? ''
   role.value = (member?.role?.slug as StaffRoleSlug) ?? 'waiter'
   assignments.value = member
-    ? member.restaurants.map((restaurant) => ({ restaurantId: restaurant.id, employeeCode: restaurant.sub_id }))
-    : [{ restaurantId: restaurantStore.currentRestaurantId, employeeCode: '' }]
+    ? member.restaurants.map((restaurant) => ({ restaurantId: restaurant.id }))
+    : [{ restaurantId: restaurantStore.currentRestaurantId }]
   localErrors.value = {}
   initialDraft.value = JSON.stringify({
     name: name.value,
@@ -83,7 +82,7 @@ watch(() => props.member, seed)
 defineExpose({ isDirty })
 
 function addAssignment(): void {
-  assignments.value = [...assignments.value, { restaurantId: null, employeeCode: '' }]
+  assignments.value = [...assignments.value, { restaurantId: null }]
 }
 
 function removeAssignment(index: number): void {
@@ -92,7 +91,7 @@ function removeAssignment(index: number): void {
 
 /**
  * Laravel returns nested validation keys verbatim
- * (`restaurant_assignments.0.sub_id`), so field errors are read by exact key
+ * (`restaurant_assignments.0.restaurant_id`), so field errors are read by exact key
  * and shown on the field that caused them — never as one opaque banner.
  */
 function fieldError(key: string): string | undefined {
@@ -133,9 +132,6 @@ function validate(): boolean {
     if (assignment.restaurantId === null) {
       errors[`restaurant_assignments.${index}.restaurant_id`] = t('staff.errors.restaurantRequired')
     }
-    if (!assignment.employeeCode.trim()) {
-      errors[`restaurant_assignments.${index}.sub_id`] = t('staff.errors.employeeCodeRequired')
-    }
   })
 
   localErrors.value = errors
@@ -149,7 +145,6 @@ function submit(): void {
     .filter((assignment) => assignment.restaurantId !== null)
     .map((assignment) => ({
       restaurant_id: assignment.restaurantId as number,
-      sub_id: assignment.employeeCode.trim(),
     }))
 
   // Create = invite: the person chooses their own password on acceptance
@@ -170,12 +165,13 @@ function submit(): void {
   if (email.value.trim() !== props.member?.email) payload.email = email.value.trim()
   if (role.value !== props.member?.role?.slug) payload.role = role.value
 
+  // Only the restaurant set can change; employee codes are backend-generated.
   const originalAssignments = (props.member?.restaurants ?? [])
-    .map((restaurant) => `${restaurant.id}:${restaurant.sub_id}`)
+    .map((restaurant) => String(restaurant.id))
     .sort()
     .join('|')
   const nextAssignments = restaurantAssignments
-    .map((assignment) => `${assignment.restaurant_id}:${assignment.sub_id}`)
+    .map((assignment) => String(assignment.restaurant_id))
     .sort()
     .join('|')
   if (originalAssignments !== nextAssignments) payload.restaurant_assignments = restaurantAssignments
@@ -187,6 +183,7 @@ function submit(): void {
 <template>
   <form class="flex flex-col gap-4" @submit.prevent="submit">
     <p v-if="mode === 'create'" class="text-body-md text-on-surface-variant">{{ t('staffInvitations.formHelp') }}</p>
+    <p v-if="mode === 'create'" class="text-label-md text-on-surface-variant">{{ t('staff.form.idAutoHelp') }}</p>
     <ATextField
       v-model="name"
       :label="t('staff.form.nameLabel')"
@@ -226,7 +223,7 @@ function submit(): void {
     </div>
 
     <!-- Where this person works. Grouped apart from their identity, since a
-         person can be in several restaurants and each needs its own code. -->
+         person can be in several restaurants. -->
     <ASurface tone="low" radius="md" class="flex flex-col gap-3 p-3">
       <div>
         <p class="text-label-lg font-medium text-on-surface">{{ t('staff.form.assignmentsTitle') }}</p>
@@ -252,13 +249,6 @@ function submit(): void {
             </select>
           </div>
 
-          <ATextField
-            v-model="assignment.employeeCode"
-            class="min-w-32 flex-1"
-            :label="t('staff.form.employeeCodeLabel')"
-            :disabled="saving"
-          />
-
           <AIconButton
             v-if="assignments.length > 1"
             :label="t('staff.form.removeAssignment')"
@@ -275,13 +265,6 @@ function submit(): void {
           role="alert"
         >
           {{ fieldError(`restaurant_assignments.${index}.restaurant_id`) }}
-        </p>
-        <p v-if="fieldError(`restaurant_assignments.${index}.sub_id`)" class="text-label-md text-error" role="alert">
-          {{
-            /unique|taken/i.test(fieldError(`restaurant_assignments.${index}.sub_id`) ?? '')
-              ? t('staff.errors.employeeCodeTaken')
-              : fieldError(`restaurant_assignments.${index}.sub_id`)
-          }}
         </p>
       </div>
 

@@ -18,7 +18,9 @@ export function useShellLayout(topbar: Ref<HTMLElement | null>, bottom: Ref<HTML
   const collapsed = ref(readSidebarCollapsed())
   const { viewport } = useVisualViewport()
   const sidebar = computed(() => desktop.value && !collapsed.value)
-  const mode = computed(() => compact.value ? 'bottom' : sidebar.value ? 'sidebar' : 'rail')
+  // Desktop always lists every destination (expanded or icon-only); the rail
+  // with a More overflow remains the tablet presentation.
+  const mode = computed(() => compact.value ? 'bottom' : desktop.value ? 'sidebar' : 'rail')
   const keyboard = computed(() => compact.value && viewport.value.keyboard)
   let resize: ResizeObserver | undefined
   let previousTop = '', previousBottom = '', previousShell: string | null = null

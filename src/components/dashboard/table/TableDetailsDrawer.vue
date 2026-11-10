@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhCaretDown, PhCheck, PhUserCircleMinus, PhX } from '@phosphor-icons/vue'
+import { PhCaretDown, PhCheck, PhMinus, PhPlus, PhUserCircleMinus, PhX } from '@phosphor-icons/vue'
 
 import { normalizeApiError } from '@/api/errors'
 import AButton from '@/components/ui/AButton.vue'
@@ -71,6 +71,7 @@ const restaurantStore = useRestaurantStore()
 // manage_tables-only on the real backend (verified live: 403 otherwise),
 // the exact same capability that already gates opening a table here.
 const canOpenTable = computed(() => can('manage_tables'))
+const canUpdateGuestCount = computed(() => can('manage_tables'))
 const canCloseTable = computed(() => can('manage_tables') || can('close_bill'))
 const canAssignWaiters = computed(() => can('assign_waiters'))
 const canTransferTables = computed(() => can('transfer_tables'))
@@ -98,6 +99,14 @@ const showTransfer = ref(false)
 const showWaiterMenu = ref(false)
 const showOrderComposer = ref(false)
 const showCloseConfirm = ref(false)
+const showGuestCountEditor = ref(false)
+const showGuestCountConfirm = ref(false)
+const guestCountDraft = ref(1)
+const pendingGuestCount = ref<number | null>(null)
+const pendingGuestCountVersion = ref<number | null>(null)
+const waitingForGuestCountRefresh = ref(false)
+const confirmedGuestCount = ref<{ sessionId: number; count: number; version: number } | null>(null)
+const guestCountSaving = ref(false)
 const openGuestCount = ref('2')
 const submittingAction = ref<string | null>(null)
 const feedback = ref<{ kind: 'success' | 'error'; message: string } | null>(null)
@@ -106,6 +115,38 @@ const feedback = ref<{ kind: 'success' | 'error'; message: string } | null>(null
 // — the ONLY signal the Close button's disabled state below reads, never a
 // locally-derived balance check (see TableBillPanel's own docblock).
 const bill = ref<SessionBill | null>(null)
+const authoritativeGuestCount = computed(() => {
+  const session = props.table?.session
+  return session && confirmedGuestCount.value?.sessionId === session.id
+    ? confirmedGuestCount.value.count
+    : session?.guest_count ?? 0
+})
+const guestCountLimit = computed(() => props.table?.capacity ?? 100)
+const guestCountCanSave = computed(() => !!props.table?.session
+  && Number.isInteger(guestCountDraft.value)
+  && guestCountDraft.value >= 1
+  && guestCountDraft.value <= guestCountLimit.value
+  && guestCountDraft.value !== authoritativeGuestCount.value
+  && !guestCountSaving.value
+  && !waitingForGuestCountRefresh.value)
+
+watch(() => [props.table?.session?.id, props.table?.session?.guest_count_version] as const, ([sessionId, version], [previousId, previousVersion]) => {
+  if (sessionId !== previousId) {
+    confirmedGuestCount.value = null
+    showGuestCountEditor.value = false
+    showGuestCountConfirm.value = false
+    waitingForGuestCountRefresh.value = false
+    if (props.table?.session) guestCountDraft.value = props.table.session.guest_count
+  } else if (version !== previousVersion && props.table?.session) {
+    if (confirmedGuestCount.value?.version !== version) confirmedGuestCount.value = null
+    if (waitingForGuestCountRefresh.value) {
+      waitingForGuestCountRefresh.value = false
+      pendingGuestCountVersion.value = version ?? null
+      if (pendingGuestCount.value !== props.table.session.guest_count) showGuestCountConfirm.value = true
+      else pendingGuestCount.value = null
+    }
+  }
+})
 
 watch(
   () => `${restaurantStore.currentRestaurantId}:${props.table?.id}:${props.table?.session?.id}:${props.initialSection}`,
@@ -124,6 +165,13 @@ watch(
     showWaiterMenu.value = false
     showOrderComposer.value = false
     showCloseConfirm.value = false
+    showGuestCountEditor.value = false
+    showGuestCountConfirm.value = false
+    pendingGuestCount.value = null
+    pendingGuestCountVersion.value = null
+    waitingForGuestCountRefresh.value = false
+    confirmedGuestCount.value = null
+    if (props.table?.session) guestCountDraft.value = props.table.session.guest_count
     feedback.value = null
     bill.value = null
     if (props.serviceMode && props.initialSection && props.initialSection !== 'overview') {
@@ -227,6 +275,80 @@ function openTable(): void {
     return
   }
   void run('open', () => tablesService.open(props.table!.id, { guest_count: guestCount }), 'tableDrawer.feedback.opened')
+}
+
+function beginGuestCountEdit(): void {
+  if (!props.table?.session || !canUpdateGuestCount.value) return
+  guestCountDraft.value = authoritativeGuestCount.value
+  pendingGuestCount.value = null
+  pendingGuestCountVersion.value = null
+  showGuestCountEditor.value = true
+}
+
+function changeGuestCount(delta: -1 | 1): void {
+  if (!showGuestCountEditor.value || guestCountSaving.value || waitingForGuestCountRefresh.value) return
+  const next = guestCountDraft.value + delta
+  if (next < 1 || next > guestCountLimit.value) return
+  guestCountDraft.value = next
+}
+
+function requestGuestCountConfirmation(): void {
+  const session = props.table?.session
+  if (!session || !guestCountCanSave.value) return
+  pendingGuestCount.value = guestCountDraft.value
+  pendingGuestCountVersion.value = session.guest_count_version
+  showGuestCountConfirm.value = true
+}
+
+function cancelGuestCountEdit(): void {
+  showGuestCountEditor.value = false
+  showGuestCountConfirm.value = false
+  waitingForGuestCountRefresh.value = false
+  pendingGuestCount.value = null
+  pendingGuestCountVersion.value = null
+}
+
+function cancelGuestCountConfirmation(): void {
+  showGuestCountConfirm.value = false
+  pendingGuestCount.value = null
+  pendingGuestCountVersion.value = null
+}
+
+async function confirmGuestCountChange(): Promise<void> {
+  const session = props.table?.session
+  const nextCount = pendingGuestCount.value
+  const expectedVersion = pendingGuestCountVersion.value
+  if (!session || nextCount === null || expectedVersion === null || guestCountSaving.value) return
+
+  guestCountSaving.value = true
+  feedback.value = null
+  try {
+    const updated = await tableSessionsService.updateGuestCount(session.id, {
+      guest_count: nextCount,
+      expected_version: expectedVersion,
+    })
+    confirmedGuestCount.value = { sessionId: updated.id, count: updated.guest_count, version: updated.guest_count_version }
+    guestCountDraft.value = updated.guest_count
+    showGuestCountConfirm.value = false
+    showGuestCountEditor.value = false
+    pendingGuestCount.value = null
+    feedback.value = { kind: 'success', message: t('tableDrawer.guestCountUpdated') }
+    if (props.serviceMode) snackbar.showSnackbar({ message: t('tableDrawer.guestCountUpdated'), kind: 'success' })
+    emit('refresh')
+  } catch (error) {
+    const apiError = normalizeApiError(error)
+    if (apiError.code === 'GUEST_COUNT_VERSION_CONFLICT') {
+      showGuestCountConfirm.value = false
+      waitingForGuestCountRefresh.value = true
+      feedback.value = { kind: 'error', message: t('tableDrawer.guestCountConflict') }
+      emit('refresh')
+    } else {
+      feedback.value = { kind: 'error', message: describeApiError(apiError, t) }
+      if (apiError.kind === 'conflict' || apiError.kind === 'not_found') emit('refresh')
+    }
+  } finally {
+    guestCountSaving.value = false
+  }
 }
 
 // Close is a sensitive action (§12/§13) — the button only opens the confirm
@@ -373,7 +495,7 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
           </div>
           <div class="rounded-lg bg-surface-container p-3">
             <span class="block text-label-md text-on-surface-variant">{{ t('tableDrawer.guests') }}</span>
-            <span class="mt-1 block text-title-md font-semibold text-on-surface">{{ table.session.guest_count }}</span>
+            <span class="mt-1 block text-title-md font-semibold text-on-surface">{{ authoritativeGuestCount }}</span>
           </div>
           <div class="rounded-lg bg-surface-container p-3">
             <span class="block text-label-md text-on-surface-variant">{{ t('tableDrawer.waiter') }}</span>
@@ -386,6 +508,37 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
             <span class="mt-1 block text-title-md font-semibold text-on-surface">
               {{ table.billing ? formatMoney(table.billing.total, locale, currency) : '—' }}
             </span>
+          </div>
+        </div>
+        <div v-if="canUpdateGuestCount" class="mt-3">
+          <AButton
+            v-if="!showGuestCountEditor"
+            variant="secondary"
+            :disabled="guestCountSaving"
+            @click="beginGuestCountEdit"
+          >
+            {{ t('tableDrawer.editGuests') }}
+          </AButton>
+          <div v-else class="rounded-lg border border-outline-variant bg-surface-container p-3">
+            <p class="text-label-lg font-medium text-on-surface">{{ t('tableDrawer.guestCount') }}</p>
+            <div class="mt-2 flex items-center justify-center gap-4">
+              <AIconButton
+                :label="t('tableDrawer.decreaseGuests')"
+                :disabled="guestCountDraft <= 1 || guestCountSaving || waitingForGuestCountRefresh"
+                @click="changeGuestCount(-1)"
+              ><PhMinus :size="18" /></AIconButton>
+              <output class="min-w-10 text-center text-title-lg font-semibold tabular-nums text-on-surface" aria-live="polite">{{ guestCountDraft }}</output>
+              <AIconButton
+                :label="t('tableDrawer.increaseGuests')"
+                :disabled="guestCountDraft >= guestCountLimit || guestCountSaving || waitingForGuestCountRefresh"
+                @click="changeGuestCount(1)"
+              ><PhPlus :size="18" /></AIconButton>
+            </div>
+            <p class="mt-2 text-center text-body-sm text-on-surface-variant">{{ t('tableDrawer.guestCountCapacity', { capacity: guestCountLimit }) }}</p>
+            <div class="mt-3 flex gap-2">
+              <AButton variant="secondary" :disabled="guestCountSaving" @click="cancelGuestCountEdit">{{ t('common.cancel') }}</AButton>
+              <AButton :disabled="!guestCountCanSave" @click="requestGuestCountConfirmation">{{ t('tableDrawer.saveGuestCount') }}</AButton>
+            </div>
           </div>
         </div>
 
@@ -562,6 +715,16 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
     :loading="submittingAction === 'close'"
     @confirm="confirmClose"
     @cancel="showCloseConfirm = false"
+  />
+
+  <AConfirmDialog
+    v-if="showGuestCountConfirm && pendingGuestCount !== null && table?.session"
+    :label="t('tableDrawer.guestCountConfirmTitle')"
+    :message="t('tableDrawer.guestCountConfirmMessage', { previous: authoritativeGuestCount, next: pendingGuestCount })"
+    :confirm-label="t('tableDrawer.saveGuestCount')"
+    :loading="guestCountSaving"
+    @confirm="confirmGuestCountChange"
+    @cancel="cancelGuestCountConfirmation"
   />
 
   <BillReceiptSheet

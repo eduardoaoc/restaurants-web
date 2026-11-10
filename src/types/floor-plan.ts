@@ -27,6 +27,7 @@ export interface FloorPlanActiveSession {
   id: number
   status: string
   guest_count: number
+  guest_count_version: number
   opened_at: string
 }
 

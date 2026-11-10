@@ -126,7 +126,7 @@ try {
   // effectScope (not SSR): watchers must stay reactive for the switch check.
   const scope = effectScope()
   const composable = scope.run(() => useStaffInvitations(() => true))
-  const payload = { name: 'Ana', email: 'ana@x.es', role: 'waiter', restaurant_assignments: [{ restaurant_id: 20, sub_id: 'W1' }] }
+  const payload = { name: 'Ana', email: 'ana@x.es', role: 'waiter', restaurant_assignments: [{ restaurant_id: 20 }] }
   const one = composable.invite(payload), two = composable.invite(payload)
   inviteResult.resolve({ id: 1, state: 'pending', email: 'ana@x.es' })
   await Promise.all([one, two])

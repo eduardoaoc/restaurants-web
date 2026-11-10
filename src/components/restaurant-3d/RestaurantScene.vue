@@ -58,6 +58,8 @@ const emit = defineEmits<{
   stats: [value: CustomerStats]
 }>()
 const behavior = computed(() => SCENE_MODE_BEHAVIOR[props.mode])
+// Persisted entrance is configuration only; no entrance is inferred for old layouts.
+const entrance = props.entrance ?? props.layout?.entrance ?? null
 
 // Both modes read the same editable in-memory copy, so edits survive a mode switch.
 const source: RestaurantLayout = props.layout

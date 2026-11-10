@@ -27,7 +27,7 @@ const cloneTable = (table: RestaurantTableConfig): RestaurantTableConfig => ({ .
 const signature = (tables: RestaurantTableConfig[]) =>
   JSON.stringify(
     tables
-      .map((t) => [t.id, t.number, t.seats, t.shape, t.position.x, t.position.z, t.rotation])
+      .map((t) => [t.id, t.backendTableId ?? null, t.number, t.seats, t.shape, t.position.x, t.position.z, t.rotation])
       .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
   )
 
@@ -115,6 +115,7 @@ export function useEditableLayout(source: RestaurantLayout, options: EditableLay
   const toDocument = (): RestaurantLayoutDocument => ({
     version: 1,
     floor: { width: FLOOR.width, depth: FLOOR.depth, gridStep: GRID_STEP },
+    ...(source.entrance === undefined ? {} : { entrance: source.entrance ? { ...source.entrance } : null }),
     tables: tables.value.map(cloneTable),
   })
 

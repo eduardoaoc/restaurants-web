@@ -22,6 +22,8 @@ export interface FloorPosition {
 
 export interface RestaurantTableConfig {
   id: string
+  /** Explicit link to the restaurant's numeric API table ID; absent means unmapped. */
+  backendTableId?: number | null
   /** Number shown to staff (distinct from the technical id). */
   number: number
   seats: RestaurantTableSeats
@@ -33,6 +35,8 @@ export interface RestaurantTableConfig {
 
 export interface RestaurantLayout {
   tables: RestaurantTableConfig[]
+  /** Optional configured walk-in point in the same floor coordinates. */
+  entrance?: FloorPosition | null
 }
 
 /** Floor size (metres) and editor grid step, as persisted with a layout. */
@@ -52,5 +56,6 @@ export interface RestaurantFloorSpec {
 export interface RestaurantLayoutDocument {
   version: 1
   floor: RestaurantFloorSpec
+  entrance?: FloorPosition | null
   tables: RestaurantTableConfig[]
 }

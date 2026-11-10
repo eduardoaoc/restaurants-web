@@ -42,6 +42,7 @@ export function toOperationsTable(
         started_at: occupiedAt,
         elapsed_seconds: Math.max(0, Math.floor((now - Date.parse(occupiedAt)) / 1000)),
         guest_count: state.guests.length,
+        guest_count_version: 1,
         assigned_waiter: null,
       }
     : null

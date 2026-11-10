@@ -3,8 +3,10 @@ import { computed, nextTick, ref, watch, type ComponentPublicInstance } from 'vu
 import { useI18n } from 'vue-i18n'
 import {
   PhChartBar,
+  PhCheck,
   PhCheckCircle,
   PhClock,
+  PhCopy,
   PhInfo,
   PhPauseCircle,
   PhPencilSimple,
@@ -15,6 +17,7 @@ import {
 } from '@phosphor-icons/vue'
 
 import AButton from '@/components/ui/AButton.vue'
+import AIconButton from '@/components/ui/AIconButton.vue'
 import AProgress from '@/components/ui/AProgress.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import { normalizeApiError, type ApiError } from '@/api/errors'
@@ -56,6 +59,33 @@ const shiftErrorText = computed(() => {
   if (error.kind === 'validation') return t('staff.shift.errors.ineligible')
   return describeApiError(error, t)
 })
+
+/**
+ * Technical user ID (users.id) — shown so the owner can quote it in support
+ * and audit queries. A label only: it opens nothing and grants no access.
+ * Copy feedback is inline and announced (role=status), like the QR link copy.
+ */
+const idCopied = ref(false)
+let idCopyTimer: ReturnType<typeof setTimeout> | undefined
+
+async function copyUserId(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(String(props.member.id))
+    idCopied.value = true
+    clearTimeout(idCopyTimer)
+    idCopyTimer = setTimeout(() => (idCopied.value = false), 2000)
+  } catch {
+    // Clipboard may be denied; the ID stays visible and selectable.
+    idCopied.value = false
+  }
+}
+
+watch(
+  () => props.member.id,
+  () => {
+    idCopied.value = false
+  },
+)
 
 const restaurantStore = useRestaurantStore()
 const { can } = usePermissions()
@@ -255,6 +285,14 @@ const shiftElapsed = computed(() => {
         <div class="min-w-0 flex-1">
           <h3 class="text-title-lg font-semibold text-on-surface">{{ member.name }}</h3>
           <p class="text-body-md text-on-surface-variant">{{ roleLabel }}</p>
+          <p class="mt-1 flex items-center gap-1 text-label-lg text-on-surface-variant" data-testid="staff-user-id">
+            <span class="select-all">{{ t('staff.detail.userId', { id: member.id }) }}</span>
+            <AIconButton :label="idCopied ? t('staff.detail.userIdCopied') : t('staff.detail.copyUserId')" @click="copyUserId">
+              <PhCheck v-if="idCopied" :size="16" />
+              <PhCopy v-else :size="16" />
+            </AIconButton>
+            <span class="sr-only" role="status" aria-live="polite">{{ idCopied ? t('staff.detail.userIdCopied') : '' }}</span>
+          </p>
         </div>
       </div>
 

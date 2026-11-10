@@ -40,7 +40,7 @@ export interface Invitation {
   role: string | null
   /** Present on platform responses only. */
   organization?: { id: number; name: string }
-  restaurants: { id: number; name: string | null; sub_id: string }[]
+  restaurants: { id: number; name: string | null }[]
   delivery: InvitationDelivery
   expires_at: string
   accepted_at: string | null
@@ -71,7 +71,7 @@ export interface CreateStaffInvitationPayload {
   name: string
   email: string
   role: string
-  restaurant_assignments: { restaurant_id: number; sub_id: string }[]
+  restaurant_assignments: { restaurant_id: number }[]
 }
 
 /** POST /api/v1/platform/restaurants — exactly one organization mode. */

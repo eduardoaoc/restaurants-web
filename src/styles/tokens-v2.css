@@ -73,6 +73,17 @@
   --pane-detail: 420px;
   --sidebar: 240px;
   --rail: 72px;
+  /* Floating desktop navigation (>=1280px): geometry, material and motion. */
+  --nav-width: 232px;
+  --nav-width-collapsed: 64px;
+  --nav-item-height: 44px;
+  --nav-item-radius: 12px;
+  --nav-icon: 20px;
+  --nav-indicator-width: 3px;
+  --nav-indicator-height: 20px;
+  --nav-duration-hover: 160ms;
+  --nav-duration-width: 220ms;
+  --nav-tooltip-delay: 350ms;
   --form-max: 720px;
   --dialog-sm: 400px;
   --dialog-md: 560px;
@@ -83,6 +94,11 @@
   --icon-sm: 16px;
   --icon-md: 20px;
   --icon-lg: 24px;
+
+  --nav-surface: var(--color-surface);
+  --nav-border: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+  --nav-item-hover: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  --nav-item-active: color-mix(in srgb, var(--color-primary) 10%, transparent);
 }
 
 /* Shared dark declarations without a second theme implementation/store.
@@ -128,6 +144,9 @@
     --elevation-floating: 0 8px 24px rgb(0 0 0 / .40);
     --elevation-modal: 0 24px 48px rgb(0 0 0 / .50);
     --ritma-tactile-shadow: 0 4px 10px rgb(0 0 0 / .24), inset 0 1px rgb(255 255 255 / .055);
+  --nav-border: rgb(255 255 255 / .08);
+    --nav-item-hover: rgb(255 255 255 / .06);
+    --nav-item-active: color-mix(in srgb, var(--color-primary) 11%, transparent);
   }
 }
 
@@ -167,6 +186,9 @@
   --elevation-floating: 0 8px 24px rgb(0 0 0 / .40);
   --elevation-modal: 0 24px 48px rgb(0 0 0 / .50);
   --ritma-tactile-shadow: 0 4px 10px rgb(0 0 0 / .24), inset 0 1px rgb(255 255 255 / .055);
+  --nav-border: rgb(255 255 255 / .08);
+  --nav-item-hover: rgb(255 255 255 / .06);
+  --nav-item-active: color-mix(in srgb, var(--color-primary) 11%, transparent);
 }
 
 /* Keep the system palette canonical; add a quiet tactile lift for the dark reference components. */

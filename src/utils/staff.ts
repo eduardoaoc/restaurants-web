@@ -42,3 +42,20 @@ export function staffRoleLabelKey(slug: string | null | undefined): string {
   const known = ['manager', 'waiter', 'kitchen', 'cashier', 'owner']
   return slug && known.includes(slug) ? `staff.roles.${slug}` : 'staff.roles.other'
 }
+
+/**
+ * Team search by the technical user ID (users.id), e.g. `123` or `#123`.
+ * Only a purely numeric query (optionally prefixed with `#`) is an ID query;
+ * anything else is plain text. The match is EXACT — `12` never finds #123.
+ * The ID is a label for finding people the API already returned to this
+ * user: it never fetches anybody, so it grants no access to other teams.
+ */
+export function parseStaffIdQuery(query: string): number | null {
+  const match = /^#?\s*(\d{1,12})$/.exec(query.trim())
+  return match ? Number(match[1]) : null
+}
+
+export function staffMatchesId(query: string, id: number): boolean {
+  const wanted = parseStaffIdQuery(query)
+  return wanted !== null && wanted === id
+}

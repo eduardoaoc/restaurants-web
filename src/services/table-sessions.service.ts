@@ -8,6 +8,7 @@ import type {
   TableSession,
   TransferSessionPayload,
   VoidTableSessionPayload,
+  UpdateGuestCountPayload,
   WaiterCall,
 } from '@/types/table-sessions'
 
@@ -40,6 +41,11 @@ interface ReceiptPrintEnvelope {
  * never re-derive them from raw orders/payments client-side.
  */
 export const tableSessionsService = {
+  async updateGuestCount(sessionId: number, payload: UpdateGuestCountPayload): Promise<TableSession> {
+    const { data } = await http.patch<SessionEnvelope>(`/api/v1/table-sessions/${sessionId}/guest-count`, payload)
+    return data.data.session
+  },
+
   async bill(sessionId: number, signal?: AbortSignal): Promise<SessionBill> {
     const { data } = await http.get<BillEnvelope>(`/api/v1/table-sessions/${sessionId}/bill`, { signal })
     return data.data
