@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { createReadStream, existsSync } from 'node:fs'
 
 import { templateCompilerOptions } from '@tresjs/core'
 import vue from '@vitejs/plugin-vue'
@@ -6,12 +7,43 @@ import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, loadEnv } from 'vite'
 import { validateEnv } from './src/config/env.ts'
 
+const ultimateLocalAssets = path.resolve(import.meta.dirname, 'assets-source/restaurant-3d/converted-unused/ultimate-pack')
+const ultimateUrlPrefix = '/assets/restaurant-3d/models/ultimate-pack/'
+
+/** Serve license-pending Ultimate demo models from the ignored local asset library in dev only. */
+function localUltimateDemoAssets() {
+  return {
+    name: 'local-ultimate-demo-assets',
+    configureServer(server: import('vite').ViteDevServer) {
+      server.middlewares.use((req, res, next) => {
+        if (!req.url?.startsWith(ultimateUrlPrefix)) return next()
+        let relative: string
+        try {
+          relative = decodeURIComponent(req.url.slice(ultimateUrlPrefix.length).split('?')[0])
+        } catch {
+          res.statusCode = 400
+          return res.end('Bad asset path')
+        }
+        const file = path.resolve(ultimateLocalAssets, relative)
+        if (!relative || !file.startsWith(`${ultimateLocalAssets}${path.sep}`) || !existsSync(file)) {
+          res.statusCode = 404
+          return res.end('Local Ultimate demo asset not found')
+        }
+        res.setHeader('Content-Type', 'model/gltf-binary')
+        res.setHeader('Cache-Control', 'no-cache')
+        if (req.method === 'HEAD') return res.end()
+        createReadStream(file).on('error', next).pipe(res)
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   validateEnv(loadEnv(mode, process.cwd(), 'VITE_'), mode)
   return {
     // TresJS' documented template options: its <Tres*> tags are renderer elements, not Vue components.
-    plugins: [vue({ ...templateCompilerOptions }), tailwindcss()],
+    plugins: [vue({ ...templateCompilerOptions }), tailwindcss(), localUltimateDemoAssets()],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, 'src'),
