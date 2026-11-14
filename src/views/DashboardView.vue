@@ -15,6 +15,7 @@ import { useRestaurantAnalytics } from '@/composables/useRestaurantAnalytics'
 import { useRestaurantOperations } from '@/composables/useRestaurantOperations'
 import { useRestaurantRealtime } from '@/composables/useRestaurantRealtime'
 import { useRestaurantStore } from '@/stores/restaurant'
+import { useShellStage } from '@/composables/useShellStage'
 import { SERVICE_ACCESS_PERMISSIONS } from '@/types/auth-context'
 import { describeApiError } from '@/utils/error-message'
 import { formatDateOnly } from '@/utils/format'
@@ -83,6 +84,7 @@ watch(tab, (value) => {
   }
 }, { immediate: true })
 
+const shellStage = useShellStage()
 const canViewService = computed(() => canAny(SERVICE_ACCESS_PERMISSIONS))
 const dayState = computed(() => {
   const daily = operations.snapshot.value?.daily_operation
@@ -129,6 +131,7 @@ const dayState = computed(() => {
 
     <template v-else>
       <DashboardPageHead
+        v-if="!(tab === 'operation' && shellStage.active.value)"
         :tab="tab"
         :refreshing="operations.refreshing.value"
         :can-refresh="canViewOperations"
@@ -165,6 +168,7 @@ const dayState = computed(() => {
         :error="operations.error.value"
         :last-realtime-event="realtime.lastEvent.value"
         :pending-table-id="pendingTableId"
+        :connection-state="realtime.connectionState.value"
         @refresh="operations.refetch"
         @pending-table-consumed="onPendingTableConsumed"
       />

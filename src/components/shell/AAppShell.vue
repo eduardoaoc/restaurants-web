@@ -13,7 +13,7 @@ import aforoWordmark from '@/assets/brand/aforo-wordmark.png'
 
 // chromeVisible is the presentation seam for a future immersive route. No
 // route enables it in Phase 3; the KDS and domain views remain unchanged.
-const props = withDefaults(defineProps<{ items: ShellNavItem[]; routeKey: string; chromeVisible?: boolean }>(), { chromeVisible: true })
+const props = withDefaults(defineProps<{ items: ShellNavItem[]; routeKey: string; chromeVisible?: boolean; bleed?: boolean; collapseByDefault?: boolean }>(), { chromeVisible: true, bleed: false, collapseByDefault: false })
 const { t } = useI18n()
 const topbar = ref<HTMLElement | null>(null)
 const bottom = ref<HTMLElement | null>(null)
@@ -21,7 +21,7 @@ const main = ref<HTMLElement | null>(null)
 const topbarComponent = ref<InstanceType<typeof ShellTopbar> | null>(null)
 // The header component's root remains the measured bar, not a second wrapper.
 watch(topbarComponent, value => { topbar.value = value?.$el instanceof HTMLElement ? value.$el : null }, { flush: 'post' })
-const { compact, desktop, sidebar, collapsed, mode, keyboard } = useShellLayout(topbar, bottom, () => props.chromeVisible)
+const { compact, desktop, sidebar, collapsed, mode, keyboard } = useShellLayout(topbar, bottom, () => props.chromeVisible, () => props.collapseByDefault)
 const collapseLabel = computed(() => t(collapsed.value ? 'appShell.expandSidebar' : 'appShell.collapseSidebar'))
 const navigation = computed(() => partitionShellNavigation(props.items, mode.value))
 const moreOpen = ref(false)
@@ -65,7 +65,7 @@ watch(() => props.routeKey, async () => {
       <template #theme><slot name="theme" /></template>
       <template #user><slot name="user" /></template>
     </ShellTopbar>
-    <main id="main-content" ref="main" tabindex="-1" class="shell-main"><slot /></main>
+    <main id="main-content" ref="main" tabindex="-1" class="shell-main" :data-bleed="bleed"><slot /></main>
     <div v-if="chromeVisible && compact" v-show="!keyboard" ref="bottom" class="shell-bottom">
       <ShellNavigation :items="navigation.primary" mode="bottom" more :more-active="navigation.moreActive" :more-open="moreOpen" :more-count="navigation.moreCount" @more="openMore" />
     </div>
@@ -100,6 +100,8 @@ watch(() => props.routeKey, async () => {
 .a-app-shell { --shell-side-width: 0px; display: grid; grid-template-columns: var(--shell-side-width) minmax(0, 1fr); grid-template-rows: auto 1fr; min-height: 100dvh; min-width: 0; background: var(--color-background); color: var(--color-text-primary); transition: grid-template-columns var(--duration-base) var(--ease-in-out); }
 .a-app-shell > :deep(.shell-topbar), .shell-main { grid-column: 2; }
 .shell-main { min-width: 0; max-width: 100%; padding: calc(var(--spacing) * 4); padding-left: max(calc(var(--spacing) * 4), env(safe-area-inset-left)); padding-right: max(calc(var(--spacing) * 4), env(safe-area-inset-right)); padding-bottom: calc(max(var(--bar-bottom, 0px), env(safe-area-inset-bottom)) + var(--spacing) * 4); scroll-margin-top: calc(var(--bar-top, 0px) + var(--spacing) * 4); }
+/* Full-bleed page (the dashboard stage): the page owns the whole area under the top bar; only the bottom nav clearance stays. */
+.shell-main[data-bleed='true'] { padding: 0 0 max(var(--bar-bottom, 0px), env(safe-area-inset-bottom)); }
 .shell-main:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: -2px; }
 .shell-main :deep(:focus) { scroll-margin-block: calc(var(--bar-top, 0px) + var(--spacing) * 4) calc(var(--bar-bottom, 0px) + var(--spacing) * 4); }
 .shell-bottom { position: fixed; inset: auto 0 0; min-height: calc(var(--spacing) * 14 + env(safe-area-inset-bottom)); padding: var(--spacing) max(calc(var(--spacing) * 4), env(safe-area-inset-right)) calc(var(--spacing) + env(safe-area-inset-bottom)) max(calc(var(--spacing) * 4), env(safe-area-inset-left)); border-top: 1px solid var(--color-border); background: var(--color-surface); z-index: var(--z-nav); }

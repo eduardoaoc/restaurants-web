@@ -31,6 +31,9 @@ const canEditLayout = computed(() => can('manage_floor_plan'))
 
 // Development only: `?source=mock` shows the seven-table mock, never persisted.
 const useMock = import.meta.env.DEV && route.query.source === 'mock'
+// Ultimate assets are served only by the local Vite dev middleware. Keep the
+// distributable scene KayKit until the Ultimate license is cleared.
+const environment = computed(() => import.meta.env.DEV && route.query.environment === 'ultimate' ? 'ultimate' : 'kaykit')
 
 // The restaurant list may not be loaded when this route is opened directly.
 onMounted(() => void restaurantStore.load())
@@ -199,6 +202,7 @@ const retry = async () => { await Promise.all([reload(), operations.refetch()]) 
     <RestaurantScene
       v-if="useMock"
       :mode="mode"
+      :environment="environment"
     />
     <p
       v-else-if="!restaurantStore.loading && restaurantId === null"
@@ -238,6 +242,7 @@ const retry = async () => { await Promise.all([reload(), operations.refetch()]) 
       v-else-if="layout && operationsSnapshot"
       :key="`${restaurantId}-${revision}`"
       :mode="mode"
+      :environment="environment"
       :layout="layout"
       :operations-snapshot="operationsSnapshot"
       :restaurant-id="restaurantId"

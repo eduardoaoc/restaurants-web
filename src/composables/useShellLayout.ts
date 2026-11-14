@@ -10,12 +10,20 @@ export function persistSidebarCollapsed(value: boolean): void {
 }
 
 /** Presentation only: no route, permission, restaurant or domain state. */
-export function useShellLayout(topbar: Ref<HTMLElement | null>, bottom: Ref<HTMLElement | null>, chromeVisible: () => boolean) {
+export function useShellLayout(topbar: Ref<HTMLElement | null>, bottom: Ref<HTMLElement | null>, chromeVisible: () => boolean, collapsedByDefault: () => boolean = () => false) {
   const medium = window.matchMedia('(min-width: 768px)')
   const expanded = window.matchMedia('(min-width: 1280px)')
   const compact = ref(!medium.matches)
   const desktop = ref(expanded.matches)
-  const collapsed = ref(readSidebarCollapsed())
+  const storedCollapsed = ref(readSidebarCollapsed())
+  // A page may start with the sidebar collapsed (the dashboard stage) without touching the person's saved preference:
+  // toggling on such a page is remembered for that visit only; every other page keeps using the stored choice.
+  const pageOverride = ref<boolean | null>(null)
+  watch(collapsedByDefault, () => { pageOverride.value = null })
+  const collapsed = computed({
+    get: () => pageOverride.value ?? (collapsedByDefault() ? true : storedCollapsed.value),
+    set: (value: boolean) => { if (collapsedByDefault()) pageOverride.value = value; else storedCollapsed.value = value },
+  })
   const { viewport } = useVisualViewport()
   const sidebar = computed(() => desktop.value && !collapsed.value)
   // Desktop always lists every destination (expanded or icon-only); the rail
@@ -42,7 +50,7 @@ export function useShellLayout(topbar: Ref<HTMLElement | null>, bottom: Ref<HTML
     root.style.setProperty('--bar-top', `${top}px`)
     root.style.setProperty('--bar-bottom', `${foot}px`)
   }
-  watch(collapsed, persistSidebarCollapsed)
+  watch(storedCollapsed, persistSidebarCollapsed)
   watch([compact, desktop, keyboard, chromeVisible, topbar, bottom], () => {
     if (!mounted) return
     resize?.disconnect()

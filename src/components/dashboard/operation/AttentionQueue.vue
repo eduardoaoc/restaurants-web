@@ -44,6 +44,8 @@ const props = defineProps<{
   canViewService: boolean
   /** Narrow layouts show the first items and disclose the rest on demand. */
   compact?: boolean
+  /** Floating-panel presentation: tighter header and a one-line empty state, so an empty queue takes little of the room. */
+  dense?: boolean
 }>()
 
 const emit = defineEmits<{ select: [OperationsAlert] }>()
@@ -142,7 +144,7 @@ function tabClass(active: boolean): string {
 
 <template>
   <section class="flex min-h-0 min-w-0 flex-col" aria-labelledby="operation-queue-title">
-    <header class="flex items-center justify-between gap-3 px-4 pt-4">
+    <header class="flex items-center justify-between gap-3 px-4" :class="dense ? 'pt-3' : 'pt-4'">
       <h2 id="operation-queue-title" class="min-w-0 text-component-title font-semibold text-fg">{{ t('operations.board.queue.title') }}</h2>
       <!-- Tabs below show the counts visually; this is the single announced summary. -->
       <span class="sr-only" role="status" aria-atomic="true">
@@ -150,7 +152,7 @@ function tabClass(active: boolean): string {
       </span>
     </header>
 
-    <div class="px-4 pt-3">
+    <div class="px-4" :class="dense ? 'pt-2' : 'pt-3'">
       <div class="grid grid-cols-2 gap-1 rounded-saloa-md bg-surface-subtle p-1" role="group" :aria-label="t('operations.board.queue.filter')">
         <button
           v-for="option in (['current', 'previous'] as const)"
@@ -168,9 +170,9 @@ function tabClass(active: boolean): string {
       <p v-if="tab === 'previous' && previousItems.length > 0" class="mt-2 text-label-md text-fg-muted">{{ t('operations.board.queue.previousHint') }}</p>
     </div>
 
-    <div class="operation-queue-scroll mt-3 min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-      <div v-if="activeItems.length === 0" class="flex flex-col items-center gap-2 rounded-saloa-md border border-dashed border-hairline px-4 py-8 text-center">
-        <PhCheckCircle :size="24" class="text-fg-muted" aria-hidden="true" />
+    <div class="operation-queue-scroll min-h-0 flex-1 overflow-y-auto px-4" :class="dense ? 'mt-2 pb-3' : 'mt-3 pb-4'">
+      <div v-if="activeItems.length === 0" class="flex items-center text-center" :class="dense ? 'flex-wrap justify-between gap-x-3 gap-y-1 px-1' : 'flex-col gap-2 rounded-saloa-md border border-dashed border-hairline px-4 py-8'">
+        <PhCheckCircle v-if="!dense" :size="24" class="text-fg-muted" aria-hidden="true" />
         <p class="text-body-sm text-fg-muted">
           {{ tab === 'current' ? t('operations.board.queue.empty') : t('operations.board.queue.emptyPrevious') }}
         </p>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { TresCanvas } from '@tresjs/core'
+import { ACESFilmicToneMapping, NeutralToneMapping } from 'three'
 import { useI18n } from 'vue-i18n'
 import { normalizeApiError } from '@/api/errors'
 import { useSnackbar } from '@/composables/useSnackbar'
@@ -18,13 +19,16 @@ import AddTablePanel from './AddTablePanel.vue'
 import EditorToolbar from './EditorToolbar.vue'
 import EntranceFloorMarker from './EntranceFloorMarker.vue'
 import EntrancePanel from './EntrancePanel.vue'
-import { cameraFit } from './camera-fit'
+import { frameRestaurant } from './framing'
 import { chooseQuality, detectDeviceHints } from './graphics-quality'
 import { snapToGrid } from './layout-editing'
 import { entranceLimits, suggestEntrance, validateEntrancePlacement, type EntranceValidation } from './entrance-validation'
 import RestaurantCustomers, { type CustomerStats, type NavDebugOptions } from './RestaurantCustomers.vue'
 import ChairInstances from './ChairInstances.vue'
 import RestaurantTable from './RestaurantTable.vue'
+import RestaurantEnvironment from './RestaurantEnvironment.vue'
+import UltimateEnvironment from './UltimateEnvironment.vue'
+import ModularFloor from './ModularFloor.vue'
 import TableEditController from './TableEditController.vue'
 import { LAB_CURRENCY, toOperationsTable } from './table-detail-adapter'
 import { FLOOR } from './floor'
@@ -39,6 +43,7 @@ import { FloorLayoutConflictError } from '@/services/floor-layout.service'
 import { SCENE_MODE_BEHAVIOR, type RestaurantSceneMode } from './scene-mode'
 import { useEditableLayout } from './use-editable-layout'
 import { useSceneClock } from './use-scene-clock'
+import { LIGHT_STAGE, sceneAppearance } from './scene-appearance'
 import { minSeatsForBackendTable, tableMappingState, validateCapacityAgainstOccupancy, validateTableMappings, type ActiveGuestCounts, type BackendTableOption } from './table-mapping'
 
 const props = withDefaults(defineProps<{
@@ -70,7 +75,26 @@ const props = withDefaults(defineProps<{
   entrance?: FloorPosition | null
   /** DEV only: navigation overlays (paths / obstacles). Nothing is drawn when absent. */
   navDebug?: NavDebugOptions
-}>(), { mode: 'operation', layout: () => mockLayout, save: undefined, entrance: null, navDebug: undefined })
+  /**
+   * Room architecture. `kaykit` is the production envelope; `ultimate` is the local-demo Ultimate Pack architecture
+   * (LICENSE_UNVERIFIED) with its own light / exposure setup. Only the dev fixture selects `ultimate`.
+   */
+  environment?: 'kaykit' | 'ultimate'
+  /** DEV before/after review of the Ultimate finish: `raw` = same geometry with unfinished materials and the old light. */
+  finish?: 'final' | 'raw'
+  /** Ultimate demo only: frame the whole architecture (also on phones, where the default frames the tables). Each change re-frames. */
+  overview?: boolean
+  /** Dev stats panel over the canvas; off for clean visual review. */
+  diagnostics?: boolean
+  /** When supplied, the host owns the selection and shows its own details. */
+  selectedLayoutTableId?: string | null
+  /**
+   * Dashboard stage: the scene is the page's background, so it fills its container, uses the light neutral maquette
+   * look, frames the whole room (floor, walls, terrace) and never zooms into a selected table — the host's panels
+   * show the details while the room stays visible and interactive.
+   */
+  stage?: boolean
+}>(), { stage: false, mode: 'operation', layout: () => mockLayout, save: undefined, entrance: null, navDebug: undefined, environment: 'kaykit', finish: 'final', overview: false, diagnostics: true })
 const { t } = useI18n()
 const emit = defineEmits<{
   tableSelected: [tableId: string | null]
@@ -81,6 +105,10 @@ const emit = defineEmits<{
   dirtyChange: [dirty: boolean]
   savingChange: [saving: boolean]
 }>()
+/** Final Ultimate finish (light, exposure, soft shadows). The kaykit scene and the `raw` baseline keep the original setup. */
+watch(() => props.stage, stage => { sceneAppearance.light = stage }, { immediate: true })
+onBeforeUnmount(() => { sceneAppearance.light = false })
+const ultimateFinal = computed(() => props.environment === 'ultimate' && props.finish === 'final')
 const behavior = computed(() => SCENE_MODE_BEHAVIOR[props.mode])
 // Persisted entrance is configuration only; no entrance is inferred for old layouts.
 
@@ -125,9 +153,14 @@ const topEvents = computed(() => selectTopEventPerTarget(props.operationalEvents
 const now = useSceneClock()
 
 // --- Table selection -------------------------------------------------------
-const selectedTableId = ref<string | null>(null)
+const localSelection = ref<string | null>(null)
+const hostOwnsSelection = computed(() => props.selectedLayoutTableId !== undefined)
+const selectedTableId = computed({
+  get: () => hostOwnsSelection.value ? props.selectedLayoutTableId ?? null : localSelection.value,
+  set: (id: string | null) => { localSelection.value = id },
+})
 const selectedConfig = computed(() => (selectedTableId.value ? tableById(selectedTableId.value) ?? null : null))
-const focus = computed(() => selectedConfig.value
+const focus = computed(() => selectedConfig.value && !props.stage
   ? { x: selectedConfig.value.position.x, z: selectedConfig.value.position.z }
   : null)
 // The real drawer wants the backend's table shape; the adapter builds it from lab data.
@@ -168,7 +201,8 @@ function onTableSelect(tableId: string, release: { x: number; y: number }): void
   const pressed = pressedAt
   pressedAt = null
   if (!pressed || Math.hypot(release.x - pressed.x, release.y - pressed.y) > CLICK_MOVE_TOLERANCE_PX) return
-  selectedTableId.value = tableId
+  if (hostOwnsSelection.value) emit('tableSelected', tableId)
+  else selectedTableId.value = tableId
 }
 
 function clearSelection(): void {
@@ -369,6 +403,20 @@ function onRotateTable(direction: 1 | -1): void {
 // narrow screens so it never covers the scene; picking something in the scene opens the right section.
 const dockTab = ref<'table' | 'entrance'>('table')
 const dockCollapsed = ref(window.matchMedia('(max-width: 640px)').matches)
+// On a phone the dock spans the bottom of the canvas; the camera frames the floor above it so tables stay reachable.
+const dock = ref<HTMLElement | null>(null)
+const dockInset = ref(0)
+let dockObserver: ResizeObserver | undefined
+watch(dock, (el) => {
+  dockObserver?.disconnect()
+  dockObserver = undefined
+  if (!el || typeof ResizeObserver === 'undefined') { dockInset.value = 0; return }
+  const measure = () => { dockInset.value = window.innerWidth <= 640 ? Math.round(el.offsetHeight + 8) : 0 }
+  measure()
+  dockObserver = new ResizeObserver(measure)
+  dockObserver.observe(el)
+}, { flush: 'post' })
+onBeforeUnmount(() => dockObserver?.disconnect())
 watch(editSelectedId, (id) => { if (id) { dockTab.value = 'table'; dockCollapsed.value = false } })
 watch(entranceSelected, (on) => { if (on) { dockTab.value = 'entrance'; dockCollapsed.value = false } })
 
@@ -391,7 +439,7 @@ function onRemoveTable(): void {
 }
 
 // A different selection starts without the previous table's message or an open add panel.
-watch(selectedTableId, (id) => emit('tableSelected', id))
+watch(localSelection, (id) => { if (!hostOwnsSelection.value) emit('tableSelected', id) })
 
 watch(editSelectedId, (id) => {
   editError.value = null
@@ -439,57 +487,87 @@ if (import.meta.env.DEV) {
   }
 }
 
-// Three-quarter view from above, aimed at the middle of the table layout.
-// Narrow (portrait) screens see far less of the floor at the desktop distance, so the camera starts further back along the
-// same viewing direction. Decided once at mount from the scene's expected aspect; the direction and target are unchanged.
+// Three-quarter view from above, aimed at the middle of the table layout and pulled back just far enough that every table,
+// label and operational pill (at its real on-screen size) fits the canvas — see framing.ts. The canvas has no size yet at
+// setup, so this is an estimate; CameraRig re-fits to the measured canvas on mount (unless the person has moved the camera).
 // Chosen once per mount (see graphics-quality.ts): predictable, no mid-session quality changes.
 const quality = chooseQuality(detectDeviceHints())
-const cameraDistance = cameraFit(window.innerWidth / Math.max(320, Math.min(720, window.innerHeight - 190)))
-const cameraPosition: [number, number, number] = [8 * cameraDistance, 12 * cameraDistance, 12.5 * cameraDistance]
+const compactViewport = window.innerWidth <= 640
+const ISO_DIRECTION: [number, number, number] = [0.57, 0.6, 0.57]
+/** Dashboard stage: raised, mostly frontal view (about 12 degrees off the front axis, 33 degrees up) so the room reads as a maquette. */
+const STAGE_DIRECTION: [number, number, number] = [0.17, 0.55, 0.82]
+const STAGE_WALL_HEIGHT = 2.4
+/** A phone-wide stage needs the camera farther back than the demo room's 70 m to fit the whole room. */
+const STAGE_MAX_DISTANCE = 110
+/** Px kept free around the room on the dashboard stage: the stat row on top, the legend/queue row below, a little at the sides. */
+const STAGE_INSETS = window.innerWidth <= 640
+  ? { top: 108, right: 12, bottom: 64, left: 12 }
+  : { top: 76, right: 40, bottom: 72, left: 40 }
+const initialFrame = frameRestaurant({
+  tables: tables.value,
+  entrance: draftEntrance.value,
+  includeFloor: behavior.value.layoutEditing || props.stage || (props.environment === 'ultimate' && (!compactViewport || props.overview)),
+  wallHeight: props.stage ? STAGE_WALL_HEIGHT : props.environment === 'ultimate' ? 3 : undefined,
+  maxDistance: props.stage ? STAGE_MAX_DISTANCE : props.environment === 'ultimate' ? 70 : undefined,
+  // Isometric-like view (corner of the room at the top centre): the Ultimate demo and the dashboard stage.
+  direction: props.stage ? STAGE_DIRECTION : props.environment === 'ultimate' ? ISO_DIRECTION : undefined,
+  width: props.stage ? window.innerWidth : compactViewport ? window.innerWidth : Math.min(window.innerWidth - 48, 1100),
+  height: props.stage ? window.innerHeight - 56 : Math.max(360, Math.min(720, window.innerHeight - (compactViewport ? 190 : 220))),
+  viewportWidth: window.innerWidth,
+  insets: props.stage ? STAGE_INSETS : undefined,
+})
+const cameraPosition = initialFrame.position
+const cameraTarget = initialFrame.target
 </script>
 
 <template>
   <div
     class="restaurant-scene"
+    :class="{ 'restaurant-scene--stage': stage }"
     @pointerdown.capture="onPress"
   >
     <TresCanvas
-      clear-color="#151515"
+      :clear-color="stage ? LIGHT_STAGE.background : '#151515'"
       shadows
+      :tone-mapping="ultimateFinal ? NeutralToneMapping : ACESFilmicToneMapping"
+      :tone-mapping-exposure="ultimateFinal ? 1.25 : 1"
       :dpr="quality.dpr"
     >
       <!-- Câmera inicial estilo isométrico -->
       <TresPerspectiveCamera
         :position="cameraPosition"
-        :look-at="[0.8, 0.4, 0]"
+        :look-at="cameraTarget"
         :fov="35"
         :near="0.1"
         :far="1000"
       />
 
-      <!-- Iluminação ambiente -->
+      <!-- Iluminação ambiente: meio-hemisférico suave (preenchimento) -->
       <TresHemisphereLight
-        :args="['#fff4e6', '#5a4632', 1.2]"
+        :args="stage ? ['#ffffff', '#d8cdc0', 1.5] : ['#fff4e6', '#5a4632', ultimateFinal ? 1.0 : 1.2]"
       />
 
-      <!-- Luz principal -->
+      <!-- Luz principal: direcional ampla; no cenário Ultimate a sombra é mais suave e o frustum cobre o salão todo -->
       <TresDirectionalLight
-        :position="[8, 14, 6]"
-        :intensity="2.5"
-        color="#fff0d8"
+        :position="ultimateFinal ? [4, 16, 9] : [8, 14, 6]"
+        :intensity="stage ? 2.2 : ultimateFinal ? 2.1 : 2.5"
+        :color="stage ? '#fff7ec' : '#fff0d8'"
         cast-shadow
         :shadow-mapSize-width="quality.shadowMapSize"
         :shadow-mapSize-height="quality.shadowMapSize"
-        :shadow-camera-left="-FLOOR.width / 2"
-        :shadow-camera-right="FLOOR.width / 2"
-        :shadow-camera-top="FLOOR.width / 2"
-        :shadow-camera-bottom="-FLOOR.width / 2"
+        :shadow-camera-left="-FLOOR.width / 2 - 2"
+        :shadow-camera-right="FLOOR.width / 2 + 2"
+        :shadow-camera-top="FLOOR.width / 2 + 2"
+        :shadow-camera-bottom="-FLOOR.width / 2 - 2"
         :shadow-camera-near="1"
         :shadow-camera-far="40"
-        :shadow-bias="-0.0005"
+        :shadow-bias="-0.0004"
+        :shadow-normal-bias="0.03"
+        :shadow-radius="stage ? 5 : ultimateFinal ? 4 : 1"
+        :shadow-intensity="stage ? 0.45 : ultimateFinal ? 0.55 : 1"
       />
 
-      <!-- Piso provisório -->
+      <!-- Base plus instanced 1 m modules. The operational map remains a separate scene layer. -->
       <TresMesh
         :position="[0, -0.01, 0]"
         :rotation="[-Math.PI / 2, 0, 0]"
@@ -498,16 +576,26 @@ const cameraPosition: [number, number, number] = [8 * cameraDistance, 12 * camer
         <TresPlaneGeometry :args="[FLOOR.width, FLOOR.depth]" />
 
         <TresMeshStandardMaterial
-          color="#8b5a32"
+          :color="stage ? LIGHT_STAGE.base : '#b99875'"
           :roughness="0.8"
         />
       </TresMesh>
+
+      <template v-if="environment === 'ultimate'">
+        <UltimateEnvironment :finish="finish" />
+      </template>
+      <template v-else>
+        <ModularFloor :light="stage" />
+        <RestaurantEnvironment :entrance="entrance" :light="stage" />
+      </template>
 
       <!-- Mesas e cadeiras a partir do layout -->
       <RestaurantTable
         v-for="table in tables"
         :key="table.id"
         :table="table"
+        :furniture="environment === 'ultimate' ? 'ultimate' : 'kaykit'"
+        :finish="finish"
         :state="stateOf(table.id)"
         :events="topEvents"
         :operational-flags="floorMapping?.flagsByLayoutId[table.id] ?? []"
@@ -525,6 +613,8 @@ const cameraPosition: [number, number, number] = [8 * cameraDistance, 12 * camer
       <ChairInstances
         :tables="tables"
         :hidden="hiddenChairs"
+        :furniture="environment === 'ultimate' ? 'ultimate' : 'kaykit'"
+        :finish="finish"
       />
 
       <!-- Seated customers: one per explicit guest record; hidden while the layout is being edited. -->
@@ -570,13 +660,21 @@ const cameraPosition: [number, number, number] = [8 * cameraDistance, 12 * camer
 
       <CameraRig
         :focus="focus"
-        :initial-fit="cameraDistance"
+        :tables="tables"
+        :entrance="draftEntrance"
+        :include-floor="behavior.layoutEditing || stage || (environment === 'ultimate' && (!compactViewport || overview))"
+        :frame-insets="stage ? STAGE_INSETS : undefined"
+        :max-distance="stage ? STAGE_MAX_DISTANCE : undefined"
+        :wall-height="stage ? STAGE_WALL_HEIGHT : environment === 'ultimate' ? 3 : 0"
+        :reframe-key="overview ? 1 : 0"
+        :bottom-inset="behavior.layoutEditing ? dockInset : 0"
+        :initial-target="cameraTarget"
         :orbit-enabled="!draggingTable && !draggingEntrance"
       />
     </TresCanvas>
 
     <dl
-      v-if="customerStats && behavior.showOperational"
+      v-if="diagnostics && customerStats && behavior.showOperational"
       class="dev-stats"
       data-dev-stats
     >
@@ -610,6 +708,7 @@ const cameraPosition: [number, number, number] = [8 * cameraDistance, 12 * camer
       <section
         v-if="behavior.layoutEditing"
         class="editor-dock"
+        ref="dock"
         :class="{ 'editor-dock--collapsed': dockCollapsed }"
         :aria-label="t('floorLayout.editor.mode')"
       >
@@ -741,6 +840,7 @@ const cameraPosition: [number, number, number] = [8 * cameraDistance, 12 * camer
 
     <!-- The application's own table-detail sheet, not a lab copy. -->
     <TableDetailsDrawer
+      v-if="!hostOwnsSelection"
       :table="selectedOperationsTable"
       :staff="drawerStaff"
       :free-tables="drawerFreeTables"
@@ -770,6 +870,8 @@ const cameraPosition: [number, number, number] = [8 * cameraDistance, 12 * camer
   pointer-events: none;
 }
 
+/* A debug panel must not cover tables on a phone; its values stay in the DOM for tooling. */
+@media (max-width: 640px) { .dev-stats { display: none; } }
 .dev-stats dt { white-space: nowrap; }
 .dev-stats dt { opacity: 0.6; }
 .dev-stats dd { margin: 0; font-variant-numeric: tabular-nums; }
@@ -917,10 +1019,13 @@ const cameraPosition: [number, number, number] = [8 * cameraDistance, 12 * camer
   background: #151515;
 }
 
+/* Dashboard stage: fills whatever positioned box the host gives it; nothing of the lab's fixed sizing applies. */
+.restaurant-scene.restaurant-scene--stage { width: 100%; height: 100%; min-height: 0; margin: 0; background: #e9e4de; }
+
 @media (max-width: 640px) {
   .editor-overlay { inset-inline: 8px; inset-block-end: max(8px, env(safe-area-inset-bottom)); max-height: min(55%, calc(100% - 16px)); }
   .editor-dock { width: 100%; }
-  .restaurant-scene { height: min(720px, calc(100dvh - 190px)); min-height: 360px; }
+  .restaurant-scene:not(.restaurant-scene--stage) { width: calc(100% + 48px); margin-inline: -24px; height: min(720px, calc(100dvh - 190px)); min-height: 360px; }
   .editor-save { flex-wrap: wrap; }
 }
 </style>

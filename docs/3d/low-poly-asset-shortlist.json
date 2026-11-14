@@ -1,0 +1,903 @@
+{
+  "schemaVersion": 1,
+  "title": "Low Poly Asset Selection Shortlist",
+  "auditStatus": "evaluation only; no assets approved for production/runtime",
+  "licenseGate": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+  "packInventory": {
+    "lowPolyUltimateV8_2": {
+      "containerPath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "unityPackageEntries": 10590,
+      "fbx": 5101,
+      "prefab": 5065,
+      "material": 70,
+      "animation": 16,
+      "controller": 24,
+      "scene": 12,
+      "texturesPng": 9,
+      "scriptsCs": 2,
+      "nestedPackages": 1,
+      "assetPayloadBytes": 306232542,
+      "outerArchiveBytes": 189365671
+    },
+    "lowPolyUltimateOlder": {
+      "unityPackageEntries": 9386,
+      "assetPayloadBytes": 255194581,
+      "outerArchiveBytes": 134711785
+    },
+    "lowPolyCharacters201": {
+      "unityPackageEntries": 2667,
+      "assetPayloadBytes": 114977355,
+      "fbx": 57,
+      "animations": 5,
+      "prefabs": 2577,
+      "licenseFiles": 0
+    }
+  },
+  "versionComparison": {
+    "commonPaths": 9288,
+    "sameHashCommonPaths": 8539,
+    "differentHashCommonPaths": 749,
+    "olderOnlyPaths": 98,
+    "v8_2OnlyPaths": 1302,
+    "recommendation": "v8.2 is the stronger evaluation source, not a strict superset; do not extract both into runtime."
+  },
+  "candidates": [
+    {
+      "filename": "door-house-simple.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Buildings_T/Parts_T/door-house-simple.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "architecture",
+      "intendedUse": "entry door module",
+      "format": "FBX",
+      "sourceBytes": 16076,
+      "payloadSha256": "a1b158ee3bcbb2a1d78bd83fa949b6aa71794ac6fe0ebbf65d02377b67d71cd9",
+      "measuredTriangles": 96,
+      "measuredBounds": {
+        "x": 90,
+        "y": 210,
+        "z": 22,
+        "sourceUnits": "cm-like",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "house-wall-window-3x3m.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Buildings_T/Parts_T/house-wall-window-3x3m.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "architecture",
+      "intendedUse": "window wall module",
+      "format": "FBX",
+      "sourceBytes": 22284,
+      "payloadSha256": "4cf73533075703c611e926ff49fc7fa4006a10c3f712b5b04fce75eab56abb5e",
+      "measuredTriangles": 50,
+      "measuredBounds": {
+        "x": 3,
+        "y": 3.005,
+        "z": 0.2,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "house-wall-door-3x3m.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Buildings_T/Parts_T/house-wall-door-3x3m.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "architecture",
+      "intendedUse": "door wall module",
+      "format": "FBX",
+      "sourceBytes": 21964,
+      "payloadSha256": "7f0954f1ad71d77921e80ded2b1ebabcca1ff908e60ed0d8a4e4a181dd4ec688",
+      "measuredTriangles": 34,
+      "measuredBounds": {
+        "x": 3,
+        "y": 3.005,
+        "z": 0.2,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "house-wall-3x3m.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Buildings_T/Parts_T/house-wall-3x3m.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "architecture",
+      "intendedUse": "open wall module",
+      "format": "FBX",
+      "sourceBytes": 21356,
+      "payloadSha256": "669f3931ceadfb3bddfc08a8cb335e6ab446d6a0c53334c00667d6fb349b8125",
+      "measuredTriangles": 10,
+      "measuredBounds": {
+        "x": 3,
+        "y": 3.005,
+        "z": 0.2,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "house-wall-corner.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Buildings_T/Parts_T/house-wall-corner.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "architecture",
+      "intendedUse": "wall corner module",
+      "format": "FBX",
+      "sourceBytes": 14332,
+      "payloadSha256": "80166d6c6cc952e75dac385722e4d13b06297fcacdd31da4c05f4219fe3a0942",
+      "measuredTriangles": 20,
+      "measuredBounds": {
+        "x": 70,
+        "y": 300,
+        "z": 70,
+        "sourceUnits": "cm-like",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "house-floor-parquet-3x3m.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Buildings_T/Parts_T/house-floor-parquet-3x3m.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "architecture",
+      "intendedUse": "indoor floor module",
+      "format": "FBX",
+      "sourceBytes": 25964,
+      "payloadSha256": "690ba9c5f4d4cd7e0ea905f43ad3b7355eb71f3e1d2d4de586eecfb07a8f2e80",
+      "measuredTriangles": 280,
+      "measuredBounds": {
+        "x": 3.002,
+        "y": 0.105,
+        "z": 3,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "garden-floor-concrete-3x3m.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Buildings_T/Parts_T/garden-floor-concrete-3x3m.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "terrace",
+      "intendedUse": "outdoor floor module",
+      "format": "FBX",
+      "sourceBytes": 76668,
+      "payloadSha256": "4ea889a17a040341284f642feeeb45e526bf4d7489dea2d9304c609b946eef5a",
+      "measuredTriangles": 2428,
+      "measuredBounds": {
+        "x": 3,
+        "y": 0.4146,
+        "z": 3,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "table-dining.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/table-dining.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "dining",
+      "intendedUse": "dining table candidate",
+      "format": "FBX",
+      "sourceBytes": 14972,
+      "payloadSha256": "840c99d20aa41d6ee56e37f6f26ec816d30c285b6276989859b67bf37ae425bb",
+      "measuredTriangles": 52,
+      "measuredBounds": {
+        "x": 160,
+        "y": 79.8033,
+        "z": 80,
+        "sourceUnits": "cm-like",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "chair-dining.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/chair-dining.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "dining",
+      "intendedUse": "dining chair candidate",
+      "format": "FBX",
+      "sourceBytes": 16028,
+      "payloadSha256": "b455f2f7e322349b62d0aee5b3f49f884ea76e1531ead0eff8ea2b3d96a4e961",
+      "measuredTriangles": 84,
+      "measuredBounds": {
+        "x": 45.9766,
+        "y": 100.7057,
+        "z": 54.8491,
+        "sourceUnits": "cm-like",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "stool-bar.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/stool-bar.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "bar",
+      "intendedUse": "bar-height stool candidate",
+      "format": "FBX",
+      "sourceBytes": 25004,
+      "payloadSha256": "b36457aeea070620473c93b9773561bd31fb6077438a376f7f0d142b4adab166",
+      "measuredTriangles": 142,
+      "measuredBounds": {
+        "x": 0.4251,
+        "y": 0.7833,
+        "z": 0.3777,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "table-bar-square.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/table-bar-square.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "bar",
+      "intendedUse": "bar table/counter module candidate",
+      "format": "FBX",
+      "sourceBytes": 23916,
+      "payloadSha256": "17bb7eb668f168441626a2d873380ad7560cf6c3f16231c8d526dcc21c953e8b",
+      "measuredTriangles": 128,
+      "measuredBounds": {
+        "x": 0.825,
+        "y": 1.05,
+        "z": 0.825,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "shelf-modern.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/shelf-modern.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "bar",
+      "intendedUse": "back-bar shelving / storage",
+      "format": "FBX",
+      "sourceBytes": 23068,
+      "payloadSha256": "fd4c8f5bc2d485dd2ed45c0194f687f40da4cbc07ea4cd928894fb41d4f78908",
+      "measuredTriangles": 100,
+      "measuredBounds": {
+        "x": 1,
+        "y": 0.15,
+        "z": 0.26,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "cabinet-kitchen-large.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/cabinet-kitchen-large.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "kitchen",
+      "intendedUse": "storage/prep cabinet candidate",
+      "format": "FBX",
+      "sourceBytes": 16124,
+      "payloadSha256": "43a6d77fe685177affba6fb374e5d03b269de7b90632c5965ae10abda693d71e",
+      "measuredTriangles": 118,
+      "measuredBounds": {
+        "x": 100.1299,
+        "y": 92,
+        "z": 64,
+        "sourceUnits": "cm-like",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "fridge-modern-open.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/fridge-modern-open.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "kitchen",
+      "intendedUse": "refrigeration prop",
+      "format": "FBX",
+      "sourceBytes": 40572,
+      "payloadSha256": "f80bff03d2556334036ac397f4cbc4e512bf50a49f5c7748711bfbaa6a49e5b7",
+      "measuredTriangles": 670,
+      "measuredBounds": {
+        "x": 0.9265,
+        "y": 1.8719,
+        "z": 0.7098,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "chair-outside-modern.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/chair-outside-modern.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "terrace",
+      "intendedUse": "outdoor chair",
+      "format": "FBX",
+      "sourceBytes": 28732,
+      "payloadSha256": "f611f0e7f3b0d3aedfbf0624a4f2968e2ffe523a1863c49f7292f15c644954cb",
+      "measuredTriangles": 332,
+      "measuredBounds": {
+        "x": 0.58,
+        "y": 1.0194,
+        "z": 0.6939,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "table-outside-big.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/table-outside-big.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "terrace",
+      "intendedUse": "outdoor table",
+      "format": "FBX",
+      "sourceBytes": 29020,
+      "payloadSha256": "09f0c030ac8cb54acd83eef2b6f50c333cec9aef9fae0b9bc0b6defe0a23e9ea",
+      "measuredTriangles": 388,
+      "measuredBounds": {
+        "x": 1.6832,
+        "y": 0.72,
+        "z": 0.73,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "table-outside-small.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/table-outside-small.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "terrace",
+      "intendedUse": "compact outdoor table",
+      "format": "FBX",
+      "sourceBytes": 25916,
+      "payloadSha256": "f73189e69062ae8db9608aec98ccb958eb245f7f2d74e35f3a80e5719aca0667",
+      "measuredTriangles": 212,
+      "measuredBounds": {
+        "x": 0.55,
+        "y": 0.6698,
+        "z": 0.55,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "parasol-modern.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/parasol-modern.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "terrace",
+      "intendedUse": "patio umbrella",
+      "format": "FBX",
+      "sourceBytes": 30908,
+      "payloadSha256": "92bfb5f2adc5611746efd6311f7b685b7d335c7b0bfd5d8bd24bc7b50c56c6ec",
+      "measuredTriangles": 337,
+      "measuredBounds": {
+        "x": 2.8,
+        "y": 2.7514,
+        "z": 3.3019,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "bench-garden.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/bench-garden.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "terrace",
+      "intendedUse": "garden bench",
+      "format": "FBX",
+      "sourceBytes": 29660,
+      "payloadSha256": "0f2cd34320170e74ac30cf66bac1c9073c937481e05bd363fda8335e091086d7",
+      "measuredTriangles": 348,
+      "measuredBounds": {
+        "x": 1.11,
+        "y": 0.8259,
+        "z": 0.7418,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "plant-pilea.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/plant-pilea.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "decoration",
+      "intendedUse": "indoor plant",
+      "format": "FBX",
+      "sourceBytes": 29308,
+      "payloadSha256": "7f970fa4b262598c079de51a24614785a8909033525df2de85873a61b07a6152",
+      "measuredTriangles": 220,
+      "measuredBounds": {
+        "x": 0.174,
+        "y": 0.1174,
+        "z": 0.1642,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "pot-medium-circle-plant.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/pot-medium-circle-plant.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "decoration",
+      "intendedUse": "potted plant",
+      "format": "FBX",
+      "sourceBytes": 34732,
+      "payloadSha256": "b3389deebf951d637cc9e68a28382fc40eb64f7757e8885d759b653d1f831931",
+      "measuredTriangles": 398,
+      "measuredBounds": {
+        "x": 0.5554,
+        "y": 1.3506,
+        "z": 0.6711,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "tree-pot.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Nature_T/tree-pot.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "terrace",
+      "intendedUse": "potted tree",
+      "format": "FBX",
+      "sourceBytes": 17036,
+      "payloadSha256": "a338746bc8e89665b5a994b589b18e0e8ab9133fc92868352c82bf032b05e818",
+      "measuredTriangles": 74,
+      "measuredBounds": {
+        "x": 0.5975,
+        "y": 1.2703,
+        "z": 0.7171,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "lamp-ceiling.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/lamp-ceiling.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "lighting",
+      "intendedUse": "ceiling light prop",
+      "format": "FBX",
+      "sourceBytes": 16268,
+      "payloadSha256": "2d955b8a49a43013345f4c75f04e0728a5b852a508a0e53bca3c7c0cc69c50ec",
+      "measuredTriangles": 104,
+      "measuredBounds": {
+        "x": 48.06,
+        "y": 100,
+        "z": 48.06,
+        "sourceUnits": "cm-like",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "light-wall-circle.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/light-wall-circle.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "lighting",
+      "intendedUse": "wall light prop",
+      "format": "FBX",
+      "sourceBytes": 22732,
+      "payloadSha256": "9e593a9345ac28e38e0beeba3dd7a1c05fd5f35399940c1f16850c83ad5d2603",
+      "measuredTriangles": 64,
+      "measuredBounds": {
+        "x": 0.25,
+        "y": 0.25,
+        "z": 0.0658,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "picture-nature-small.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Furniture_T/picture-nature-small.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "decoration",
+      "intendedUse": "wall picture",
+      "format": "FBX",
+      "sourceBytes": 22636,
+      "payloadSha256": "5ad2a10064405f76eb8e343e012edb87cd5880a570739cff47c3c3d6ad5cb356",
+      "measuredTriangles": 68,
+      "measuredBounds": {
+        "x": 0.12,
+        "y": 0.18,
+        "z": 0.024,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "rail-kitchen.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Dishes_T/rail-kitchen.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "kitchen",
+      "intendedUse": "kitchen rail/detail",
+      "format": "FBX",
+      "sourceBytes": 26572,
+      "payloadSha256": "f1ee5fff00f3a416d31ff48a07341d0fbd7cd94a5cc17377b36bb7732d53b0f0",
+      "measuredTriangles": 236,
+      "measuredBounds": {
+        "x": 0.6208,
+        "y": 0.0849,
+        "z": 0.0579,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "fence-classic.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Props_T/fence-classic.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "terrace",
+      "intendedUse": "terrace boundary module",
+      "format": "FBX",
+      "sourceBytes": 21964,
+      "payloadSha256": "ef8150ab3facbba05edf561dca9de3ed57218925e27be1c6fac2adfa0cc2bf38",
+      "measuredTriangles": 256,
+      "measuredBounds": {
+        "x": 2,
+        "y": 1.4657,
+        "z": 0.1922,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    },
+    {
+      "filename": "lights-string.fbx",
+      "packagePath": "public/assets/restaurant-3d/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2/Low Poly Ultimate Pack v8.2.unitypackage",
+      "internalPath": "Assets/polyperfect/Low Poly Ultimate Pack/T/- Meshes_T/Props_T/lights-string.fbx",
+      "pack": "Low Poly Ultimate Pack v8.2",
+      "variant": "T (texture-atlas) variant",
+      "category": "lighting",
+      "intendedUse": "optional terrace string lights",
+      "format": "FBX",
+      "sourceBytes": 32908,
+      "payloadSha256": "4d4c6290eb28a5c510529501ed6128ba3646f6258950825f34f984bb3ea27435",
+      "measuredTriangles": 456,
+      "measuredBounds": {
+        "x": 2.0011,
+        "y": 0.2259,
+        "z": 0.06,
+        "sourceUnits": "m",
+        "note": "FBXLoader geometry bounds before normalization; cm-like dimensions are a unit inference, not verified importer scale."
+      },
+      "meshCount": "see audit notes; measured via Three.js FBXLoader",
+      "materialType": "MeshPhongMaterial (FBXLoader parse; not a rendered material validation)",
+      "textureDependencies": [
+        "shared v8.2 T atlas maps; exact atlas list in audit"
+      ],
+      "status": "CONVERSION_REQUIRED",
+      "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+      "approvedForRuntime": false,
+      "priority": "candidate",
+      "recommendation": "Evaluate only after provenance/license clearance; convert selected FBX and normalize scale/origin, then review palette and operational sightlines."
+    }
+  ],
+  "characterCandidate": {
+    "decision": "UNSUITABLE for direct replacement; CONVERSION_REQUIRED for experimental retarget evaluation",
+    "sourcePackagePath": "public/assets/restaurant-3d/Low_poly_characters_2_01_v1.0/Low poly characters 2 01 v1.0/Low poly characters 2 01 v1.0/Low poly characters 2 01 v1.0.unitypackage",
+    "exampleModel": "Assets/low_poly_city_cartoon_and_characters_2_01/low_poly_characters_2_01/Meshes/m_1.fbx",
+    "measuredTriangles": 3700,
+    "loaderBoneNodes": 81,
+    "clips": [
+      "Run",
+      "Defeat",
+      "Idle",
+      "Victory",
+      "Walk"
+    ],
+    "UnityAnimationType": "Generic (ModelImporterAnimationType 2)",
+    "licenseStatus": "LICENSE_UNVERIFIED — NOT APPROVED FOR PRODUCTION",
+    "notes": "FBXLoader reports over-four skin influences and drops extra influences; rig naming and joint count differ from existing Quaternius 62-joint skeleton; no matching seated clips."
+  }
+}

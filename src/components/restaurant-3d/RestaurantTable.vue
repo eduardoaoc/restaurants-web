@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { RestaurantTableConfig } from '@/types/restaurant-3d/restaurant-layout'
 import type { TableMappingState } from './table-mapping'
 import type { OperationalEvent } from '@/types/restaurant-3d/operational-event'
@@ -9,9 +9,12 @@ import OperationsFlagBadge from './OperationsFlagBadge.vue'
 import RestaurantGuest from './RestaurantGuest.vue'
 import TableInfoLabel from './TableInfoLabel.vue'
 import TableStatusRing from './TableStatusRing.vue'
+import KayKitTableVisual from './KayKitTableVisual.vue'
+import UltimateTableVisual from './UltimateTableVisual.vue'
 import { targetKey, toBadge } from './operational-events'
 import { RING_MARGIN } from './ring-style'
 import { tableVisualState } from './visual-state'
+import { sceneAppearance } from './scene-appearance'
 import {
   SCENE_COLORS,
   TABLE_ANCHOR_HEIGHT,
@@ -46,7 +49,10 @@ const props = withDefaults(defineProps<{
   showOperational?: boolean
   /** Draw placeholder guest bodies (off when animated customers are drawn by the scene). */
   guestBodies?: boolean
-}>(), { showOperational: true, guestBodies: true, operationalFlags: () => [] })
+  /** Table model set: `ultimate` is the Ultimate Pack demo furniture (LICENSE_UNVERIFIED). */
+  furniture?: 'kaykit' | 'ultimate'
+  finish?: 'final' | 'raw'
+}>(), { showOperational: true, guestBodies: true, furniture: 'kaykit', finish: 'final', operationalFlags: () => [] })
 
 const emit = defineEmits<{
   /** A click anywhere on the table: top, base, chairs or its hit area. */
@@ -72,7 +78,9 @@ function onPointerUp(event: TablePointerEvent): void {
 }
 
 // Invisible footprint (table + chairs) so selection doesn't depend on hitting thin legs.
-const HIT_PADDING = 0.9
+// Touch screens get a larger one: a 2-seat table is only ~35 px wide on a phone, below a fingertip. Chosen once per mount.
+const COARSE_POINTER = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
+const HIT_PADDING = COARSE_POINTER ? 1.5 : 0.9
 const HIT_HEIGHT = 1.1
 /** Seated customers reach ~1.35 m, so the hit area covers them and clicking one selects its table. */
 const HIT_HEIGHT_WITH_CUSTOMERS = 1.5
@@ -104,8 +112,13 @@ const labelPosition = computed<[number, number, number]>(() => {
   return [-distance * Math.sin(theta), 0.02, distance * Math.cos(theta)]
 })
 
+// Light stage: the numbered pin floats above the table (the status ring stays on the floor) and the event badge hangs above the pin.
+const pinPosition = computed<[number, number, number]>(() => sceneAppearance.light ? [0, TABLE_ANCHOR_HEIGHT - 0.35, 0] : labelPosition.value)
+const badgeAnchorHeight = computed(() => sceneAppearance.light ? TABLE_ANCHOR_HEIGHT + 0.75 : TABLE_ANCHOR_HEIGHT)
+
 const anchorData: OperationalAnchorData = { targetType: 'table', targetId: props.table.id }
 const rotationY = computed(() => (props.table.rotation * Math.PI) / 180)
+const kayKitReady = ref(false)
 
 const topY = TABLE_HEIGHT - TABLE_TOP_THICKNESS / 2
 const legHeight = TABLE_HEIGHT - TABLE_TOP_THICKNESS
@@ -156,8 +169,12 @@ const legPositions = computed<[number, number, number][]>(() => {
       :invalid="invalid"
     />
 
+    <UltimateTableVisual v-if="furniture === 'ultimate'" :table="table" :finish="finish" @ready="kayKitReady = true" @failed="kayKitReady = false" />
+    <KayKitTableVisual v-else :table="table" @ready="kayKitReady = true" @failed="kayKitReady = false" />
+
     <!-- Table top -->
     <TresMesh
+      v-if="!kayKitReady"
       :position="[0, topY, 0]"
       cast-shadow
       receive-shadow
@@ -180,7 +197,7 @@ const legPositions = computed<[number, number, number][]>(() => {
 
     <!-- Base: central pedestal for round tables, four legs otherwise -->
     <TresMesh
-      v-if="table.shape === 'round'"
+      v-if="!kayKitReady && table.shape === 'round'"
       :position="[0, legHeight / 2, 0]"
       cast-shadow
     >
@@ -190,6 +207,7 @@ const legPositions = computed<[number, number, number][]>(() => {
     <template v-else>
       <TresMesh
         v-for="(leg, index) in legPositions"
+        v-if="!kayKitReady"
         :key="index"
         :position="leg"
         cast-shadow
@@ -212,7 +230,7 @@ const legPositions = computed<[number, number, number][]>(() => {
 
     <!-- Label anchor: persistent identity/occupancy, separate from the badge anchor. -->
     <TresGroup
-      :position="labelPosition"
+      :position="pinPosition"
       :name="`anchor:label:${table.id}`"
     >
       <TableInfoLabel
@@ -228,7 +246,7 @@ const legPositions = computed<[number, number, number][]>(() => {
 
     <!-- Anchor above the table centre: table-targeted events hang here. -->
     <TresGroup
-      :position="[0, TABLE_ANCHOR_HEIGHT, 0]"
+      :position="[0, badgeAnchorHeight, 0]"
       :name="`anchor:table:${table.id}`"
       :user-data="anchorData"
     >

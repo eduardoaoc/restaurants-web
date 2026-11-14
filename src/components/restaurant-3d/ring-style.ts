@@ -1,4 +1,5 @@
 import type { OperationalVisualState } from '@/types/restaurant-3d/operational-event'
+import { LIGHT_STAGE } from './scene-appearance'
 import { VISUAL_PALETTE } from './visual-state'
 
 /**
@@ -25,8 +26,10 @@ const RING_STRENGTH: Record<OperationalVisualState, Strength> = {
   urgent: 'strong',
 }
 
-export function getRingBands(state: OperationalVisualState): RingBand[] {
-  const { core, glow, outer } = VISUAL_PALETTE[state]
+export function getRingBands(state: OperationalVisualState, light = false): RingBand[] {
+  const palette = VISUAL_PALETTE[state]
+  // On the bright maquette the pale core of the dark palette vanishes; use the saturated tone for the core instead.
+  const { core, glow, outer } = light ? { ...palette, core: palette.glow } : palette
   switch (RING_STRENGTH[state]) {
     case 'none':
       return []
@@ -75,3 +78,9 @@ export const EDITOR_INVALID_BANDS: RingBand[] = [
 ]
 
 export const SELECTION_BAND: RingBand = { from: -0.17, to: -0.13, color: '#f2eae3', opacity: 0.7 }
+
+/** Selection on the light stage: the brand orange, a little wider than the status ring so it reads on its own. */
+export const LIGHT_SELECTION_BANDS: RingBand[] = [
+  { from: -0.31, to: -0.16, color: LIGHT_STAGE.accent, opacity: 1 },
+  { from: -0.15, to: -0.02, color: LIGHT_STAGE.accent, opacity: 0.2 },
+]

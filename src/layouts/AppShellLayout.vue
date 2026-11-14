@@ -12,6 +12,7 @@ import ThemeSwitcher from '@/components/shared/ThemeSwitcher.vue'
 import UserMenu from '@/components/shared/UserMenu.vue'
 import { usePermissions } from '@/composables/usePermissions'
 import { useReadyOrderNotifications } from '@/composables/useReadyOrderNotifications'
+import { useShellStage } from '@/composables/useShellStage'
 import { useRestaurantStore } from '@/stores/restaurant'
 import { appConfig } from '@/config/runtime'
 import { unlockNotificationSound } from '@/utils/notification-sound'
@@ -19,6 +20,9 @@ import { unlockNotificationSound } from '@/utils/notification-sound'
 const route = useRoute()
 const restaurantStore = useRestaurantStore()
 const permissions = usePermissions()
+const stage = useShellStage()
+// Only the V2 shell understands these; the dashboard starts with the sidebar collapsed and goes full-bleed in 3D.
+const shellProps = computed(() => appConfig.shellV2 ? { bleed: stage.active.value, collapseByDefault: route.name === 'app-dashboard' } : {})
 // Kept outside both presentations and RouterView: exactly one ready
 // subscription and one memoized restaurant initialization, as before.
 const readyOrderNotifications = useReadyOrderNotifications()
@@ -40,7 +44,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <component :is="appConfig.shellV2 ? AAppShell : LegacyAppShell" :items="items" :route-key="route.path">
+  <component :is="appConfig.shellV2 ? AAppShell : LegacyAppShell" :items="items" :route-key="route.path" v-bind="shellProps">
     <RouterView />
     <template #restaurant><RestaurantSwitcher /></template>
     <template #activity><ActivityBell /></template>

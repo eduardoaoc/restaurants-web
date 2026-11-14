@@ -1,5 +1,6 @@
 import type { FloorPosition, RestaurantTableConfig } from '@/types/restaurant-3d/restaurant-layout'
 import { FLOOR } from '../floor'
+import { BAR_FOOTPRINT, KITCHEN_FOOTPRINT } from '../environment-plan'
 import { CHAIR_SEAT_SIZE, getChairPlacements, getTableDimensions } from '../table-geometry'
 
 /**
@@ -27,6 +28,16 @@ export interface NavOptions {
 }
 
 export const DEFAULT_NAV: NavOptions = { cell: 0.15, clearance: 0.3, margin: 0.4 }
+
+/**
+ * Fixed service-area footprints in the visual room plan (metres): the kitchen and bar runs of the KayKit environment,
+ * taken from the same plan that places the models so what blocks guests is what is drawn. Customer routes stay in the
+ * dining area.
+ */
+export const SERVICE_AREA_OBSTACLES: readonly NavObstacle[] = [
+  { kind: 'rect', ...KITCHEN_FOOTPRINT, yaw: 0, tableId: 'environment:kitchen' },
+  { kind: 'rect', ...BAR_FOOTPRINT, yaw: 0, tableId: 'environment:bar' },
+]
 
 /** Furniture of every table: its top (round -> circle, else rotated rect) and one rect per chair. */
 export function obstaclesFromTables(tables: readonly RestaurantTableConfig[]): NavObstacle[] {
@@ -423,7 +434,7 @@ export class NavGrid {
 }
 
 export function buildNavGrid(tables: readonly RestaurantTableConfig[], options?: Partial<NavOptions>, floor: NavFloor = FLOOR): NavGrid {
-  return new NavGrid(floor, obstaclesFromTables(tables), options)
+  return new NavGrid(floor, [...obstaclesFromTables(tables), ...SERVICE_AREA_OBSTACLES], options)
 }
 
 export type EntranceIssue = 'outside_floor' | 'blocked_by_furniture'

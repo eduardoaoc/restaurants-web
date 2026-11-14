@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, h, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PhCalendarX, PhCaretRight, PhPencilSimple, PhTable } from '@phosphor-icons/vue'
 
@@ -14,12 +14,21 @@ import KitchenLivePanel from '@/components/dashboard/operation/KitchenLivePanel.
 import RecentActivityPanel from '@/components/dashboard/operation/RecentActivityPanel.vue'
 import RestaurantFloorMap from '@/components/dashboard/operation/RestaurantFloorMap.vue'
 import StaffLivePanel from '@/components/dashboard/operation/StaffLivePanel.vue'
+import StageLegend from '@/components/dashboard/operation/stage/StageLegend.vue'
+import StageStatCards from '@/components/dashboard/operation/stage/StageStatCards.vue'
+import StageTableCard from '@/components/dashboard/operation/stage/StageTableCard.vue'
+import StageTopbar from '@/components/dashboard/operation/stage/StageTopbar.vue'
 import TableDetailsDrawer from '@/components/dashboard/table/TableDetailsDrawer.vue'
 import AButton from '@/components/ui/AButton.vue'
 import ASurface from '@/components/ui/ASurface.vue'
 import { useActivityPanelToggle } from '@/composables/useActivityPanelToggle'
 import { usePermissions } from '@/composables/usePermissions'
+import { useRestaurantFloorLayout } from '@/composables/useRestaurantFloorLayout'
 import { useRecentActivity } from '@/composables/useRecentActivity'
+import '@/components/dashboard/operation/stage/stage.css'
+import { useShellStage } from '@/composables/useShellStage'
+import type { RealtimeConnectionState } from '@/types/realtime'
+import { formatDateOnly } from '@/utils/format'
 import { SERVICE_ACCESS_PERMISSIONS } from '@/types/auth-context'
 import type { OperationsAlert, OperationsLiveSnapshot, OperationsTable } from '@/types/operations'
 import type { ReceivedRealtimeEvent } from '@/composables/useRestaurantRealtime'
@@ -36,6 +45,8 @@ const props = defineProps<{
   lastRealtimeEvent: ReceivedRealtimeEvent | null
   /** Carta 8.1B — a table to auto-open once `snapshot` actually has it (deep-link from a QR scan or a bookmarked URL). Null/undefined the rest of the time. */
   pendingTableId?: number | null
+  /** Realtime connection, shown in the compact top bar of the 3D stage. */
+  connectionState?: RealtimeConnectionState
 }>()
 
 const emit = defineEmits<{ refresh: []; 'pending-table-consumed': [] }>()
@@ -54,6 +65,43 @@ const hasSidePanels = computed(() => canViewKitchen.value || canViewStaff.value 
 const selectedTableId = ref<number | null>(null)
 const selectedAlertId = ref<string | null>(null)
 const showEditor = ref(false)
+// The 3D room is the default whenever the restaurant has a saved layout; Plan stays one click away. Until the person
+// chooses, an empty (never saved) layout falls back to Plan on its own.
+const floorView = ref<'plan' | '3d'>('3d')
+const userChoseView = ref(false)
+function setFloorView(view: 'plan' | '3d'): void {
+  userChoseView.value = true
+  floorView.value = view
+}
+const showScene = computed(() => floorView.value === '3d')
+
+// The 3D scene is a heavy chunk: loaded only when the 3D view is first opened.
+// A failed download is surfaced as state (never a blank panel). The browser
+// keeps a failed module fetch until the page reloads, so there is no in-place
+// retry for it — the plan view stays one click away instead.
+const sceneChunkFailed = ref(false)
+const RestaurantScene = defineAsyncComponent({
+  loader: () => import('@/components/restaurant-3d/RestaurantScene.vue').catch(() => {
+    sceneChunkFailed.value = true
+    return { render: () => null } as Component
+  }),
+  loadingComponent: { render: () => h('p', { class: 'text-body-sm text-fg-muted', role: 'status' }, t('operations.board.floor.sceneLoading')) },
+  delay: 150,
+})
+function showPlan(): void {
+  setFloorView('plan')
+}
+const layoutRestaurantId = computed(() => showScene.value && props.snapshot ? props.restaurantId : null)
+const { state: layoutState, layout: sceneLayout, revision: layoutRevision, reload: reloadLayout } =
+  useRestaurantFloorLayout(layoutRestaurantId)
+
+watch([layoutState, sceneLayout], () => {
+  if (!userChoseView.value && layoutState.value === 'ready' && !sceneLayout.value?.tables.length) floorView.value = 'plan'
+})
+
+watch(() => props.lastRealtimeEvent, event => {
+  if (event?.name === 'floor_plan.updated' && event.restaurant_id === layoutRestaurantId.value) void reloadLayout()
+})
 
 /**
  * Every trigger that opens the Floor Map Editor goes through this — never
@@ -93,6 +141,25 @@ const allTables = computed<OperationsTable[]>(() => {
 })
 
 const selectedTable = computed(() => allTables.value.find((table) => table.id === selectedTableId.value) ?? null)
+const selectedSceneTableId = computed(() => selectedTable.value
+  ? sceneLayout.value?.tables.find(table => table.backendTableId === selectedTable.value?.id)?.id ?? null
+  : null)
+
+// Tables the saved 3D layout does not place (never linked, or added after the
+// layout was saved). They stay reachable from the dashboard, never only in Plan.
+const sceneLinkedTableIds = computed<ReadonlySet<number>>(() => new Set(
+  sceneLayout.value?.tables.flatMap(table => table.backendTableId == null ? [] : [table.backendTableId]) ?? [],
+))
+const tablesOutsideScene = computed(() => allTables.value.filter(table => !sceneLinkedTableIds.value.has(table.id)))
+const sceneReady = computed(() => !sceneChunkFailed.value && !!sceneLayout.value?.tables.length)
+const sceneUnavailable = computed(() => sceneChunkFailed.value || layoutState.value === 'error')
+
+function selectSceneTable(id: string | null): void {
+  const backendId = sceneLayout.value?.tables.find(table => table.id === id)?.backendTableId
+  const table = allTables.value.find(table => table.id === backendId)
+  if (table) selectTable(table)
+}
+
 const freeTables = computed(() => allTables.value.filter((table) => table.primary_status === 'free'))
 // Nothing configured anywhere yet (not "this zone is empty" — the whole
 // restaurant) — every operational panel would just be a wall of empty
@@ -180,7 +247,12 @@ const recentActivity = useRecentActivity(
   () => props.restaurantId,
   () => canViewActivity.value && !!props.snapshot,
   () => props.snapshot?.generated_at ?? null,
+  20,
 )
+const sidePanelEvents = computed(() => recentActivity.events.value.slice(0, 6))
+const selectedTableEvents = computed(() => selectedTableId.value === null
+  ? []
+  : recentActivity.events.value.filter(event => event.table?.id === selectedTableId.value).slice(0, 4))
 const activityPanel = useActivityPanelToggle()
 
 function selectTable(table: OperationsTable): void {
@@ -197,6 +269,44 @@ function clearSelection(): void {
   selectedTableId.value = null
   selectedAlertId.value = null
 }
+
+// --- Dashboard stage (3D room as the page background) -----------------------------------------------------------
+// Presentation only: same snapshot, same selection, same details sheet and actions as the Plan view.
+const shellStage = useShellStage()
+const stageMode = computed(() => showScene.value && hasAnyTables.value && !!props.snapshot)
+watch(stageMode, active => shellStage.set(active), { immediate: true })
+onBeforeUnmount(() => shellStage.set(false))
+
+const wideMedia = window.matchMedia('(min-width: 768px)')
+const wide = ref(wideMedia.matches)
+const onWideChange = (): void => { wide.value = wideMedia.matches }
+wideMedia.addEventListener('change', onWideChange)
+onBeforeUnmount(() => wideMedia.removeEventListener('change', onWideChange))
+
+// Wide: the selection opens a card over the room (non-modal) and the full details sheet only on "Manage table".
+// Narrow: the selection opens the existing responsive sheet directly.
+const detailsOpen = ref(false)
+const stageCardVisible = computed(() => stageMode.value && wide.value && !!selectedTable.value)
+const drawerTable = computed(() => stageCardVisible.value && !detailsOpen.value ? null : selectedTable.value)
+function onDrawerClose(): void {
+  if (stageCardVisible.value) detailsOpen.value = false
+  else clearSelection()
+}
+watch(selectedTableId, () => { detailsOpen.value = false })
+function onStageEscape(): void {
+  if (selectedTableId.value !== null && !detailsOpen.value) clearSelection()
+}
+const mobilePanel = ref<'attention' | 'tables' | null>(null)
+const stageStats = computed(() => statItems.value.map(item => ({ ...item, context: item.id === 'occupied-tables' ? item.context : undefined })))
+const dayState = computed(() => {
+  const daily = props.snapshot?.daily_operation
+  if (!daily) return null
+  return daily.status === 'open'
+    ? { open: true, label: t('operations.board.dayOpen', { date: formatDateOnly(daily.business_date, locale.value) }) }
+    : { open: false, label: t('operations.board.dayNotOpen') }
+})
+const attentionCount = computed(() => props.snapshot?.alerts.length ?? 0)
+const outsideSceneCount = computed(() => tablesOutsideScene.value.length)
 
 // A resolved alert disappears from the next snapshot; drop its highlight
 // (the table itself stays open in context).
@@ -275,7 +385,22 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
     </ASurface>
 
     <template v-else-if="snapshot">
-      <div class="dashboard-enter flex flex-col gap-4">
+      <!-- Compact controls for the shell's top bar (view selector always; status, clock and refresh on the stage). -->
+      <StageTopbar
+        v-if="hasAnyTables"
+        :floor-view="floorView"
+        :stage="stageMode"
+        :day-state="dayState"
+        :connection-state="connectionState"
+        :refreshing="refreshing"
+        :can-refresh="true"
+        :can-view-reports="can('view_reports')"
+        :timezone="timezone"
+        @update:floor-view="setFloorView"
+        @refresh="emit('refresh')"
+      />
+
+      <div v-if="!stageMode" class="dashboard-enter flex flex-col gap-4">
         <!-- Closed day: one compact strip, the page's only primary action. -->
         <div
           v-if="dayNotOpen"
@@ -309,7 +434,7 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
         />
 
         <div v-else ref="board" class="@container min-w-0">
-          <div class="operation-board grid min-w-0 grid-cols-1 gap-4" :class="hasSidePanels ? 'operation-board--side' : ''">
+          <div class="operation-board grid min-w-0 grid-cols-1 gap-4" :class="{ 'operation-board--side': hasSidePanels }">
             <!-- Left: attention queue. From @4xl its height follows the row and the list scrolls inside. -->
             <div class="operation-board-queue relative min-w-0">
               <div :class="[panelClass, '@4xl:absolute @4xl:inset-0']">
@@ -336,21 +461,23 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
                   <h2 id="dashboard-tables-title" class="text-component-title font-semibold text-fg">{{ t('operations.board.floor.title') }}</h2>
                   <p class="mt-0.5 text-body-sm tabular-nums text-fg-muted">{{ floorSummary }}</p>
                 </div>
-                <AButton v-if="canManageFloorPlan" variant="secondary" size="sm" @click="openFloorEditor">
-                  <template #leading><PhPencilSimple /></template>{{ t('operations.floorMap.edit') }}
-                </AButton>
+                <div class="flex flex-wrap items-center gap-2">
+                  <AButton v-if="canManageFloorPlan" variant="secondary" size="sm" @click="openFloorEditor">
+                    <template #leading><PhPencilSimple /></template>{{ t('operations.floorMap.edit') }}
+                  </AButton>
+                </div>
               </header>
 
               <div class="min-w-0 flex-1 p-4">
-                  <RestaurantFloorMap
-                    v-if="showFloorMap"
-                    :floors="snapshot.floors"
-                    :unassigned-tables="snapshot.unassigned_tables"
-                    :selected-table-id="selectedTableId"
-                    :previous-session-table-ids="previousSessionTableIds"
-                    @select-table="selectTable"
-                  />
-                  <DashboardTableOverview v-else :tables="allTables" :selected-table-id="selectedTableId" :previous-session-table-ids="previousSessionTableIds" @select="selectTable" />
+                    <RestaurantFloorMap
+                      v-if="showFloorMap"
+                      :floors="snapshot.floors"
+                      :unassigned-tables="snapshot.unassigned_tables"
+                      :selected-table-id="selectedTableId"
+                      :previous-session-table-ids="previousSessionTableIds"
+                      @select-table="selectTable"
+                    />
+                    <DashboardTableOverview v-else :tables="allTables" :selected-table-id="selectedTableId" :previous-session-table-ids="previousSessionTableIds" @select="selectTable" />
 
                   <details class="group mt-3">
                     <summary class="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 text-body-sm font-medium text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
@@ -402,7 +529,7 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
               <section v-if="canViewActivity" :class="panelClass" class="p-4" aria-labelledby="dashboard-activity-title">
                 <h2 id="dashboard-activity-title" class="mb-3 text-component-title font-semibold text-fg">{{ t('operations.board.activity.title') }}</h2>
                 <RecentActivityPanel
-                  :events="recentActivity.events.value"
+                  :events="sidePanelEvents"
                   :loading="recentActivity.loading.value"
                   :error="recentActivity.error.value"
                   :timezone="timezone"
@@ -416,19 +543,125 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
           </div>
         </div>
       </div>
+
+      <!-- The room is the page: the 3D scene fills the whole area under the top bar and the panels float over its edges. -->
+      <div v-else class="stage" @keydown.esc="onStageEscape">
+        <h1 class="sr-only">{{ t('operations.board.title') }}</h1>
+        <div class="stage-scene">
+          <RestaurantScene
+            v-if="sceneReady"
+            :key="layoutRevision"
+            :layout="sceneLayout!"
+            :entrance="sceneLayout!.entrance"
+            :restaurant-id="restaurantId"
+            :operations-snapshot="snapshot"
+            :selected-layout-table-id="selectedSceneTableId"
+            :diagnostics="false"
+            stage
+            @table-selected="selectSceneTable"
+          />
+          <div v-else class="stage-scene-state">
+            <div class="stage-panel flex max-w-sm flex-col items-start gap-3 rounded-saloa-lg p-4" :role="sceneUnavailable ? 'alert' : 'status'">
+              <p class="text-body-sm text-fg">
+                {{ sceneUnavailable ? t('operations.board.floor.sceneError') : t('operations.board.floor.sceneLoading') }}
+              </p>
+              <div v-if="sceneUnavailable" class="flex flex-wrap gap-2">
+                <AButton v-if="!sceneChunkFailed" variant="secondary" size="sm" @click="reloadLayout">{{ t('operations.board.activity.retry') }}</AButton>
+                <AButton variant="secondary" size="sm" @click="showPlan">{{ t('operations.board.floor.showPlan') }}</AButton>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stage-ui">
+          <div class="stage-row">
+            <div class="stage-col stage-col--start">
+              <StageStatCards :items="stageStats" />
+              <div v-if="dayNotOpen" role="status" class="stage-panel flex items-center gap-2 rounded-saloa-lg px-3 py-2">
+                <PhCalendarX :size="18" class="shrink-0 text-warning" aria-hidden="true" />
+                <p class="min-w-0 flex-1 text-body-sm text-fg">{{ t('dailyOperation.notOpen') }}<strong v-if="leftover" class="block text-label-md font-semibold text-fg-muted">{{ leftover }}</strong></p>
+                <AButton v-if="canManageDailyOperation" as="RouterLink" :to="{ name: 'app-day-close' }" size="sm" class="shrink-0">{{ t('dailyOperation.goToOpen') }}</AButton>
+              </div>
+            </div>
+            <div v-if="stageCardVisible && selectedTable" class="stage-col stage-col--end stage-card-slot">
+              <StageTableCard
+                :table="selectedTable"
+                :timing-previous="selectedSessionTiming?.kind === 'previous'"
+                @close="clearSelection"
+                @manage="detailsOpen = true"
+              />
+            </div>
+          </div>
+
+          <div class="stage-row stage-row--bottom">
+            <!-- Bottom-left: legend, the selected table's activity and a keyboard/touch list of every table. -->
+            <section class="stage-panel stage-dock stage-dock--start flex-col gap-0.5 rounded-saloa-lg px-3 py-1" :class="mobilePanel === 'tables' ? 'is-open' : ''" :aria-label="t('operations.board.stage.tablesPanel')">
+              <StageLegend />
+              <details v-if="selectedTable && canViewActivity" :key="selectedTable.id" class="group min-w-0">
+                <summary class="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 text-label-lg font-medium text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
+                  <PhCaretRight :size="16" class="text-fg-muted transition-transform duration-base ease-out group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
+                  {{ t('operations.board.stage.table.history', { table: selectedTable.name }) }}
+                </summary>
+                <p v-if="selectedTableEvents.length === 0" class="mb-2 text-label-md text-fg-muted">{{ t('operations.board.stage.table.historyEmpty') }}</p>
+                <div v-else class="mb-2 max-h-56 overflow-y-auto">
+                  <RecentActivityPanel :events="selectedTableEvents" :loading="false" :error="null" :timezone="timezone" @retry="recentActivity.retry" />
+                </div>
+              </details>
+              <details class="group min-w-0">
+                <summary class="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 text-label-lg font-medium text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
+                  <PhCaretRight :size="16" class="text-fg-muted transition-transform duration-base ease-out group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
+                  {{ t('operations.board.stage.tables', { count: formatNumber(allTables.length, locale) }) }}
+                </summary>
+                <p v-if="outsideSceneCount" class="mb-2 text-label-md text-fg-muted">{{ t('operations.board.stage.outsideCount', { count: formatNumber(outsideSceneCount, locale) }) }}</p>
+                <div class="max-h-56 overflow-y-auto p-1">
+                  <DashboardTableOverview :tables="allTables" :selected-table-id="selectedTableId" :previous-session-table-ids="previousSessionTableIds" @select="selectTable" />
+                </div>
+              </details>
+            </section>
+
+            <!-- Bottom-right: the attention queue. -->
+            <section class="stage-panel stage-dock stage-dock--end rounded-saloa-lg" :class="mobilePanel === 'attention' ? 'is-open' : ''" :aria-label="t('operations.board.queue.title')">
+              <AttentionQueue
+                class="min-h-0 flex-1"
+                :alerts="snapshot.alerts"
+                :tables="allTables"
+                :staff="snapshot.staff"
+                :generated-at="snapshot.generated_at"
+                :daily-operation="snapshot.daily_operation"
+                :timezone="timezone"
+                :selected-alert-id="selectedAlertId"
+                :can-view-service="canViewService"
+                compact
+                dense
+                @select="selectAlert"
+              />
+            </section>
+          </div>
+
+          <!-- Phones: the two bottom panels collapse into one dock of toggles so the room keeps the screen. -->
+          <div class="stage-toggles" role="group" :aria-label="t('operations.board.stage.panels')">
+            <AButton variant="secondary" size="sm" :aria-pressed="mobilePanel === 'attention'" @click="mobilePanel = mobilePanel === 'attention' ? null : 'attention'">
+              {{ t('operations.board.queue.title') }} · {{ formatNumber(attentionCount, locale) }}
+            </AButton>
+            <AButton variant="secondary" size="sm" :aria-pressed="mobilePanel === 'tables'" @click="mobilePanel = mobilePanel === 'tables' ? null : 'tables'">
+              {{ t('operations.board.stage.tablesShort') }}
+            </AButton>
+          </div>
+        </div>
+      </div>
     </template>
 
     <EmptyState v-else :icon="PhTable" :message="t('operations.noData')" />
 
     <!-- Table details open in the shared centred modal at every width. -->
     <TableDetailsDrawer
-      :table="selectedTable"
+      :table="drawerTable"
       :staff="snapshot?.staff ?? []"
       :free-tables="freeTables"
       :currency="snapshot?.restaurant.currency ?? 'EUR'"
       dashboard-mode
       :session-timing="selectedSessionTiming"
-      @close="clearSelection"
+      @close="onDrawerClose"
       @refresh="onDrawerRefresh"
     />
 
@@ -460,6 +693,36 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
 @container (min-width: 64rem) {
   .operation-board--side { grid-template-columns: minmax(15rem, 23fr) minmax(0, 54fr) minmax(15rem, 23fr); }
   .operation-board--side .operation-board-side { grid-column: 3; grid-row: 1; grid-template-columns: minmax(0, 1fr); }
+}
+
+/*
+ * Dashboard stage: the 3D room fills the whole area under the shell's top bar (the shell goes full-bleed) and the
+ * panels float over its corners — stats and selected table on top, legend/history and the attention queue below.
+ * The containers never catch pointer events, so the room stays interactive everywhere between the panels.
+ */
+.stage { position: relative; isolation: isolate; height: calc(100dvh - var(--bar-top, 0px) - var(--bar-bottom, 0px)); min-height: 26rem; overflow: hidden; background: var(--color-background); }
+.stage-scene { position: absolute; inset: 0; }
+.stage-scene-state { display: grid; height: 100%; place-items: center; padding: 1rem; }
+.stage-ui { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 0.75rem; padding: 0.75rem; pointer-events: none; }
+.stage-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; min-height: 0; }
+.stage-row--bottom { align-items: flex-end; }
+.stage-col { display: flex; min-width: 0; flex-direction: column; gap: 0.5rem; pointer-events: none; }
+.stage-col > * { pointer-events: auto; }
+.stage-col--start { width: 100%; }
+.stage-card-slot { display: none; }
+.stage-dock { display: none; min-width: 0; pointer-events: auto; }
+.stage-dock.is-open { display: flex; width: 100%; max-height: 50dvh; overflow-y: auto; }
+.stage-toggles { display: flex; justify-content: center; gap: 0.5rem; pointer-events: auto; }
+.stage-toggles button[aria-pressed='true'] { box-shadow: inset 0 0 0 1px currentColor; }
+
+@media (min-width: 768px) {
+  .stage-ui { padding: 1rem; }
+  .stage-col--start { width: min(45rem, 100%); }
+  .stage-card-slot { display: flex; width: 19rem; max-height: min(24rem, 100%); }
+  .stage-dock, .stage-dock.is-open { display: flex; width: auto; }
+  .stage-dock--start { width: min(28rem, calc(100% - 23.5rem)); max-height: min(24rem, 46dvh); overflow-y: auto; }
+  .stage-dock--end { width: 22rem; max-height: min(22rem, 42dvh); flex-direction: column; }
+  .stage-toggles { display: none; }
 }
 
 /* SALOA §10.2 generic entrance: first paint only, opacity + 4px rise; nothing moves when motion is reduced. */

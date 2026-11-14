@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import { SHELL_TOPBAR_CENTER_ID, SHELL_TOPBAR_TRAILING_ID } from '@/composables/useShellStage'
+
 withDefaults(defineProps<{ restaurantVisible?: boolean; userVisible?: boolean }>(), { restaurantVisible: true, userVisible: true })
 </script>
 
 <template>
   <header class="shell-topbar">
     <div v-if="restaurantVisible" class="shell-restaurant"><slot name="restaurant" /></div>
+    <!-- Page-owned compact controls (teleported by a route view that wants them in the bar; empty elsewhere). -->
+    <div :id="SHELL_TOPBAR_CENTER_ID" class="shell-page-center" />
+    <div :id="SHELL_TOPBAR_TRAILING_ID" class="shell-page-trailing" />
     <div class="shell-global-actions">
       <div class="shell-secondary-actions"><slot name="language" /><slot name="theme" /></div>
       <slot name="activity" />
@@ -16,6 +21,10 @@ withDefaults(defineProps<{ restaurantVisible?: boolean; userVisible?: boolean }>
 <style scoped>
 .shell-topbar { position: sticky; top: 0; display: flex; flex-wrap: wrap; align-items: center; gap: calc(var(--spacing) * 2); min-width: 0; min-height: calc(var(--spacing) * 13 + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(calc(var(--spacing) * 4), env(safe-area-inset-right)) 0 max(calc(var(--spacing) * 4), env(safe-area-inset-left)); border-bottom: 1px solid var(--color-border); background: var(--color-surface); z-index: var(--z-nav); }
 .shell-restaurant { min-width: 0; flex: 1 1 12rem; }
+.shell-page-center { display: flex; align-items: center; justify-content: center; min-width: 0; flex: 2 1 auto; }
+.shell-page-trailing { display: flex; align-items: center; gap: calc(var(--spacing) * 2); margin-left: auto; }
+.shell-page-center:empty, .shell-page-trailing:empty { display: none; }
+.shell-page-trailing + .shell-global-actions { margin-left: 0; }
 .shell-global-actions { display: flex; align-items: center; gap: calc(var(--spacing) * 2); margin-left: auto; }
 .shell-secondary-actions { display: none; }
 .shell-user { min-width: 0; }

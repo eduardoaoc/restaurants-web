@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Html } from '@tresjs/cientos'
+import { flagTier, tierZRange } from './operational-hierarchy'
+import { useEdgeClamp } from './use-edge-clamp'
 
 const props = defineProps<{ flags: readonly string[] }>()
 
@@ -17,11 +19,13 @@ const PRESENTATION: Record<string, { label: string; tone: 'attention' | 'urgent'
 }
 const PRIORITY = Object.keys(PRESENTATION)
 const selectedFlag = computed(() => PRIORITY.find(value => props.flags.includes(value)) ?? null)
+const { calculatePosition, attrs: overlayAttrs } = useEdgeClamp()
+const tier = computed(() => selectedFlag.value ? flagTier(PRESENTATION[selectedFlag.value].tone) : 5)
 </script>
 
 <template>
-  <Html v-if="selectedFlag" center :pointer-events="'none'" :z-index-range="[20, 0]">
-    <span class="operations-flag" :class="`operations-flag--${PRESENTATION[selectedFlag].tone}`">
+  <Html v-if="selectedFlag" center :pointer-events="'none'" :z-index-range="tierZRange(tier)" :calculate-position="calculatePosition">
+    <span v-bind="overlayAttrs" class="operations-flag" :class="`operations-flag--${PRESENTATION[selectedFlag].tone}`" :data-tier="tier">
       {{ PRESENTATION[selectedFlag].label }}
     </span>
   </Html>
@@ -44,4 +48,5 @@ const selectedFlag = computed(() => PRIORITY.find(value => props.flags.includes(
 }
 .operations-flag--urgent { color: #ffc2bd; }
 .operations-flag--checkout { color: #c5e2ff; }
+@media (max-width: 640px) { .operations-flag { max-width: 132px; padding: 5px 8px; font-size: 11px; } }
 </style>

@@ -2,6 +2,10 @@
 import { computed } from 'vue'
 import { Html } from '@tresjs/cientos'
 import { formatElapsed } from './elapsed-time'
+import { LABEL_Z_RANGE } from './operational-hierarchy'
+import { useEdgeClamp } from './use-edge-clamp'
+import { overlayViewport } from './overlay-viewport'
+import { sceneAppearance } from './scene-appearance'
 
 /**
  * Persistent table identity + occupancy ("Mesa 05 / 4 pers. · 38 min", or
@@ -24,6 +28,9 @@ const props = defineProps<{
   mappingLabel?: string
 }>()
 
+const { calculatePosition, attrs: overlayAttrs } = useEdgeClamp()
+/** Light stage: a floating numbered pin ("3") instead of the "Mesa 03" pill; the occupancy line stays a small caption. */
+const pin = computed(() => String(props.tableNumber))
 const title = computed(() => `Mesa ${String(props.tableNumber).padStart(2, '0')}`)
 const detail = computed(() =>
   props.occupiedAt === null
@@ -36,20 +43,24 @@ const detail = computed(() =>
   <Html
     center
     :pointer-events="'none'"
-    :z-index-range="[10, 0]"
+    :z-index-range="LABEL_Z_RANGE"
+    :calculate-position="calculatePosition"
   >
     <div
+      v-bind="overlayAttrs"
       class="table-info-label"
-      :class="{ 'table-info-label--available': occupiedAt === null || identityOnly }"
+      :class="{ 'table-info-label--available': occupiedAt === null || identityOnly, 'table-info-label--pin': sceneAppearance.light }"
     >
-      <span class="table-info-label__title">{{ title }}</span>
+      <span v-if="sceneAppearance.light" class="table-info-label__pin" :aria-label="title">{{ pin }}</span>
+      <span v-else class="table-info-label__title">{{ title }}</span>
       <span
         v-if="identityOnly && mappingLabel"
         class="table-info-label__mapping"
         :class="`table-info-label__mapping--${mappingState ?? 'unmapped'}`"
       >{{ mappingLabel }}</span>
+      <!-- Occupancy line only while the tables are far enough apart on screen to hold it (see overlay-viewport.ts). -->
       <span
-        v-if="!identityOnly"
+        v-if="!identityOnly && overlayViewport.labelDetail && !(sceneAppearance.light && occupiedAt === null)"
         class="table-info-label__detail"
       >{{ detail }}</span>
     </div>
@@ -64,7 +75,7 @@ const detail = computed(() =>
   gap: 1px;
   padding: 4px 9px;
   border-radius: 10px;
-  background: rgb(23 24 28 / 0.62);
+  background: rgb(23 24 28 / 0.78);
   color: #f2eae3;
   font-family: inherit;
   line-height: 1.2;
@@ -81,7 +92,7 @@ const detail = computed(() =>
   font-size: 11px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-  color: rgb(242 234 227 / 0.72);
+  color: rgb(242 234 227 / 0.88);
 }
 
 .table-info-label__mapping {
@@ -95,10 +106,28 @@ const detail = computed(() =>
 .table-info-label__mapping--missing, .table-info-label__mapping--conflict { background: #632c27; color: #ffd8d3; }
 
 .table-info-label--available {
-  background: rgb(23 24 28 / 0.45);
+  background: rgb(23 24 28 / 0.7);
 }
 
 .table-info-label--available .table-info-label__title {
-  color: rgb(242 234 227 / 0.8);
+  color: rgb(242 234 227 / 0.92);
+}
+
+/* Light stage: white pin with a soft shadow, orange numeral; the caption is a small white capsule. */
+.table-info-label--pin { background: transparent; padding: 0; gap: 3px; }
+.table-info-label__pin {
+  display: grid; place-items: center; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 999px;
+  background: #fff; color: #7a3a00; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 2px rgb(40 30 20 / 0.28), 0 4px 10px rgb(40 30 20 / 0.16);
+}
+.table-info-label--pin .table-info-label__detail {
+  padding: 1px 7px; border-radius: 999px; background: rgb(255 255 255 / 0.92); color: #4a3a2c;
+  box-shadow: 0 1px 2px rgb(40 30 20 / 0.2);
+}
+
+@media (max-width: 640px) {
+  .table-info-label { padding: 3px 7px; border-radius: 8px; }
+  .table-info-label__title { font-size: 11px; }
+  .table-info-label__detail { font-size: 10px; }
 }
 </style>

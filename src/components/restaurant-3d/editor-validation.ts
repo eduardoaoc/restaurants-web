@@ -5,6 +5,8 @@ import type {
 } from '@/types/restaurant-3d/restaurant-layout'
 import { isInsideFloor, isOnGrid } from './layout-editing'
 import { findCollisions } from './table-footprint'
+import { getTableDimensions } from './table-geometry'
+import { insideObstacle, SERVICE_AREA_OBSTACLES } from './navigation/floor-nav'
 
 /**
  * Every layout-editing rule lives here; UI components only show the messages.
@@ -69,6 +71,14 @@ export function validateTablePlacement(table: RestaurantTableConfig, others: Res
   if (!isInsideFloor(table)) issues.push(issue('out_of_floor', 'La mesa queda fuera del salón.'))
   const [first] = findCollisions(table, others)
   if (first) issues.push(issue('collision', `No hay espacio: choca con la ${label(first.number)}.`))
+  const dimensions = getTableDimensions(table.shape, table.seats)
+  const serviceArea = SERVICE_AREA_OBSTACLES.find(obstacle => insideObstacle(
+    obstacle,
+    x,
+    z,
+    Math.hypot(dimensions.width / 2, dimensions.depth / 2) + 0.25,
+  ))
+  if (serviceArea) issues.push(issue('collision', 'No hay espacio: la mesa invade una zona de servicio.'))
   return issues
 }
 

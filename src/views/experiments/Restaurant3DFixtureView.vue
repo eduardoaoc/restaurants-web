@@ -6,8 +6,10 @@ import type { CustomerStats } from '@/components/restaurant-3d/RestaurantCustome
 import type { RestaurantSceneMode } from '@/components/restaurant-3d/scene-mode'
 import { FLOOR } from '@/components/restaurant-3d/floor'
 import { guestFixture } from '@/data/restaurant-3d/guest-fixtures'
-import { mockLayout } from '@/data/restaurant-3d/mock-layout'
-import { mockOperationalState } from '@/data/restaurant-3d/mock-operational-state'
+import { mockLayout as variedLayout } from '@/data/restaurant-3d/mock-layout'
+import { mockEvents as variedEvents } from '@/data/restaurant-3d/mock-events'
+import { mockOperationalState as variedState } from '@/data/restaurant-3d/mock-operational-state'
+import { ultimateDemoEvents, ultimateDemoLayout, ultimateDemoState } from '@/data/restaurant-3d/ultimate-demo'
 import type { RestaurantLayoutDocument } from '@/types/restaurant-3d/restaurant-layout'
 import type { RestaurantOperationalState } from '@/types/restaurant-3d/restaurant-operations'
 
@@ -24,19 +26,26 @@ const modes: { value: RestaurantSceneMode; label: string }[] = [
   { value: 'edit', label: 'Editar salón' },
 ]
 const mode = ref<RestaurantSceneMode>('operation')
+const environment = computed(() => route.query.environment === 'kaykit' ? 'kaykit' : 'ultimate')
+// Phones frame the tables by default; this button shows the whole architecture.
+const overview = ref(false)
 
 const guestsParam = Number(route.query.guests)
+const varied = route.query.layout === 'varied'
+const fixtureLayout = varied ? variedLayout : ultimateDemoLayout
+const fixtureState = varied ? variedState : ultimateDemoState
+const fixtureEvents = varied ? variedEvents : ultimateDemoEvents
 const initialState = (): RestaurantOperationalState => {
-  const layout = mockLayout
+  const layout = fixtureLayout
   return structuredClone(
-    Number.isInteger(guestsParam) && guestsParam >= 0 ? guestFixture(layout, guestsParam) : (mockOperationalState as RestaurantOperationalState),
+    Number.isInteger(guestsParam) && guestsParam >= 0 ? guestFixture(layout, guestsParam) : (fixtureState as RestaurantOperationalState),
   )
 }
 
 // A fresh clone per (re)mount, exactly like the scene expects ("read once on mount"). The state is reactive on
 // purpose: the simulator edits guest records and the scene mirrors them.
 const resetKey = ref(0)
-const layout = ref(structuredClone(mockLayout))
+const layout = ref(structuredClone(fixtureLayout))
 const state = reactive<RestaurantOperationalState>(initialState())
 const saved = ref<RestaurantLayoutDocument | null>(null)
 
@@ -46,13 +55,14 @@ function save(document: RestaurantLayoutDocument) {
 }
 
 // ---- simulator ---------------------------------------------------------------------------------------------------
-const entrance = reactive({ x: 0, z: 6.5 })
+// West-wall door of the Ultimate room (south end), so the walk to the counter and tables crosses the open floor.
+const entrance = reactive({ x: -9.4, z: 3.1 })
 const entranceStatus = ref<{ ok: boolean; reason?: string }>({ ok: true })
 const nav = reactive({ paths: true, arrivals: true, departures: true, obstacles: false, approach: false, timeScale: 1 })
 // Simulation speed: slow motion and pause only slow the SIMULATION (customers, chairs); operational state is untouched.
 const speed = ref(1)
 const paused = ref(false)
-const targetTableId = ref(mockLayout.tables[0].id)
+const targetTableId = ref(fixtureLayout.tables[0].id)
 const stats = ref<CustomerStats | null>(null)
 const failures = ref<string[]>([])
 let simCounter = 0
@@ -126,7 +136,7 @@ function reset() {
   timers.clear()
   for (const key of Object.keys(state)) delete state[key]
   Object.assign(state, initialState())
-  layout.value = structuredClone(mockLayout)
+  layout.value = structuredClone(fixtureLayout)
   failures.value = []
   saved.value = null
   mode.value = 'operation'
@@ -165,6 +175,15 @@ onBeforeUnmount(() => timers.forEach((id) => clearTimeout(id)))
           {{ option.label }}
         </button>
       </div>
+      <button
+        type="button"
+        class="overview-toggle"
+        data-overview
+        :aria-pressed="overview"
+        @click="overview = !overview"
+      >
+        Vista general
+      </button>
       <span
         v-if="saved"
         data-saved
@@ -180,6 +199,11 @@ onBeforeUnmount(() => timers.forEach((id) => clearTimeout(id)))
         :save="save"
         :entrance="entrance"
         :nav-debug="nav"
+        :environment="environment"
+        :operational-events="fixtureEvents"
+        :finish="route.query.finish === 'raw' ? 'raw' : 'final'"
+        :overview="overview"
+        :diagnostics="route.query.diag !== '0'"
         @table-selected="onSelect"
         @entrance-status="onEntranceStatus"
         @nav-failure="failures.unshift($event)"
@@ -377,6 +401,9 @@ h1 { margin: 0; font-size: 18px; }
 h2 { margin: 0; font-size: 14px; }
 .mode-switch { display: inline-flex; padding: 3px; border: 1px solid #343434; border-radius: 999px; }
 .mode-switch button { min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 13px; cursor: pointer; }
+.overview-toggle { min-height: 44px; padding: 0 16px; border: 1px solid #343434; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 13px; cursor: pointer; }
+.overview-toggle[aria-pressed='true'] { background: rgb(242 234 227 / 0.14); border-color: #f2eae3; font-weight: 600; }
+.overview-toggle:focus-visible { outline: 2px solid #f2eae3; outline-offset: 2px; }
 .mode-switch button[aria-pressed='true'] { background: rgb(242 234 227 / 0.14); font-weight: 600; }
 .fixture-body { display: grid; gap: 12px; grid-template-columns: 1fr; }
 .sim { display: grid; gap: 10px; align-content: start; padding: 12px; border: 1px solid #343434; border-radius: 12px; font-size: 13px; }

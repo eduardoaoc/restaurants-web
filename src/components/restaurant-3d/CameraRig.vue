@@ -3,7 +3,10 @@ import { onBeforeUnmount, onMounted, shallowRef, watch } from 'vue'
 import { useTres } from '@tresjs/core'
 import { OrbitControls } from '@tresjs/cientos'
 import { PerspectiveCamera } from 'three'
-import { cameraFit } from './camera-fit'
+import type { FloorPosition, RestaurantTableConfig } from '@/types/restaurant-3d/restaurant-layout'
+import { canvasSafeInsets, overlayMetrics, readSafeAreaInsets } from './overlay-metrics'
+import { overlayViewport, updateOverlayDensity } from './overlay-viewport'
+import { CAMERA_FOV, frameRestaurant } from './framing'
 
 /**
  * OrbitControls plus the "focus a table" camera move. Lives inside the
@@ -26,16 +29,30 @@ const props = withDefaults(defineProps<{
   focus: { x: number; z: number } | null
   /** Off while a table is being dragged in the editor, so the camera doesn't orbit. */
   orbitEnabled?: boolean
-  /** The `cameraFit` the starting pose was built with (the owner estimated it before the canvas had a size). */
-  initialFit?: number
-}>(), { orbitEnabled: true, initialFit: 1 })
+  /** What is framed: the camera is fitted to these tables (and entrance), plus the floor while editing. */
+  tables: readonly RestaurantTableConfig[]
+  entrance?: FloorPosition | null
+  includeFloor?: boolean
+  /** Px kept free on each side of the framed content (the dashboard stage's floating panels). */
+  frameInsets?: { top: number; right: number; bottom: number; left: number }
+  /** Farthest the camera may sit (m). Defaults to the demo-room range when walls are framed, else the table-only range. */
+  maxDistance?: number
+  /** Height (m) of the walls to keep in frame when the floor is framed; 0 = ignore. */
+  wallHeight?: number
+  /** Changing it drops the person's manual camera and re-frames (the demo's overview toggle). */
+  reframeKey?: number
+  /** Px at the bottom of the canvas covered by an overlay (the layout editor's dock on a phone); nothing is framed there. */
+  bottomInset?: number
+  /** Orbit target of the starting pose (the owner framed the layout before the canvas had a size). */
+  initialTarget: [number, number, number]
+}>(), { orbitEnabled: true, entrance: null, includeFloor: false, bottomInset: 0, frameInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) })
 
 const DURATION_MS = 300
 /** Camera-to-target distance when focused (the default view sits at ~18 m). */
 const FOCUS_DISTANCE = 9.5
 const FOCUS_HEIGHT = 0.5
 
-const { camera, sizes } = useTres()
+const { camera, sizes, renderer } = useTres()
 // Exposed refs are unwrapped on a component ref, so `instance` is the controls object itself.
 const controls = shallowRef<{ instance: ControlsLike | null } | null>(null)
 
@@ -99,7 +116,7 @@ function applyPose(pose: Pose): void {
   cam.position.set(...pose.position)
   ctl.target.set(...pose.target)
   applyShift(pose.shift)
-  ctl.update()
+  updateControls(ctl)
 }
 
 function cancelAnimation(): void {
@@ -162,48 +179,142 @@ watch(
 )
 
 // --- Responsive framing -------------------------------------------------------------------------------------------
-// When the scene is resized (rotation, window, dock layout) the camera moves along its own viewing direction to the
-// distance that suits the new aspect. Only while the person has not moved the camera themselves and no table is
-// focused: an intentional view is never reset. Debounced, and a no-op when the fit barely changes.
-let appliedFit = props.initialFit
+// The camera is fitted to the restaurant's real bounds — table footprints, labels and the operational pills at their
+// on-screen size — inside the canvas minus the device's safe areas (framing.ts). It re-fits when the canvas is resized
+// (rotation, window, dock layout) or the editor is entered/left, but only while the person has not moved the camera
+// themselves and no table is focused: an intentional view is never reset. Debounced; a no-op when nothing changes.
 let userMovedCamera = false
+let userGesture = false
+let gestureTimer: ReturnType<typeof setTimeout> | undefined
 let fitTimer: ReturnType<typeof setTimeout> | undefined
-const onUserStart = () => { userMovedCamera = true }
-
-function refit(): void {
-  const cam = perspectiveCamera()
-  const ctl = orbit()
-  if (!cam || !ctl || userMovedCamera || props.focus || frame !== null) return
-  const fit = cameraFit(sizes.width.value / Math.max(1, sizes.height.value))
-  if (Math.abs(fit - appliedFit) < 0.03) return
-  const ratio = fit / appliedFit
-  cam.position.set(
-    ctl.target.x + (cam.position.x - ctl.target.x) * ratio,
-    ctl.target.y + (cam.position.y - ctl.target.y) * ratio,
-    ctl.target.z + (cam.position.z - ctl.target.z) * ratio,
-  )
-  appliedFit = fit
-  ctl.update()
+// Damping keeps moving the camera after the fingers lift; those frames still belong to the gesture.
+const GESTURE_TAIL_MS = 900
+const onUserStart = () => {
+  userGesture = true
+  clearTimeout(gestureTimer)
+}
+const onUserEnd = () => {
+  clearTimeout(gestureTimer)
+  gestureTimer = setTimeout(() => { userGesture = false }, GESTURE_TAIL_MS)
+}
+// A tap on a table starts and ends a gesture without moving anything: only an actual camera change counts as the person
+// taking control (wheel and pinch change the camera without a pointer travel, so travel alone is not the signal).
+const onControlsChange = () => {
+  if (userGesture && !programmatic) userMovedCamera = true
+  syncDensity()
+}
+// `update()` dispatches `change` synchronously; this rig's own moves (focus, restore, re-fit) are not the person's.
+let programmatic = false
+function updateControls(ctl: ControlsLike): void {
+  programmatic = true
+  try { ctl.update() } finally { programmatic = false }
 }
 
-watch([sizes.width, sizes.height], () => {
+/** On-screen scale at the orbit target, which decides how much each table label may say. */
+function syncDensity() {
+  const cam = perspectiveCamera()
+  const ctl = orbit()
+  if (!cam || !ctl || !(sizes.height.value > 0)) return
+  const distance = Math.hypot(cam.position.x - ctl.target.x, cam.position.y - ctl.target.y, cam.position.z - ctl.target.z) || 1
+  updateOverlayDensity(sizes.height.value / (2 * Math.tan((CAMERA_FOV * Math.PI) / 360) * distance))
+}
+
+/** Insets of the canvas against the device's unsafe areas; also published for the overlays' edge clamp. */
+function syncViewport() {
+  const canvas = renderer.domElement
+  const rect = canvas?.getBoundingClientRect()
+  const insets = rect
+    ? canvasSafeInsets(rect, { width: window.innerWidth, height: window.innerHeight }, readSafeAreaInsets())
+    : { left: 0, right: 0, top: 0, bottom: 0 }
+  // Overlays keep out of the covered strip; the framing below handles it by shifting the view instead.
+  overlayViewport.insets = { ...insets, bottom: insets.bottom + props.bottomInset }
+  overlayViewport.edge = overlayMetrics(window.innerWidth).edge
+  syncDensity()
+  return insets
+}
+
+function refit(instant = false): void {
+  const cam = perspectiveCamera()
+  const ctl = orbit()
+  const insets = syncViewport()
+  const coverShift = props.bottomInset / 2
+  if (!cam || !ctl || userMovedCamera || props.focus || frame !== null) return
+  if (!(sizes.width.value > 0) || !(sizes.height.value > 0)) return
+  // Keep the viewing direction the camera already has; only the target and the distance follow the content. The fit
+  // must be computed for that same direction, or the distance would belong to a different view.
+  const dir: Vec3 = [cam.position.x - ctl.target.x, cam.position.y - ctl.target.y, cam.position.z - ctl.target.z]
+  const length = Math.hypot(...dir) || 1
+  const unit: Vec3 = [dir[0] / length, dir[1] / length, dir[2] / length]
+  const framed = frameRestaurant({
+    direction: unit,
+    tables: props.tables,
+    entrance: props.entrance,
+    includeFloor: props.includeFloor,
+    wallHeight: props.wallHeight || undefined,
+    maxDistance: props.maxDistance ?? (props.wallHeight ? 70 : undefined),
+    width: sizes.width.value,
+    height: sizes.height.value,
+    viewportWidth: window.innerWidth,
+    // The view is shifted up by half the covered strip so the content centre lands in the free area; in the unshifted
+    // frame that is the same as keeping `half` px free at both the top and the bottom.
+    insets: { left: insets.left + props.frameInsets.left, right: insets.right + props.frameInsets.right, top: insets.top + coverShift + props.frameInsets.top, bottom: insets.bottom + coverShift + props.frameInsets.bottom },
+  })
+  const shiftNow = cam.view?.enabled ? cam.view.offsetY : 0
+  const moved = Math.abs(framed.distance - length) / length > 0.01
+    || Math.hypot(framed.target[0] - ctl.target.x, framed.target[2] - ctl.target.z) > 0.05
+    || Math.abs(shiftNow - coverShift) > 0.5
+  if (!moved) return
+  const goal: Pose = {
+    position: [framed.target[0] + unit[0] * framed.distance, framed.target[1] + unit[1] * framed.distance, framed.target[2] + unit[2] * framed.distance],
+    target: framed.target,
+    shift: [0, coverShift],
+  }
+  if (instant) applyPose(goal)
+  else moveTo(goal) // eased, so a dock opening or a mode switch does not make the view jump
+}
+
+const scheduleRefit = () => {
   clearTimeout(fitTimer)
   fitTimer = setTimeout(refit, 150)
-})
+}
+watch([sizes.width, sizes.height], scheduleRefit)
+watch(() => props.includeFloor, scheduleRefit)
+watch(() => props.reframeKey, () => { userMovedCamera = false; scheduleRefit() })
+watch(() => props.bottomInset, scheduleRefit)
 onMounted(() => {
   // The controls object arrives after mount; attach once it exists.
   const attach = (): void => {
     const target = orbit() as (ControlsLike & { addEventListener?: (type: string, fn: () => void) => void }) | null
-    if (target?.addEventListener) target.addEventListener('start', onUserStart)
-    else setTimeout(attach, 50)
+    if (target?.addEventListener) {
+      target.addEventListener('start', onUserStart)
+      target.addEventListener('end', onUserEnd)
+      target.addEventListener('change', onControlsChange)
+    } else setTimeout(attach, 50)
   }
   attach()
-  fitTimer = setTimeout(refit, 0) // the real canvas size may differ from the estimate made at setup
+  // DEV only: lets browser validation place the camera (top view, orbit, close-ups). Not part of the product.
+  if (import.meta.env.DEV) {
+    ;(window as unknown as { __sceneCam?: unknown }).__sceneCam = {
+      set: (position: Vec3, target: Vec3) => {
+        userMovedCamera = true
+        applyPose({ position, target, shift: [0, 0] })
+      },
+    }
+  }
+  window.addEventListener('orientationchange', scheduleRefit)
+  fitTimer = setTimeout(() => refit(true), 0) // the real canvas size may differ from the estimate made at setup
 })
 
 onBeforeUnmount(() => {
   cancelAnimation()
+  if (import.meta.env.DEV) delete (window as unknown as { __sceneCam?: unknown }).__sceneCam
   clearTimeout(fitTimer)
+  clearTimeout(gestureTimer)
+  window.removeEventListener('orientationchange', scheduleRefit)
+  const target = orbit() as { removeEventListener?: (type: string, fn: () => void) => void } | null
+  target?.removeEventListener?.('start', onUserStart)
+  target?.removeEventListener?.('end', onUserEnd)
+  target?.removeEventListener?.('change', onControlsChange)
 })
 </script>
 
@@ -213,9 +324,9 @@ onBeforeUnmount(() => {
     :enabled="orbitEnabled"
     :enable-damping="true"
     :damping-factor="0.08"
-    :target="[0.8, 0.4, 0]"
+    :target="initialTarget"
     :min-distance="6"
-    :max-distance="42"
+    :max-distance="maxDistance ? maxDistance + 2 : wallHeight ? 72 : 42"
     :max-polar-angle="Math.PI / 2.1"
   />
 </template>

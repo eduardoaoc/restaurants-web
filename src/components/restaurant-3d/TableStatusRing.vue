@@ -2,7 +2,8 @@
 import { computed } from 'vue'
 import type { OperationalVisualState } from '@/types/restaurant-3d/operational-event'
 import { buildRingBand } from './ring-geometry'
-import { EDITOR_HOVER_BANDS, EDITOR_INVALID_BANDS, EDITOR_SELECTION_BANDS, RING_MARGIN, SELECTION_BAND, getRingBands } from './ring-style'
+import { EDITOR_HOVER_BANDS, EDITOR_INVALID_BANDS, EDITOR_SELECTION_BANDS, LIGHT_SELECTION_BANDS, RING_MARGIN, SELECTION_BAND, getRingBands } from './ring-style'
+import { sceneAppearance } from './scene-appearance'
 
 /**
  * Glowing floor ring around an active table, in the table's local space (so it
@@ -31,9 +32,10 @@ const bands = computed(() => {
   const halfWidth = props.width / 2 + RING_MARGIN
   const halfDepth = props.depth / 2 + RING_MARGIN
   const cornerRadius = props.round ? halfWidth : 0.6
-  const selection = props.selectionStyle === 'editor' ? EDITOR_SELECTION_BANDS : [SELECTION_BAND]
+  const light = sceneAppearance.light
+  const selection = props.selectionStyle === 'editor' ? EDITOR_SELECTION_BANDS : light ? LIGHT_SELECTION_BANDS : [SELECTION_BAND]
   const tone = props.invalid ? EDITOR_INVALID_BANDS : props.hovered && !props.selected ? EDITOR_HOVER_BANDS : []
-  const all = [...getRingBands(props.visualState), ...(props.selected ? selection : []), ...tone]
+  const all = [...getRingBands(props.visualState, light), ...(props.selected ? selection : []), ...tone]
   return all.map((band, index) => ({
     ...band,
     // The key must identify the band's own look: a hovered ring turning into a selected one reuses index 0, and

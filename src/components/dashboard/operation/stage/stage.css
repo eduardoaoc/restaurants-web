@@ -1,0 +1,14 @@
+/* Floating panels of the dashboard stage: theme-token surfaces, a hairline and the shared floating elevation. */
+.stage-panel {
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.08);
+}
+@supports (backdrop-filter: blur(12px)) {
+  @media (prefers-reduced-transparency: no-preference) {
+    .stage-panel { backdrop-filter: blur(12px) saturate(140%); }
+  }
+}
+@media (prefers-contrast: more), (prefers-reduced-transparency: reduce) {
+  .stage-panel { background: var(--color-surface); }
+}
