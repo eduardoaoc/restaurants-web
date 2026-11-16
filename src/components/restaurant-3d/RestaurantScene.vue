@@ -28,6 +28,9 @@ import ChairInstances from './ChairInstances.vue'
 import RestaurantTable from './RestaurantTable.vue'
 import RestaurantEnvironment from './RestaurantEnvironment.vue'
 import UltimateEnvironment from './UltimateEnvironment.vue'
+import UrbanExterior from './UrbanExterior.vue'
+import { contextPoints, planUrban } from './urban-plan'
+import { WORLD_FOG } from './camera-limits'
 import ModularFloor from './ModularFloor.vue'
 import TableEditController from './TableEditController.vue'
 import { LAB_CURRENCY, toOperationsTable } from './table-detail-adapter'
@@ -125,6 +128,11 @@ const { tables, entrance: draftEntrance, savedEntrance, setEntrance, setTablePos
 // Guests walk in through the last PERSISTED entrance (dev override aside). The draft only drives the editor preview, so an
 // unsaved or invalid draft is never exposed to operations; it becomes operational only after a confirmed save.
 const entrance = computed(() => props.entrance ?? savedEntrance.value)
+// Urban exterior (Ultimate demo only): the street, sidewalk and terrace follow the configured entrance's wall.
+const urban = computed(() => (props.environment === 'ultimate' ? planUrban(entrance.value) : null))
+/** Default camera position: the reference view that decides which tree spots hide a guest. */
+const coverEye = computed(() => (urban.value ? { x: initialFrame.position[0], y: initialFrame.position[1], z: initialFrame.position[2] } : null))
+const urbanContext = computed(() => (urban.value ? contextPoints(urban.value) : undefined))
 const savedLayout = computed<RestaurantLayout>(() => ({ ...source, tables: savedTables.value }))
 // Production occupancy is projected from Operations Live. The mock state is only
 // available when the mock layout is used by the development lab/fixture.
@@ -507,6 +515,7 @@ const initialFrame = frameRestaurant({
   tables: tables.value,
   entrance: draftEntrance.value,
   includeFloor: behavior.value.layoutEditing || props.stage || (props.environment === 'ultimate' && (!compactViewport || props.overview)),
+  context: urbanContext.value,
   wallHeight: props.stage ? STAGE_WALL_HEIGHT : props.environment === 'ultimate' ? 3 : undefined,
   maxDistance: props.stage ? STAGE_MAX_DISTANCE : props.environment === 'ultimate' ? 70 : undefined,
   // Isometric-like view (corner of the room at the top centre): the Ultimate demo and the dashboard stage.
@@ -533,6 +542,9 @@ const cameraTarget = initialFrame.target
       :tone-mapping-exposure="ultimateFinal ? 1.25 : 1"
       :dpr="quality.dpr"
     >
+      <!-- Urban scene: the finite world dissolves into the background colour before its far end (see camera-limits.ts). -->
+      <TresFog v-if="urban" :args="['#151515', WORLD_FOG.near, WORLD_FOG.far]" attach="fog" />
+
       <!-- Câmera inicial estilo isométrico -->
       <TresPerspectiveCamera
         :position="cameraPosition"
@@ -582,7 +594,8 @@ const cameraTarget = initialFrame.target
       </TresMesh>
 
       <template v-if="environment === 'ultimate'">
-        <UltimateEnvironment :finish="finish" />
+        <UltimateEnvironment :finish="finish" :entrance="entrance" :plan="urban" />
+        <UrbanExterior v-if="urban" :plan="urban" />
       </template>
       <template v-else>
         <ModularFloor :light="stage" />
@@ -623,6 +636,8 @@ const cameraTarget = initialFrame.target
         :states="operationalState"
         :enabled="behavior.showOperational"
         :entrance="entrance"
+        :urban="urban"
+        :cover-eye="coverEye"
         :debug="navDebug"
         @stats="customerStats = $event; emit('stats', $event)"
         @failed="customersFailed = true"
@@ -662,6 +677,7 @@ const cameraTarget = initialFrame.target
         :focus="focus"
         :tables="tables"
         :entrance="draftEntrance"
+        :context="urbanContext"
         :include-floor="behavior.layoutEditing || stage || (environment === 'ultimate' && (!compactViewport || overview))"
         :frame-insets="stage ? STAGE_INSETS : undefined"
         :max-distance="stage ? STAGE_MAX_DISTANCE : undefined"

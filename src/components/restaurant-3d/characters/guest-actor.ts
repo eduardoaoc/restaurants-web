@@ -72,6 +72,16 @@ export class GuestActor {
   /** Used when the seat has no temporary chair (the table vanished): keeps the state machine moving without visuals. */
   private readonly detached = new ChairMotion()
   private disposed = false
+  /** Seconds of the appear / vanish fallback (a soft scale, not a pop) when a spot is not hidden from the camera. */
+  static readonly EDGE_FADE = 0.6
+  /**
+   * Street edge (Phase 3.1K-D2B): asks whether a world point is hidden from the CURRENT camera. When set, a guest that
+   * starts or ends its walk in view eases in / out instead of popping; one that starts or ends hidden (behind a tree)
+   * needs no effect at all. null = the previous behaviour (appears at / vanishes into the entrance).
+   */
+  edge: { hidden: (x: number, z: number) => boolean } | null = null
+  private appear = 1
+  private fadeDuration = 0.4
   private readonly sample: RouteSample = { x: 0, z: 0, yaw: 0, speed: 1 }
 
   private constructor(options: GuestActorOptions, model: Object3D, controller: CustomerAnimationController, standZ: number) {
@@ -312,6 +322,11 @@ export class GuestActor {
     // The seat's chair vanished (table removed): nobody else updates the detached motion, so the state machine
     // would wait for it forever. Idle motions are a no-op.
     this.detached.update(dt)
+    // Soft appearance of a guest that started in view (any phase: it may be sent back out while still fading in).
+    if (this.appear < 1 && this.current !== 'waiting' && this.current !== 'fadeOut' && this.current !== 'gone') {
+      this.appear = Math.min(1, this.appear + dt / GuestActor.EDGE_FADE)
+      this.group.scale.setScalar(Math.max(1 - (1 - this.appear) ** 3, 0.0001))
+    }
     switch (this.current) {
       case 'seated':
         break
@@ -319,6 +334,8 @@ export class GuestActor {
         this.timer -= dt
         if (this.timer <= 0) {
           this.group.visible = true
+          this.appear = this.edge && !this.edge.hidden(this.group.position.x, this.group.position.z) ? 0 : 1
+          if (this.appear < 1) this.group.scale.setScalar(0.0001)
           c.start('idle', 0)
           c.transitionTo('walking', { fade: 0.2 })
           this.current = 'walkIn'
@@ -391,9 +408,9 @@ export class GuestActor {
         break
       case 'fadeOut': {
         this.timer += dt
-        const k = 1 - clamp01(this.timer / 0.4)
+        const k = 1 - clamp01(this.timer / this.fadeDuration)
         this.group.scale.setScalar(Math.max(k, 0.0001))
-        if (this.timer >= 0.4) this.finishGone()
+        if (this.timer >= this.fadeDuration) this.finishGone()
         break
       }
       case 'gone':
@@ -443,6 +460,8 @@ export class GuestActor {
         this.chairHome()
         this.current = 'fadeOut'
         this.timer = 0
+        // Ended behind a tree (hidden from the camera): gone at once, nobody can see it. Otherwise a soft fade.
+        this.fadeDuration = this.edge ? (this.edge.hidden(this.group.position.x, this.group.position.z) ? 0.001 : GuestActor.EDGE_FADE) : 0.4
       }
     }
   }

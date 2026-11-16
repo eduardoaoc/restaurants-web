@@ -33,6 +33,8 @@ export interface FrameInput {
   wallHeight?: number
   /** Farthest the camera may be fitted (m); the demo room needs more than the table-only framing on a phone. */
   maxDistance?: number
+  /** Ground points (y = 0) around the room that must stay in view too (street, sidewalk, terrace); only with `includeFloor`. */
+  context?: ReadonlyArray<{ x: number; z: number }>
 }
 
 export interface Frame {
@@ -56,6 +58,7 @@ export function frameRestaurant(input: FrameInput): Frame {
       points.push({ x: (sx * FLOOR.width) / 2, y: 0, z: (sz * FLOOR.depth) / 2, padX: metrics.edge, padTop: metrics.edge, padBottom: metrics.edge })
     }
   }
+  if (input.includeFloor) for (const p of input.context ?? []) points.push({ x: p.x, y: 0, z: p.z, padX: metrics.edge, padTop: metrics.edge, padBottom: metrics.edge })
   if (input.includeFloor && input.wallHeight) {
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
       points.push({ x: (sx * FLOOR.width) / 2, y: input.wallHeight, z: (sz * FLOOR.depth) / 2, padX: metrics.edge, padTop: metrics.edge, padBottom: metrics.edge })

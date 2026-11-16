@@ -66,6 +66,25 @@ export class RoutePath {
     return out
   }
 
+  /**
+   * A route that walks `head` first (it should end where this route starts) and then this route. Markers keep pointing
+   * at the same places: `pullAt` shifts by the head's length, `returnAt` (departures) is unchanged.
+   */
+  withHead(head: readonly Pt[]): RoutePath {
+    const joined = head.length && this.points.length && dist(head[head.length - 1], this.points[0]) < 1e-6 ? head.slice(0, -1) : head
+    const speeds = [...joined.map(() => 1), ...this.points.map((_, i) => this.speeds[i] ?? 1)]
+    const markers: RouteMarkers = { ...this.markers }
+    if (markers.pullAt !== undefined) markers.pullAt += lengthOf([...joined, this.points[0]])
+    return new RoutePath([...joined, ...this.points], speeds, markers)
+  }
+
+  /** A route that walks this route and then `tail` (it should start where this route ends). */
+  withTail(tail: readonly Pt[]): RoutePath {
+    const rest = tail.length && this.points.length && dist(tail[0], this.points[this.points.length - 1]) < 1e-6 ? tail.slice(1) : tail
+    const speeds = [...this.points.map((_, i) => this.speeds[i] ?? 1), ...rest.map(() => 1)]
+    return new RoutePath([...this.points, ...rest], speeds, { ...this.markers })
+  }
+
   /** Index of the first point at or beyond `distance` (for trimming the drawn line as it is walked). */
   indexAt(distance: number): number {
     let i = 0

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, shallowRef, watch } from 'vue'
 import { useTres } from '@tresjs/core'
 import { OrbitControls } from '@tresjs/cientos'
 import { PerspectiveCamera } from 'three'
@@ -7,6 +7,7 @@ import type { FloorPosition, RestaurantTableConfig } from '@/types/restaurant-3d
 import { canvasSafeInsets, overlayMetrics, readSafeAreaInsets } from './overlay-metrics'
 import { overlayViewport, updateOverlayDensity } from './overlay-viewport'
 import { CAMERA_FOV, frameRestaurant } from './framing'
+import { cameraLimits, clampTarget } from './camera-limits'
 
 /**
  * OrbitControls plus the "focus a table" camera move. Lives inside the
@@ -39,6 +40,8 @@ const props = withDefaults(defineProps<{
   maxDistance?: number
   /** Height (m) of the walls to keep in frame when the floor is framed; 0 = ignore. */
   wallHeight?: number
+  /** Ground points around the room (street, terrace) kept in view along with the floor. */
+  context?: ReadonlyArray<{ x: number; z: number }>
   /** Changing it drops the person's manual camera and re-frames (the demo's overview toggle). */
   reframeKey?: number
   /** Px at the bottom of the canvas covered by an overlay (the layout editor's dock on a phone); nothing is framed there. */
@@ -59,6 +62,35 @@ const controls = shallowRef<{ instance: ControlsLike | null } | null>(null)
 interface ControlsLike {
   target: { x: number; y: number; z: number; set: (x: number, y: number, z: number) => void }
   update: () => void
+}
+
+/**
+ * Urban scene (the Ultimate demo with its street): the zoom range follows the screen, the orbit cannot drop to the horizon
+ * and the target (pan) stays around the restaurant, so the end of the finite world is never in view. Other scenes keep
+ * their previous fixed range.
+ */
+const urbanLimits = computed(() => {
+  if (!props.context?.length || !(sizes.width.value > 0) || !(sizes.height.value > 0)) return null
+  const overview = frameRestaurant({
+    tables: props.tables, entrance: props.entrance, includeFloor: true, context: props.context,
+    wallHeight: props.wallHeight || undefined, maxDistance: props.maxDistance ?? 70,
+    width: sizes.width.value, height: sizes.height.value, viewportWidth: window.innerWidth,
+  })
+  return cameraLimits(overview.distance)
+})
+const minDistance = computed(() => urbanLimits.value?.minDistance ?? 6)
+const maxDistance = computed(() => urbanLimits.value?.maxDistance ?? (props.maxDistance ? props.maxDistance + 2 : props.wallHeight ? 72 : 42))
+const polarRange = computed<[number, number]>(() => (urbanLimits.value ? [urbanLimits.value.minPolar, urbanLimits.value.maxPolar] : [0, Math.PI / 2.1]))
+
+/** Keeps the orbit target inside the bounds (panning); the camera moves by the same amount so the view just slides. */
+function constrainTarget(ctl: ControlsLike): void {
+  const limits = urbanLimits.value
+  const cam = perspectiveCamera()
+  if (!limits || !cam) return
+  const { dx, dy, dz } = clampTarget(ctl.target, limits.target)
+  if (!dx && !dy && !dz) return
+  ctl.target.set(ctl.target.x + dx, ctl.target.y + dy, ctl.target.z + dz)
+  cam.position.set(cam.position.x + dx, cam.position.y + dy, cam.position.z + dz)
 }
 
 /**
@@ -201,6 +233,8 @@ const onUserEnd = () => {
 // taking control (wheel and pinch change the camera without a pointer travel, so travel alone is not the signal).
 const onControlsChange = () => {
   if (userGesture && !programmatic) userMovedCamera = true
+  const ctl = orbit()
+  if (ctl) constrainTarget(ctl)
   syncDensity()
 }
 // `update()` dispatches `change` synchronously; this rig's own moves (focus, restore, re-fit) are not the person's.
@@ -250,6 +284,7 @@ function refit(instant = false): void {
     tables: props.tables,
     entrance: props.entrance,
     includeFloor: props.includeFloor,
+    context: props.context,
     wallHeight: props.wallHeight || undefined,
     maxDistance: props.maxDistance ?? (props.wallHeight ? 70 : undefined),
     width: sizes.width.value,
@@ -325,8 +360,10 @@ onBeforeUnmount(() => {
     :enable-damping="true"
     :damping-factor="0.08"
     :target="initialTarget"
-    :min-distance="6"
-    :max-distance="maxDistance ? maxDistance + 2 : wallHeight ? 72 : 42"
-    :max-polar-angle="Math.PI / 2.1"
+    :min-distance="minDistance"
+    :max-distance="maxDistance"
+    :min-polar-angle="polarRange[0]"
+    :max-polar-angle="polarRange[1]"
+    :screen-space-panning="!urbanLimits"
   />
 </template>

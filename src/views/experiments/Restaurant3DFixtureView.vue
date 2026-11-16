@@ -55,8 +55,13 @@ function save(document: RestaurantLayoutDocument) {
 }
 
 // ---- simulator ---------------------------------------------------------------------------------------------------
-// West-wall door of the Ultimate room (south end), so the walk to the counter and tables crosses the open floor.
-const entrance = reactive({ x: -9.4, z: 3.1 })
+// Front (south) door of the Ultimate room: the street lies on that side, in front of the default camera, so guests are seen
+// arriving from the sidewalk. `?entrance=x,z` places it anywhere (any wall): the street, doorway and routes follow it.
+function initialEntrance(): { x: number; z: number } {
+  const [x, z] = String(route.query.entrance ?? '').split(',').map(Number)
+  return Number.isFinite(x) && Number.isFinite(z) ? { x, z } : { x: -5.5, z: 7.6 }
+}
+const entrance = reactive(initialEntrance())
 const entranceStatus = ref<{ ok: boolean; reason?: string }>({ ok: true })
 const nav = reactive({ paths: true, arrivals: true, departures: true, obstacles: false, approach: false, timeScale: 1 })
 // Simulation speed: slow motion and pause only slow the SIMULATION (customers, chairs); operational state is untouched.

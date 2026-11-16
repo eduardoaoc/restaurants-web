@@ -20,6 +20,9 @@ import { createChairProp, disposeChairPropResources, placeChairProp } from './ch
 import { buildNavGrid, validateEntrance } from './navigation/floor-nav'
 import { EntranceMarker, NavPathOverlay, ObstacleOverlay, type OverlayVisibility, type PathHandle, type PathMarker } from './navigation/path-overlay'
 import { planArrival, planDeparture, RoutePath, type SeatFrame } from './navigation/route-path'
+import { buildOutdoorNav, planEntryLeg, planExitLeg, planRetreat, planSidewalkExit, whereIs } from './navigation/outdoor-nav'
+import type { UrbanPlan } from './urban-plan'
+import { hiddenFraction, type Eye } from './tree-cover'
 import { FLOOR } from './floor'
 
 /**
@@ -69,6 +72,13 @@ const props = defineProps<{
   enabled: boolean
   /** Where customers come in and leave. null = no arrival/departure animation (instant, as in 3.1D). */
   entrance?: FloorPosition | null
+  /**
+   * Urban exterior (Ultimate demo): when present, guests are born on the sidewalk, walk to the entrance door, pass
+   * through it, and leave the same way to a sidewalk exit point. Absent = they appear at / vanish into the entrance.
+   */
+  urban?: UrbanPlan | null
+  /** Reference (default) camera position: which tree spots hide a guest is decided from it, re-checked with the live camera. */
+  coverEye?: Eye | null
   /** DEV only: which navigation visuals to draw / how fast to run. Absent in production. */
   debug?: NavDebugOptions
 }>()
@@ -127,6 +137,19 @@ const placements = computed(() => computeCustomerPlacements(props.tables, props.
 // The grid is rebuilt only when the layout (tables) changes; computed caches it otherwise.
 const grid = computed(() => buildNavGrid(props.tables))
 const entrancePoint = computed(() => props.entrance ?? null)
+// Sidewalk grid: built only with an urban plan that has a real entrance; rebuilt when the entrance (hence the street) moves.
+const outdoor = computed(() => (props.urban?.hasEntrance ? buildOutdoorNav(props.urban, props.coverEye ?? null) : null))
+/** The live camera's eye (the person may have orbited away from the reference view). */
+function liveEye(): Eye | null {
+  const p = (camera.value as { position?: Eye } | undefined)?.position
+  return p ? { x: p.x, y: p.y, z: p.z } : null
+}
+/** True when no part of a standing guest at (x, z) can be seen from the live camera behind the street trees. */
+function hiddenFromCamera(x: number, z: number): boolean {
+  const street = outdoor.value
+  const eye = liveEye()
+  return !!street && !!eye && hiddenFraction(eye, { x, z }, street.occluders) >= 1
+}
 const entranceOk = computed(() => (entrancePoint.value ? validateEntrance(grid.value, entrancePoint.value) : null))
 
 function refreshList() {
@@ -202,6 +225,8 @@ function wire(actor: GuestActor) {
   actor.chairProvider = (create) =>
     create ? chairMotion(actor.tableId, actor.seatIndex) : (movers.get(moverKey(actor.tableId, actor.seatIndex))?.motion ?? null)
   actor.onGone = () => retire(actor)
+  // Street arrivals / departures: appear and vanish behind a tree, or with a soft fade where nothing hides them.
+  actor.edge = props.urban?.hasEntrance ? { hidden: hiddenFromCamera } : null
   root.add(actor.group)
 }
 
@@ -326,11 +351,23 @@ async function spawnArrival(placement: CustomerPlacement) {
     refreshList()
     return
   }
-  actor.prepareArrival(plan.plan.route, 0)
+  let route = plan.plan.route
+  let overlayPoints = plan.plan.overlay
+  const street = outdoor.value
+  if (street) {
+    // Born on the sidewalk, in through the door; on any outdoor failure the guest falls back to the old behaviour
+    // (appears at the entrance) and the failure is reported, never a walk through a wall.
+    const leg = planEntryLeg(street, entrance, (x, z) => grid.value.pointFree(x, z), id, liveEye())
+    if (leg.ok) {
+      route = route.withHead(leg.points)
+      overlayPoints = [...leg.points, ...overlayPoints.slice(1)]
+    } else fail(`arrival ${id}: outdoor ${leg.reason}`)
+  }
+  actor.prepareArrival(route, 0)
   actors.set(id, actor)
   pendingPaths.set(id, {
     kind: 'arrival',
-    points: plan.plan.overlay,
+    points: overlayPoints,
     markers: [{ point: plan.plan.approach, color: APPROACH_COLOR }, { point: plan.plan.stand, color: STAND_COLOR }],
   })
   refreshList()
@@ -361,11 +398,23 @@ function depart(id: string, actor: GuestActor, seat: SeatFrame) {
   let markers: PathMarker[] = []
   if (actor.isApproaching) {
     // Still walking in: head back out from where it is.
-    const from = grid.value.nearestFree({ x: actor.position.x, z: actor.position.z }, 1.5)
-    const nav = from ? grid.value.findPath(from, entrance) : null
-    if (nav) {
-      route = new RoutePath(nav)
-      overlayPoints = nav
+    const here = { x: actor.position.x, z: actor.position.z }
+    const street = outdoor.value
+    const where = street ? whereIs(street.plan, here) : 'room'
+    if (street && where !== 'room') {
+      // Still outside (or in the doorway): turn around on the sidewalk, never back through the building.
+      const walk = where === 'street' ? planSidewalkExit(street, here, id) : planRetreat(street, here, id)
+      if (walk) {
+        route = new RoutePath(walk)
+        overlayPoints = walk
+      }
+    } else {
+      const from = grid.value.nearestFree(here, 1.5)
+      const nav = from ? grid.value.findPath(from, entrance) : null
+      if (nav) {
+        route = new RoutePath(nav)
+        overlayPoints = nav
+      }
     }
   } else {
     // At the chair (seated, sitting, standing...): the departure plan starts at the stand point beside the chair.
@@ -375,6 +424,15 @@ function depart(id: string, actor: GuestActor, seat: SeatFrame) {
       overlayPoints = plan.plan.overlay
       markers = [{ point: plan.plan.stand, color: STAND_COLOR }, { point: plan.plan.approach, color: APPROACH_COLOR }]
     } else fail(`departure ${id}: ${plan.reason}`)
+  }
+  const street = outdoor.value
+  // Out through the same door to a sidewalk exit point: the guest despawns only once it gets there.
+  if (route && street && !(actor.isApproaching && whereIs(street.plan, { x: actor.position.x, z: actor.position.z }) !== 'room')) {
+    const leg = planExitLeg(street, entrance, (x, z) => grid.value.pointFree(x, z), id, liveEye())
+    if (leg.ok) {
+      route = route.withTail(leg.points)
+      overlayPoints = [...overlayPoints, ...leg.points.slice(1)]
+    } else fail(`departure ${id}: outdoor ${leg.reason}`)
   }
   if (!route) fail(`departure ${id}: no route, leaving visually in place`)
   actor.startDeparture(route)
