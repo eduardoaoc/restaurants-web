@@ -16,6 +16,20 @@ export function viewDirection(viewportWidth: number): Vec3 {
   return [raw[0] / length, raw[1] / length, raw[2] / length]
 }
 
+/**
+ * Default view of the Ultimate demo. Desktop/tablet: the isometric three-quarter view (45 degrees, from the south-east).
+ * Phone portrait (<= 640 px): the camera swings to 85 degrees (looking west across the terrace) and sits at 44 degrees up, so
+ * the room's long axis (room + terrace, 28 m) runs up the tall screen and its short one (16 m) across the narrow one: the
+ * room, both walls kinds and the terrace fit at ~17 px/m instead of ~11 px/m. Inside the camera's azimuth limits.
+ */
+export const ULTIMATE_ISO: Vec3 = [0.57, 0.6, 0.57]
+const PHONE_AZIMUTH = (85 * Math.PI) / 180
+const PHONE_ELEVATION = (44 * Math.PI) / 180
+export function ultimateDirection(viewportWidth: number): Vec3 {
+  if (viewportWidth > COMPACT_VIEWPORT_PX) return ULTIMATE_ISO
+  return [Math.sin(PHONE_AZIMUTH) * Math.cos(PHONE_ELEVATION), Math.sin(PHONE_ELEVATION), Math.cos(PHONE_AZIMUTH) * Math.cos(PHONE_ELEVATION)]
+}
+
 export interface FrameInput {
   tables: readonly RestaurantTableConfig[]
   entrance?: FloorPosition | null

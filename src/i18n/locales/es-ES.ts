@@ -2055,6 +2055,7 @@ export default {
     },
   },
   floorLayout: {
+    recenterView: 'Centrar vista',
     save: 'Guardar cambios',
     discard: 'Descartar',
     saving: 'Guardando…',

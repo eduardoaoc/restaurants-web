@@ -2048,6 +2048,7 @@ export default {
     },
   },
   floorLayout: {
+    recenterView: 'Centrar la vista',
     save: 'Guardar els canvis',
     discard: 'Descartar',
     saving: 'Guardant…',

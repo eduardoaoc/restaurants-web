@@ -1,0 +1,8 @@
+lowpoly.download free pack - two models used by the Ritma OS Ultimate 3D scene:
+  asset-props-lamp-post.glb  (street-kit)
+  asset-props-planter.glb    (street-kit)
+
+Vendor terms (pack README and https://lowpoly.download/pricing/#license): royalty-free for commercial use in games, apps, websites,
+renders and client work; models may be edited, recolored and combined; they may not be resold or redistributed as models/packs.
+Serving these two unmodified files directly to the browser of the Ritma OS web app was confirmed as authorized by the project owner
+(the vendor's e-mail authorization). Do not add other files of the pack here without a new confirmation.

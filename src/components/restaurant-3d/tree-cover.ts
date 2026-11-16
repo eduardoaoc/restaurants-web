@@ -23,26 +23,26 @@ export const BODY_HALF_WIDTH = 0.2
  * World occluders of one tree whose base is at world (x, z). `lobe` is the world offset (m, at scale 1) of the small
  * second crown lobe, which the renderer places along the wall and slightly towards the building.
  */
-export function treeShapes(x: number, z: number, scale: number, lobe: { x: number; z: number }): Occluder[] {
+export function treeShapes(x: number, z: number, scale: number, lobe: { x: number; z: number }, w = 1): Occluder[] {
   const T = TREE_SHAPE
   const s = scale
-  // The drawn crowns are low-poly icospheres, a hair inside the ideal sphere: shrink the test shapes so cover is never overclaimed.
+  // The drawn crowns are low-poly icospheres, a hair inside the ideal ellipsoid: shrink the test shapes so cover is never overclaimed.
   const k = 0.94
   return [
     { kind: 'cylinder', x, z, r: T.trunk.r * s, y0: 0, y1: T.trunk.h * s },
-    { kind: 'ellipsoid', x, y: T.crown.y * s, z, rx: T.crown.r * s * k, ry: T.crown.r * s * k, rz: T.crown.r * s * k },
-    { kind: 'ellipsoid', x: x + lobe.x * s, y: (T.crown.y + T.lobe.dy) * s, z: z + lobe.z * s, rx: T.lobe.r * s * k, ry: T.lobe.r * s * k, rz: T.lobe.r * s * k },
+    { kind: 'ellipsoid', x, y: T.crown.y * s, z, rx: T.crown.rx * s * w * k, ry: T.crown.ry * s * k, rz: T.crown.rx * s * w * k },
+    { kind: 'ellipsoid', x: x + lobe.x * s, y: (T.crown.y + T.lobe.dy) * s, z: z + lobe.z * s, rx: T.lobe.rx * s * w * k, ry: T.lobe.ry * s * k, rz: T.lobe.rx * s * w * k },
     { kind: 'ellipsoid', x, y: T.bed.y * s, z, rx: T.bed.rx * s * k, ry: T.bed.ry * s * k, rz: T.bed.rx * s * k },
   ]
 }
 
-/** Occluders of the plan's street trees, exactly where `UrbanExterior` draws them (lobe: +dx along the wall, dz out). */
+/** Occluders of the plan's street trees, exactly where `UrbanExterior` draws them (lobe: dx*flip along the wall, dz out). */
 export function planOccluders(plan: UrbanPlan): Occluder[] {
   const out: Occluder[] = []
   for (const t of plan.trees) {
     const base = toWorld(plan.side, t.a, t.d)
-    const lobe = toWorld(plan.side, t.a + TREE_SHAPE.lobe.dx, t.d + TREE_SHAPE.lobe.dz)
-    out.push(...treeShapes(base.x, base.z, t.scale, { x: lobe.x - base.x, z: lobe.z - base.z }))
+    const lobe = toWorld(plan.side, t.a + TREE_SHAPE.lobe.dx * t.flip, t.d + TREE_SHAPE.lobe.dz)
+    out.push(...treeShapes(base.x, base.z, t.scale, { x: lobe.x - base.x, z: lobe.z - base.z }, t.w))
   }
   return out
 }

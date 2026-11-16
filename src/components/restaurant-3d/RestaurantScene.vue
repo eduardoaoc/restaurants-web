@@ -19,7 +19,7 @@ import AddTablePanel from './AddTablePanel.vue'
 import EditorToolbar from './EditorToolbar.vue'
 import EntranceFloorMarker from './EntranceFloorMarker.vue'
 import EntrancePanel from './EntrancePanel.vue'
-import { frameRestaurant } from './framing'
+import { frameRestaurant, ultimateDirection } from './framing'
 import { chooseQuality, detectDeviceHints } from './graphics-quality'
 import { snapToGrid } from './layout-editing'
 import { entranceLimits, suggestEntrance, validateEntrancePlacement, type EntranceValidation } from './entrance-validation'
@@ -29,7 +29,7 @@ import RestaurantTable from './RestaurantTable.vue'
 import RestaurantEnvironment from './RestaurantEnvironment.vue'
 import UltimateEnvironment from './UltimateEnvironment.vue'
 import UrbanExterior from './UrbanExterior.vue'
-import { contextPoints, planUrban } from './urban-plan'
+import { contextPoints, planUrban, terraceContextPoints } from './urban-plan'
 import { WORLD_FOG } from './camera-limits'
 import ModularFloor from './ModularFloor.vue'
 import TableEditController from './TableEditController.vue'
@@ -133,6 +133,7 @@ const urban = computed(() => (props.environment === 'ultimate' ? planUrban(entra
 /** Default camera position: the reference view that decides which tree spots hide a guest. */
 const coverEye = computed(() => (urban.value ? { x: initialFrame.position[0], y: initialFrame.position[1], z: initialFrame.position[2] } : null))
 const urbanContext = computed(() => (urban.value ? contextPoints(urban.value) : undefined))
+const urbanCompactContext = computed(() => (urban.value ? terraceContextPoints(urban.value) : undefined))
 const savedLayout = computed<RestaurantLayout>(() => ({ ...source, tables: savedTables.value }))
 // Production occupancy is projected from Operations Live. The mock state is only
 // available when the mock layout is used by the development lab/fixture.
@@ -211,6 +212,16 @@ function onTableSelect(tableId: string, release: { x: number; y: number }): void
   if (!pressed || Math.hypot(release.x - pressed.x, release.y - pressed.y) > CLICK_MOVE_TOLERANCE_PX) return
   if (hostOwnsSelection.value) emit('tableSelected', tableId)
   else selectedTableId.value = tableId
+}
+
+const cameraRig = ref<{ recenter: () => void } | null>(null)
+/** "Centrar vista": the camera returns to the overview and any table focus is released (the sheet closes). */
+function recenterView(): void {
+  cameraRig.value?.recenter()
+  if (selectedTableId.value) {
+    if (hostOwnsSelection.value) emit('tableSelected', null)
+    else clearSelection()
+  }
 }
 
 function clearSelection(): void {
@@ -501,7 +512,6 @@ if (import.meta.env.DEV) {
 // Chosen once per mount (see graphics-quality.ts): predictable, no mid-session quality changes.
 const quality = chooseQuality(detectDeviceHints())
 const compactViewport = window.innerWidth <= 640
-const ISO_DIRECTION: [number, number, number] = [0.57, 0.6, 0.57]
 /** Dashboard stage: raised, mostly frontal view (about 12 degrees off the front axis, 33 degrees up) so the room reads as a maquette. */
 const STAGE_DIRECTION: [number, number, number] = [0.17, 0.55, 0.82]
 const STAGE_WALL_HEIGHT = 2.4
@@ -514,12 +524,12 @@ const STAGE_INSETS = window.innerWidth <= 640
 const initialFrame = frameRestaurant({
   tables: tables.value,
   entrance: draftEntrance.value,
-  includeFloor: behavior.value.layoutEditing || props.stage || (props.environment === 'ultimate' && (!compactViewport || props.overview)),
-  context: urbanContext.value,
+  includeFloor: behavior.value.layoutEditing || props.stage || props.environment === 'ultimate',
+  context: compactViewport ? urbanCompactContext.value : urbanContext.value,
   wallHeight: props.stage ? STAGE_WALL_HEIGHT : props.environment === 'ultimate' ? 3 : undefined,
   maxDistance: props.stage ? STAGE_MAX_DISTANCE : props.environment === 'ultimate' ? 70 : undefined,
   // Isometric-like view (corner of the room at the top centre): the Ultimate demo and the dashboard stage.
-  direction: props.stage ? STAGE_DIRECTION : props.environment === 'ultimate' ? ISO_DIRECTION : undefined,
+  direction: props.stage ? STAGE_DIRECTION : props.environment === 'ultimate' ? ultimateDirection(window.innerWidth) : undefined,
   width: props.stage ? window.innerWidth : compactViewport ? window.innerWidth : Math.min(window.innerWidth - 48, 1100),
   height: props.stage ? window.innerHeight - 56 : Math.max(360, Math.min(720, window.innerHeight - (compactViewport ? 190 : 220))),
   viewportWidth: window.innerWidth,
@@ -674,11 +684,13 @@ const cameraTarget = initialFrame.target
       />
 
       <CameraRig
+        ref="cameraRig"
         :focus="focus"
         :tables="tables"
         :entrance="draftEntrance"
         :context="urbanContext"
-        :include-floor="behavior.layoutEditing || stage || (environment === 'ultimate' && (!compactViewport || overview))"
+        :compact-context="urbanCompactContext"
+        :include-floor="behavior.layoutEditing || stage || environment === 'ultimate'"
         :frame-insets="stage ? STAGE_INSETS : undefined"
         :max-distance="stage ? STAGE_MAX_DISTANCE : undefined"
         :wall-height="stage ? STAGE_WALL_HEIGHT : environment === 'ultimate' ? 3 : 0"
@@ -688,6 +700,20 @@ const cameraTarget = initialFrame.target
         :orbit-enabled="!draggingTable && !draggingEntrance"
       />
     </TresCanvas>
+
+    <!-- Camera reset: always visible, 44 px target, keyboard focusable; releases a table focus too. -->
+    <button
+      v-if="!stage"
+      type="button"
+      class="recenter-view"
+      data-recenter-view
+      @click="recenterView"
+    >
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3.5" /><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" />
+      </svg>
+      {{ t('floorLayout.recenterView') }}
+    </button>
 
     <dl
       v-if="diagnostics && customerStats && behavior.showOperational"
@@ -869,6 +895,28 @@ const cameraTarget = initialFrame.target
 </template>
 
 <style scoped>
+.recenter-view {
+  position: absolute;
+  inset: 12px 12px auto auto;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgb(242 234 227 / 0.22);
+  border-radius: 999px;
+  background: rgb(23 24 28 / 0.9);
+  color: #f2eae3;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+.recenter-view:hover { background: rgb(40 41 46 / 0.95); border-color: rgb(242 234 227 / 0.4); }
+.recenter-view:focus-visible { outline: 2px solid #f2eae3; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .recenter-view { transition: none; } }
 /* Development only: customer rendering statistics (the component only emits them in dev builds). */
 .dev-stats {
   position: absolute;

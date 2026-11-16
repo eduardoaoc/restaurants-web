@@ -2048,6 +2048,7 @@ export default {
     },
   },
   floorLayout: {
+    recenterView: 'Centre view',
     save: 'Save changes',
     discard: 'Discard',
     saving: 'Saving…',

@@ -1,25 +1,24 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useLoop, useTres } from '@tresjs/core'
 import {
   BoxGeometry, CanvasTexture, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, Object3D, PlaneGeometry, SRGBColorSpace, Color,
   type Material,
 } from 'three'
 import { loadKayKitModel } from './kaykit-asset-cache'
 import { FLOOR } from './floor'
-import { cutawayTarget, easeCutaway, WALL_CUTAWAY_SCALE, type CutawayWall } from './wall-cutaway'
 import { createUltimateMaterials, skinForSlot, skinFurniture, ULTIMATE_PALETTE, type UltimateFinish } from './ultimate-materials'
 import { CHAIR_SIZE, skinPiece, ULTIMATE_BASE, ULTIMATE_FURNITURE } from './ultimate-furniture'
 import { flattenModel, instancePlacements } from './ultimate-instancing'
-import { DECK_TOP, planDoors, planUrban, planWallModules, sideTransform, type UrbanPlan } from './urban-plan'
+import { DECK_TOP, LOW_WALL_HEIGHT, lowWallRuns, planDoors, planUrban, planWallPieces, sideTransform, wallPiers, type UrbanPlan } from './urban-plan'
 
 /**
  * Local-demo architecture built on the Polyperfect "Low Poly Ultimate Pack" (M variant, converted to GLB; no KayKit
  * model is used here). LICENSE_UNVERIFIED: demo only, see docs/3d/ULTIMATE_PACK_ENVIRONMENT.md. Pieces with no suitable
  * model (striped floor, long counter, contact shadows) are simple primitives. Operational tables are not touched.
  *
- * Walls follow the existing cutaway contract: a wall between the camera and the room eases down to a knee wall.
- * Frames, glass and the door leaf are children of their wall group, so they move with it, with no extra state.
+ * Static architectural cutaway (Phase 3.1K-E1): the back (north) and left (west) walls are full height, the front
+ * (south) and right (east) walls are fixed 0.4 m perimeter walls with a thin coping. Nothing depends on the camera and
+ * nothing is updated per frame; the entrance is a real opening in whichever wall holds it.
  */
 const props = withDefaults(defineProps<{
   finish?: UltimateFinish
@@ -39,7 +38,6 @@ const COUNTER = { length: 8, x: -5, z: -5.2 } as const
 const urls = {
   wall: `${base}/house-wall-3x3m.glb`,
   wallDoor: `${base}/house-wall-door-3x3m.glb`,
-  corner: `${base}/house-wall-corner.glb`,
   door: `${base}/door-house-simple.glb`,
 } as const
 
@@ -49,28 +47,8 @@ const HALF_D = FLOOR.depth / 2
 
 const materials = createUltimateMaterials(props.finish)
 const disposables: { dispose(): void }[] = []
-/** Cutaway wall plus an optional hook that receives the eased wall scale (1 = full height .. WALL_CUTAWAY_SCALE). */
-type UltimateWall = CutawayWall & { apply?: (scale: number) => void }
-const walls: UltimateWall[] = []
-/** 0 at the knee-wall scale, 1 at full height: how much of the tall detail (frames, glass, door leaf) is still shown. */
-const detailLevel = (scale: number): number => Math.min(1, Math.max(0, (scale - WALL_CUTAWAY_SCALE) / (1 - WALL_CUTAWAY_SCALE)))
-const { camera } = useTres()
-const { onBeforeRender } = useLoop()
-let lastCamera = ''
-const stopCutaway = onBeforeRender(({ delta }) => {
-  const cam = camera.value
-  if (!cam || !walls.length) return
-  const key = `${cam.position.x.toFixed(2)},${cam.position.z.toFixed(2)}`
-  const settling = walls.some(wall => wall.currentScale !== wall.targetScale)
-  if (key === lastCamera && !settling) return
-  lastCamera = key
-  for (const wall of walls) {
-    wall.targetScale = cutawayTarget(wall, cam.position.x, cam.position.z)
-    wall.currentScale = easeCutaway(wall.currentScale, wall.targetScale, delta)
-    if (wall.kind === 'wall') wall.object.scale.y = wall.currentScale
-    wall.apply?.(wall.currentScale)
-  }
-})
+/** Coping board on top of the low walls and piers (m). */
+const COPING = { h: 0.045, over: 0.04 } as const
 let alive = true
 
 /** Clone a converted piece and re-skin each Unity slot with the scene's own finish. Geometry is shared with the cache. */
@@ -165,7 +143,6 @@ const FRAME_SLOTS = /^(\d+\s+)?(WHITE|GLASS)$/
 interface Models {
   wall: Object3D
   wallDoor: Object3D
-  corner: Object3D
   door: Object3D
   plant: Object3D
   glass: Object3D
@@ -177,7 +154,6 @@ let models: Models | null = null
 
 /** Drop everything a previous build created (geometry, textures, wall bookkeeping); materials are kept. */
 function clearBuild(): void {
-  walls.length = 0
   root.value?.clear()
   for (const d of disposables) d.dispose()
   disposables.length = 0
@@ -189,84 +165,73 @@ function build(): void {
   if (!models || !root.value || !alive) return
   clearBuild()
   const scene = root.value
-  const { wall, wallDoor, corner, door, plant, glass, cup, chair, table } = models
+  const { wall, wallDoor, door, plant, glass, cup, chair, table } = models
   const plan = urbanPlan.value
 
-  const addWall = (tpl: Object3D, x: number, z: number, rotY: number, sx: number, outward: [number, number], outward2?: [number, number], window = false): void => {
+  const addWall = (tpl: Object3D, x: number, z: number, rotY: number, sx: number, window = false): void => {
     const piece = new Group()
     piece.position.set(x, 0, z)
     piece.rotation.y = rotY
     const model = skin(tpl)
     model.scale.x = sx
     piece.add(model)
-
-    // Tall detail that would flatten into a black band when the wall is lowered: frames and glass shrink to the floor,
-    // the sky behind the window and an infill of the same paint take over, so the knee wall stays a clean painted wall.
-    const frames: Object3D[] = []
-    model.traverse(node => {
-      if (node instanceof Mesh && node.userData.isFrame) frames.push(node)
-    })
     // Tall double-pane window drawn over the solid wall face (the pack's own windows are low and wide).
-    let tall: Group | null = null
-    if (window) {
-      tall = buildTallWindow()
-      piece.add(tall)
-    }
-    const apply = (scale: number): void => {
-      const k = detailLevel(scale)
-      for (const f of frames) {
-        f.scale.y = Math.max(k, 0.0001) / scale
-        f.visible = k > 0.02
-      }
-      if (tall) {
-        tall.scale.y = Math.max(k, 0.0001) / scale
-        tall.visible = k > 0.02
-      }
-    }
+    if (window) piece.add(buildTallWindow())
     scene.add(piece)
-    walls.push({ object: piece, kind: 'wall', outward, outward2, x, z, currentScale: 1, targetScale: 1, apply })
   }
 
-  // Wall runs between the four corner posts, from the plan: every door module is centred on its opening, so the entrance
-  // doorway sits exactly on the configured entrance coordinates (any wall), and the rest of the run is filled with
-  // modules stretched to fit.
+  // Full-height walls (north, west) from the pack's modules: every door module is centred on its opening, so the entrance
+  // doorway sits exactly on the configured entrance coordinates. The low walls (south, east) are NOT modules: see below.
   const northZ = -HALF_D - WALL_T / 2
   const southZ = HALF_D + WALL_T / 2
   const westX = -HALF_W - WALL_T / 2
   const eastX = HALF_W + WALL_T / 2
-  for (const m of planWallModules(props.entrance)) {
-    const tpl = m.kind === 'door' ? wallDoor : wall
-    const sx = m.stretch
-    if (m.side === 'north') addWall(tpl, m.along, northZ, 0, sx, [0, -1], undefined, m.window)
-    else if (m.side === 'south') addWall(tpl, m.along, southZ, Math.PI, sx, [0, 1], undefined, m.window)
-    else if (m.side === 'west') addWall(tpl, westX, m.along, Math.PI / 2, sx, [-1, 0], undefined, m.window)
-    else addWall(tpl, eastX, m.along, -Math.PI / 2, sx, [1, 0], undefined, m.window)
-    // The terrace door carries a closed leaf (it shrinks away with the wall instead of popping out); the entrance is an
-    // open doorway: no leaf (the sliding door is a later phase).
+  for (const m of planWallPieces(props.entrance)) {
+    if (m.low) continue
+    const horizontal = m.side === 'north'
+    const wx = horizontal ? m.along : westX
+    const wz = horizontal ? northZ : m.along
+    const rot = m.side === 'north' ? 0 : Math.PI / 2
+    addWall(m.kind === 'door' ? wallDoor : wall, wx, wz, rot, m.stretch, m.window)
+    // The terrace door carries a closed leaf (full-height wall only); the entrance is an open doorway: no leaf (the
+    // sliding door is a later phase).
     if (m.kind === 'door' && !m.entrance) {
-      const horizontal = m.side === 'north' || m.side === 'south'
-      const lx = horizontal ? m.along : m.side === 'west' ? westX : eastX
-      const lz = horizontal ? (m.side === 'north' ? northZ : southZ) : m.along
-      const rot = m.side === 'north' ? 0 : m.side === 'south' ? Math.PI : m.side === 'west' ? Math.PI / 2 : -Math.PI / 2
-      const outward: [number, number] = m.side === 'north' ? [0, -1] : m.side === 'south' ? [0, 1] : m.side === 'west' ? [-1, 0] : [1, 0]
       const leaf = new Group()
-      leaf.position.set(lx, 0, lz)
+      leaf.position.set(wx, 0, wz)
       leaf.rotation.y = rot
       leaf.add(skin(door))
       scene.add(leaf)
-      walls.push({
-        object: leaf, kind: 'door', outward, x: lx, z: lz, currentScale: 1, targetScale: 1,
-        apply: scale => {
-          const k = detailLevel(scale)
-          leaf.scale.y = Math.max(k, 0.0001)
-          leaf.visible = k > 0.02
-        },
-      })
     }
   }
-  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
-    addWall(corner, sx * (HALF_W + WALL_T / 2), sz * (HALF_D + WALL_T / 2), 0, 0.55, [sx, 0], [0, sz])
+
+  // Procedural architecture shared by every low wall and corner pier: painted boxes + a thin cream coping, drawn as TWO
+  // instanced meshes (flat colours, so there are no UVs to stretch). Positions are the old wall positions exactly.
+  const body: Array<{ x: number; y: number; z: number; sx: number; sy: number; sz: number }> = []
+  const caps: Array<{ x: number; y: number; z: number; sx: number; sz: number }> = []
+  const box = (cx: number, cz: number, w: number, d: number, height: number, cap: boolean): void => {
+    const under = Math.max(0.01, height - (cap ? COPING.h : 0))
+    body.push({ x: cx, y: under / 2, z: cz, sx: w, sy: under, sz: d })
+    if (cap) caps.push({ x: cx, y: height - COPING.h / 2, z: cz, sx: w + COPING.over * 2, sz: d + COPING.over * 2 })
   }
+  for (const r of lowWallRuns(props.entrance)) {
+    const length = r.to - r.from
+    const mid = (r.from + r.to) / 2
+    if (r.side === 'south') box(mid, southZ, length, WALL_T, LOW_WALL_HEIGHT, true)
+    else box(eastX, mid, WALL_T, length, LOW_WALL_HEIGHT, true)
+  }
+  for (const pier of wallPiers()) box(pier.x, pier.z, pier.w, pier.d, pier.height, true)
+  const unit = new BoxGeometry(1, 1, 1)
+  const bodyMesh = new InstancedMesh(unit, materials.paint, body.length)
+  const capMesh = new InstancedMesh(unit, materials.cream, caps.length)
+  disposables.push(unit, bodyMesh, capMesh)
+  bodyMesh.name = 'perimeter-bodies'
+  capMesh.name = 'perimeter-coping'
+  bodyMesh.castShadow = bodyMesh.receiveShadow = capMesh.receiveShadow = true
+  const bm = new Matrix4()
+  body.forEach((b, i) => bodyMesh.setMatrixAt(i, bm.makeScale(b.sx, b.sy, b.sz).setPosition(b.x, b.y, b.z)))
+  caps.forEach((c, i) => capMesh.setMatrixAt(i, bm.makeScale(c.sx, COPING.h, c.sz).setPosition(c.x, c.y, c.z)))
+  bodyMesh.instanceMatrix.needsUpdate = capMesh.instanceMatrix.needsUpdate = true
+  scene.add(bodyMesh, capMesh)
 
   // Striped floor: 1 m cream / beige boards along the depth with a thin grout line (the base plane shows through).
   const boards = Math.ceil(FLOOR.width)
@@ -372,11 +337,11 @@ function build(): void {
 
 onMounted(async () => {
   try {
-    const [wall, wallDoor, corner, door, plant, glass, cup, chair, table] = await Promise.all(
+    const [wall, wallDoor, door, plant, glass, cup, chair, table] = await Promise.all(
       [...Object.values(urls), ULTIMATE_FURNITURE.plant, ULTIMATE_FURNITURE.glass, `${ULTIMATE_BASE}/cup-small.glb`, ULTIMATE_FURNITURE.chair, ULTIMATE_FURNITURE.table].map(loadKayKitModel),
     )
     if (!alive) return
-    models = { wall, wallDoor, corner, door, plant, glass, cup, chair, table }
+    models = { wall, wallDoor, door, plant, glass, cup, chair, table }
     build()
   } catch (error) {
     if (alive) {
@@ -392,8 +357,6 @@ watch(buildKey, () => build())
 
 onBeforeUnmount(() => {
   alive = false
-  stopCutaway.off()
-  walls.length = 0
   root.value?.clear()
   for (const d of disposables) d.dispose()
   for (const m of materials.all) m.dispose()

@@ -9,6 +9,13 @@ export const WORLD_FOG = { near: 88, far: 128 } as const
 /** Lowest the camera may orbit: 18 degrees above the ground (a side view stays a side view, never the horizon). */
 export const MIN_ELEVATION_DEG = 18
 export const MAX_POLAR = ((90 - MIN_ELEVATION_DEG) * Math.PI) / 180
+/**
+ * Orbit azimuth (rad, three.js convention: 0 = looking from +z/south, +pi/2 = from +x/east): the camera stays on the open
+ * side of the static cutaway, from just past due south (-10 deg) to just past due east (100 deg). The full-height back
+ * (north) and left (west) walls would otherwise stand between the camera and the room. The default view is at ~33 deg.
+ */
+export const MIN_AZIMUTH = (-10 * Math.PI) / 180
+export const MAX_AZIMUTH = (100 * Math.PI) / 180
 /** A hair off the pole so the orbit never flips (near top-down is allowed). */
 export const MIN_POLAR = 0.12
 /** Closest the camera may get to its target (m): a table / guest close-up, never inside a wall. */
@@ -28,6 +35,8 @@ export interface CameraLimits {
   maxDistance: number
   minPolar: number
   maxPolar: number
+  minAzimuth: number
+  maxAzimuth: number
   target: typeof TARGET_BOUNDS
 }
 
@@ -38,7 +47,7 @@ export interface CameraLimits {
 export function cameraLimits(overviewDistance: number): CameraLimits {
   const fit = Number.isFinite(overviewDistance) && overviewDistance > 0 ? overviewDistance : 40
   const maxDistance = Math.min(HARD_MAX_DISTANCE, Math.max(MIN_DISTANCE * 3, Math.round(fit * OVERVIEW_SLACK)))
-  return { minDistance: MIN_DISTANCE, maxDistance, minPolar: MIN_POLAR, maxPolar: MAX_POLAR, target: TARGET_BOUNDS }
+  return { minDistance: MIN_DISTANCE, maxDistance, minPolar: MIN_POLAR, maxPolar: MAX_POLAR, minAzimuth: MIN_AZIMUTH, maxAzimuth: MAX_AZIMUTH, target: TARGET_BOUNDS }
 }
 
 /** Clamps an orbit target into the bounds; returns the correction applied (what the camera must be shifted by). */

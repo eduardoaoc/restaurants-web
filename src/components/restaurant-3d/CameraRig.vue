@@ -6,7 +6,8 @@ import { PerspectiveCamera } from 'three'
 import type { FloorPosition, RestaurantTableConfig } from '@/types/restaurant-3d/restaurant-layout'
 import { canvasSafeInsets, overlayMetrics, readSafeAreaInsets } from './overlay-metrics'
 import { overlayViewport, updateOverlayDensity } from './overlay-viewport'
-import { CAMERA_FOV, frameRestaurant } from './framing'
+import { CAMERA_FOV, frameRestaurant, ultimateDirection } from './framing'
+import { COMPACT_VIEWPORT_PX } from './overlay-metrics'
 import { cameraLimits, clampTarget } from './camera-limits'
 
 /**
@@ -42,6 +43,8 @@ const props = withDefaults(defineProps<{
   wallHeight?: number
   /** Ground points around the room (street, terrace) kept in view along with the floor. */
   context?: ReadonlyArray<{ x: number; z: number }>
+  /** Phone portrait: the points the default / recentered view must contain instead of `context` (room + terrace, no street). */
+  compactContext?: ReadonlyArray<{ x: number; z: number }>
   /** Changing it drops the person's manual camera and re-frames (the demo's overview toggle). */
   reframeKey?: number
   /** Px at the bottom of the canvas covered by an overlay (the layout editor's dock on a phone); nothing is framed there. */
@@ -81,6 +84,8 @@ const urbanLimits = computed(() => {
 const minDistance = computed(() => urbanLimits.value?.minDistance ?? 6)
 const maxDistance = computed(() => urbanLimits.value?.maxDistance ?? (props.maxDistance ? props.maxDistance + 2 : props.wallHeight ? 72 : 42))
 const polarRange = computed<[number, number]>(() => (urbanLimits.value ? [urbanLimits.value.minPolar, urbanLimits.value.maxPolar] : [0, Math.PI / 2.1]))
+
+const azimuthRange = computed<[number, number]>(() => (urbanLimits.value ? [urbanLimits.value.minAzimuth, urbanLimits.value.maxAzimuth] : [-Infinity, Infinity]))
 
 /** Keeps the orbit target inside the bounds (panning); the camera moves by the same amount so the view just slides. */
 function constrainTarget(ctl: ControlsLike): void {
@@ -278,13 +283,16 @@ function refit(instant = false): void {
   // must be computed for that same direction, or the distance would belong to a different view.
   const dir: Vec3 = [cam.position.x - ctl.target.x, cam.position.y - ctl.target.y, cam.position.z - ctl.target.z]
   const length = Math.hypot(...dir) || 1
-  const unit: Vec3 = [dir[0] / length, dir[1] / length, dir[2] / length]
+  // The urban scene re-fits with its own direction while the person has not moved the camera (a phone turned from
+  // landscape to portrait gets the portrait view); other scenes keep the direction the camera already has.
+  const unit: Vec3 = urbanDirection() ?? [dir[0] / length, dir[1] / length, dir[2] / length]
+  const turned = 1 - (unit[0] * dir[0] + unit[1] * dir[1] + unit[2] * dir[2]) / length > 1e-4
   const framed = frameRestaurant({
     direction: unit,
     tables: props.tables,
     entrance: props.entrance,
     includeFloor: props.includeFloor,
-    context: props.context,
+    context: framingContext(),
     wallHeight: props.wallHeight || undefined,
     maxDistance: props.maxDistance ?? (props.wallHeight ? 70 : undefined),
     width: sizes.width.value,
@@ -295,7 +303,7 @@ function refit(instant = false): void {
     insets: { left: insets.left + props.frameInsets.left, right: insets.right + props.frameInsets.right, top: insets.top + coverShift + props.frameInsets.top, bottom: insets.bottom + coverShift + props.frameInsets.bottom },
   })
   const shiftNow = cam.view?.enabled ? cam.view.offsetY : 0
-  const moved = Math.abs(framed.distance - length) / length > 0.01
+  const moved = turned || Math.abs(framed.distance - length) / length > 0.01
     || Math.hypot(framed.target[0] - ctl.target.x, framed.target[2] - ctl.target.z) > 0.05
     || Math.abs(shiftNow - coverShift) > 0.5
   if (!moved) return
@@ -307,6 +315,42 @@ function refit(instant = false): void {
   if (instant) applyPose(goal)
   else moveTo(goal) // eased, so a dock opening or a mode switch does not make the view jump
 }
+
+/** The urban scene frames with its own direction (isometric, or the phone's across-the-terrace view) and context. */
+const urbanDirection = (): Vec3 | null => (props.context?.length ? ultimateDirection(window.innerWidth) : null)
+const framingContext = () => (window.innerWidth <= COMPACT_VIEWPORT_PX && props.compactContext?.length ? props.compactContext : props.context)
+
+/**
+ * "Centrar vista": eases back to the balanced three-quarter overview of the whole restaurant (floor, terrace and, in the
+ * urban scene, the street context) for the CURRENT canvas, whatever the person did before: orbit, zoom, pan or a table
+ * focus. Distance and target stay inside the camera limits. Honors reduced motion (moveTo applies the pose at once). It
+ * is only ever called by the person; nothing here runs on its own after an interaction.
+ */
+function recenter(): void {
+  const cam = perspectiveCamera()
+  const ctl = orbit()
+  if (!cam || !ctl || !(sizes.width.value > 0) || !(sizes.height.value > 0)) return
+  const insets = syncViewport()
+  const coverShift = props.bottomInset / 2
+  home = null // a table focus being cleared by the host must not drag the camera back to the pre-focus pose
+  const limits = urbanLimits.value
+  const framed = frameRestaurant({
+    tables: props.tables, entrance: props.entrance, includeFloor: true, context: framingContext(), direction: urbanDirection() ?? undefined,
+    wallHeight: props.wallHeight || undefined, maxDistance: props.maxDistance ?? (props.wallHeight ? 70 : undefined),
+    width: sizes.width.value, height: sizes.height.value, viewportWidth: window.innerWidth,
+    insets: { left: insets.left + props.frameInsets.left, right: insets.right + props.frameInsets.right, top: insets.top + coverShift + props.frameInsets.top, bottom: insets.bottom + coverShift + props.frameInsets.bottom },
+  })
+  const distance = limits ? Math.min(limits.maxDistance, Math.max(limits.minDistance, framed.distance)) : framed.distance
+  const pull = limits ? clampTarget({ x: framed.target[0], y: framed.target[1], z: framed.target[2] }, limits.target) : null
+  const target: Vec3 = pull ? [framed.target[0] + pull.dx, framed.target[1], framed.target[2] + pull.dz] : framed.target
+  userMovedCamera = false // the view is the fitted one again, so a later resize may re-fit it
+  moveTo({
+    position: [target[0] + framed.direction[0] * distance, target[1] + framed.direction[1] * distance, target[2] + framed.direction[2] * distance],
+    target,
+    shift: [0, coverShift],
+  })
+}
+defineExpose({ recenter })
 
 const scheduleRefit = () => {
   clearTimeout(fitTimer)
@@ -364,6 +408,8 @@ onBeforeUnmount(() => {
     :max-distance="maxDistance"
     :min-polar-angle="polarRange[0]"
     :max-polar-angle="polarRange[1]"
+    :min-azimuth-angle="azimuthRange[0]"
+    :max-azimuth-angle="azimuthRange[1]"
     :screen-space-panning="!urbanLimits"
   />
 </template>

@@ -100,6 +100,18 @@ try {
     }
   })
 
+  check('MVP vegetation: 6-10 street trees around the door, a few far-side trees, none behind or around the restaurant; cover survives', () => {
+    for (const [side, e] of Object.entries(entrances)) {
+      const plan = urban.planUrban(e)
+      assert.ok(plan.trees.length >= 6 && plan.trees.length <= 10, `${side}: ${plan.trees.length} street trees`)
+      assert.ok(plan.farTrees.length <= 6, `${side}: ${plan.farTrees.length} far trees`)
+      assert.equal(plan.lotTrees, undefined)
+      for (const t of plan.trees) assert.ok(Math.abs(t.a - plan.doorA) <= 21 + 1e-9, 'trees stay around the door')
+      for (const t of plan.trees) assert.ok(t.w >= 0.85 && t.w <= 1.2 + 1e-9 && (t.flip === 1 || t.flip === -1), 'varied crown')
+      assert.ok(new Set(plan.trees.map(t => t.w.toFixed(2))).size >= plan.trees.length - 1, 'crowns are not all alike')
+    }
+  })
+
   // ---- occlusion maths ------------------------------------------------------------------------------------------------
   check('occlusion: a guest right behind a tree is fully hidden, one in front of it or far away is not', () => {
     const plan = urban.planUrban(entrances.south)

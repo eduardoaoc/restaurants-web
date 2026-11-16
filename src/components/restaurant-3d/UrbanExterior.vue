@@ -5,9 +5,11 @@ import {
   type BufferGeometry, type Material,
 } from 'three'
 import { createUrbanMaterials, URBAN_PALETTE } from './urban-materials'
+import { loadKayKitModel } from './kaykit-asset-cache'
+import { flattenModel, instancePlacements, type FlatPiece } from './ultimate-instancing'
 import {
-  APRON_TOP, CURB_WIDTH, DECK_TOP, PAVEMENT_TOP, ROAD_TOP, ROAD_WIDTH, SIDEWALK_DEPTH, TREE_SHAPE,
-  sideTransform, toLocal, toWorld as toWorldXZ, type BoxPlan, type TreePlan, type UrbanPlan,
+  APRON_TOP, CURB_WIDTH, DOOR_PLANTER_WIDTH, DECK_TOP, PAVEMENT_TOP, ROAD_TOP, ROAD_WIDTH, SIDEWALK_DEPTH, TREE_SHAPE,
+  sideTransform, toWorld as toWorldXZ, type BoxPlan, type TreePlan, type UrbanPlan,
 } from './urban-plan'
 
 /**
@@ -181,12 +183,11 @@ function build(): void {
   // TREE_SHAPE, the same numbers the occlusion maths uses, so a tree hides exactly what it appears to hide.
   const all: TreePlan[] = [
     ...plan.trees, ...plan.farTrees,
-    ...plan.lotTrees.map(t => ({ ...toLocal(plan.side, t.x, t.z), scale: t.scale, tone: t.tone })),
   ]
   const T = TREE_SHAPE
   // Shadow-casting trees (near the room, inside the shadow frustum) are separate meshes from the distant ones, so a tree
   // 80 m away is never drawn into the shadow map.
-  const parts = () => ({ pits: [] as InstanceSpec[], trunks: [] as InstanceSpec[], crowns: [] as InstanceSpec[], lobes: [] as InstanceSpec[], beds: [] as InstanceSpec[] })
+  const parts = () => ({ pits: [] as InstanceSpec[], trunks: [] as InstanceSpec[], crowns: [] as InstanceSpec[], lobes: [] as InstanceSpec[], tufts: [] as InstanceSpec[], beds: [] as InstanceSpec[] })
   const lit = parts()
   const plain = parts()
   const origin = plan.side
@@ -200,9 +201,10 @@ function build(): void {
     const distant = Math.abs(t.a) > 50
     if (!distant) set.pits.push({ x: t.a, y: PAVEMENT_TOP + 0.008, z: t.d, sx: 1.5 * k, sz: 1.5 * k })
     set.trunks.push({ x: t.a, y: PAVEMENT_TOP + (T.trunk.h * k) / 2, z: t.d, sx: k, sy: T.trunk.h * k, sz: k })
-    set.crowns.push({ x: t.a, y: PAVEMENT_TOP + T.crown.y * k, z: t.d, sx: T.crown.r * k, sy: T.crown.r * k, sz: T.crown.r * k, ry: t.tone, color: leaf })
+    set.crowns.push({ x: t.a, y: PAVEMENT_TOP + T.crown.y * k, z: t.d, sx: T.crown.rx * k * t.w, sy: T.crown.ry * k, sz: T.crown.rx * k * t.w, ry: t.tone, color: leaf })
     if (distant) continue
-    set.lobes.push({ x: t.a + T.lobe.dx * k, y: PAVEMENT_TOP + (T.crown.y + T.lobe.dy) * k, z: t.d + T.lobe.dz * k, sx: T.lobe.r * k, sy: T.lobe.r * k, sz: T.lobe.r * k, ry: 1, color: shade(leaf, -0.04) })
+    set.lobes.push({ x: t.a + T.lobe.dx * t.flip * k, y: PAVEMENT_TOP + (T.crown.y + T.lobe.dy) * k, z: t.d + T.lobe.dz * k, sx: T.lobe.rx * k * t.w, sy: T.lobe.ry * k, sz: T.lobe.rx * k * t.w, ry: 1 + t.tone, color: shade(leaf, -0.04) })
+    set.tufts.push({ x: t.a + T.top.dx * t.flip * k, y: PAVEMENT_TOP + (T.crown.y + T.top.dy) * k, z: t.d + T.top.dz * k, sx: T.top.r * k, sy: T.top.r * k * 0.85, sz: T.top.r * k, ry: t.tone * 2, color: shade(leaf, 0.035) })
     set.beds.push({ x: t.a, y: PAVEMENT_TOP + T.bed.y * k, z: t.d, sx: T.bed.rx * k, sy: T.bed.ry * k, sz: T.bed.rx * k, ry: t.tone, color: shade(URBAN_PALETTE.shrub, (t.tone - 1) * 0.02) })
   }
   for (const [set, cast, tag] of [[lit, true, 'near'], [plain, false, 'far']] as const) {
@@ -211,6 +213,7 @@ function build(): void {
     street.add(instanced(new CylinderGeometry(T.trunk.r * 0.72, T.trunk.r, 1, 7), materials.trunk, set.trunks, `tree-trunks-${tag}`, { cast }))
     street.add(instanced(new IcosahedronGeometry(1, 1), materials.tinted, set.crowns, `tree-crowns-${tag}`, { cast }))
     if (set.lobes.length) street.add(instanced(new IcosahedronGeometry(1, 1), materials.tinted, set.lobes, `tree-lobes-${tag}`, { cast }))
+    if (set.tufts.length) street.add(instanced(new IcosahedronGeometry(1, 1), materials.tinted, set.tufts, `tree-tufts-${tag}`, { cast }))
     if (set.beds.length) street.add(instanced(new IcosahedronGeometry(1, 1), materials.tinted, set.beds, `tree-beds-${tag}`, { cast }))
   }
 
@@ -219,21 +222,47 @@ function build(): void {
   street.add(instanced(new BoxGeometry(1, 1, 1), materials.hedge, [{ x: (a0 + a1) / 2, y: PAVEMENT_TOP + 0.5, z: hedgeD, sx: length, sy: 1, sz: 0.9 }], 'far-hedge'))
 
   // Planters against the building (concrete boxes with shrubs). The doorway's 1.4 m corridor stays clear.
-  const planterBoxes: InstanceSpec[] = plan.planters.map(p => ({ x: p.a, y: PAVEMENT_TOP + p.h / 2, z: p.d, sx: p.w, sy: p.h, sz: p.depth }))
+  // The two 1.1 m planters at the door use the lowpoly model when it is loaded (box + its own shrubs, no procedural shrubs
+  // on top of it); the larger ones keep the procedural box and shrubs.
+  const isDoorPlanter = (p: BoxPlan): boolean => Math.abs(p.w - DOOR_PLANTER_WIDTH) < 1e-6
+  const procedural = lowpoly ? plan.planters.filter(p => !isDoorPlanter(p)) : plan.planters
+  const planterBoxes: InstanceSpec[] = procedural.map(p => ({ x: p.a, y: PAVEMENT_TOP + p.h / 2, z: p.d, sx: p.w, sy: p.h, sz: p.depth }))
   street.add(instanced(new BoxGeometry(1, 1, 1), materials.planter, planterBoxes, 'planters', { cast: true, receive: true }))
-  street.add(instanced(new IcosahedronGeometry(1, 1), materials.shrub, shrubs(plan.planters, PAVEMENT_TOP), 'planter-shrubs', { cast: true }))
+  street.add(instanced(new IcosahedronGeometry(1, 1), materials.shrub, shrubs(procedural, PAVEMENT_TOP), 'planter-shrubs', { cast: true }))
+  if (lowpoly) {
+    const doorPlanters = plan.planters.filter(isDoorPlanter).map(p => ({ x: p.a, z: p.d, yaw: 0 }))
+    if (doorPlanters.length) {
+      const mesh = instancePlacements(lowpoly.planter, lowpoly.planter.materials, doorPlanters, 'door-planters-lowpoly')
+      mesh.position.y = PAVEMENT_TOP
+      mesh.frustumCulled = false
+      disposables.push(mesh)
+      street.add(mesh)
+    }
+  }
 
-  // Streetlights: a slim pole, an arm over the road and a warm lamp head. Far-side lamps reach back across the road.
-  const lampSpecs = (lamps: readonly { a: number; d: number }[], dir: 1 | -1) => ({
-    poles: lamps.map((l): InstanceSpec => ({ x: l.a, y: PAVEMENT_TOP + 2.25, z: l.d })),
-    arms: lamps.map((l): InstanceSpec => ({ x: l.a, y: PAVEMENT_TOP + 4.45, z: l.d + 0.5 * dir })),
-    heads: lamps.map((l): InstanceSpec => ({ x: l.a, y: PAVEMENT_TOP + 4.38, z: l.d + 0.98 * dir })),
-  })
-  const near = lampSpecs(plan.lamps, 1)
-  const away = lampSpecs(plan.farLamps, -1)
-  street.add(instanced(new CylinderGeometry(0.05, 0.07, 4.5, 8), materials.pole, [...near.poles, ...away.poles], 'lamp-poles'))
-  street.add(instanced(new BoxGeometry(0.06, 0.06, 1.1), materials.pole, [...near.arms, ...away.arms], 'lamp-arms'))
-  street.add(instanced(new BoxGeometry(0.3, 0.08, 0.5), materials.lampGlow, [...near.heads, ...away.heads], 'lamp-heads'))
+  // Streetlights. Lowpoly lamp post when loaded: its arm points +z (towards the road) so near lamps use yaw 0 and far-side
+  // lamps (the road is at smaller d for them) yaw pi; the lens takes the scene's warm emissive material. Otherwise the
+  // procedural slim pole, arm and head.
+  if (lowpoly) {
+    const lamps = [...plan.lamps.map(l => ({ x: l.a, z: l.d, yaw: 0 })), ...plan.farLamps.map(l => ({ x: l.a, z: l.d, yaw: Math.PI }))]
+    const mesh = instancePlacements(lowpoly.lamp, lowpoly.lamp.materials, lamps, 'lamp-posts-lowpoly')
+    mesh.position.y = PAVEMENT_TOP
+    mesh.castShadow = false // the procedural lamps never cast either
+    mesh.frustumCulled = false
+    disposables.push(mesh)
+    street.add(mesh)
+  } else {
+    const lampSpecs = (lamps: readonly { a: number; d: number }[], dir: 1 | -1) => ({
+      poles: lamps.map((l): InstanceSpec => ({ x: l.a, y: PAVEMENT_TOP + 2.25, z: l.d })),
+      arms: lamps.map((l): InstanceSpec => ({ x: l.a, y: PAVEMENT_TOP + 4.45, z: l.d + 0.5 * dir })),
+      heads: lamps.map((l): InstanceSpec => ({ x: l.a, y: PAVEMENT_TOP + 4.38, z: l.d + 0.98 * dir })),
+    })
+    const near = lampSpecs(plan.lamps, 1)
+    const away = lampSpecs(plan.farLamps, -1)
+    street.add(instanced(new CylinderGeometry(0.05, 0.07, 4.5, 8), materials.pole, [...near.poles, ...away.poles], 'lamp-poles'))
+    street.add(instanced(new BoxGeometry(0.06, 0.06, 1.1), materials.pole, [...near.arms, ...away.arms], 'lamp-arms'))
+    street.add(instanced(new BoxGeometry(0.3, 0.08, 0.5), materials.lampGlow, [...near.heads, ...away.heads], 'lamp-heads'))
+  }
   scene.add(street)
 
   // ---- terrace (wall frame of the terrace side): one timber deck over the whole wall, low hedges around it ---------------
@@ -257,11 +286,57 @@ function clear(): void {
   disposables.length = 0
 }
 
-onMounted(build)
+/**
+ * Street props from the lowpoly.download free pack (lamp post, planter): two GLBs shipped as static assets under
+ * `public/assets/restaurant-3d/models/lowpoly-street/` (the project's asset convention), with the vendor's authorization to
+ * serve them to the browser (docs/3d/PHASE_3_1K_LOWPOLY_STREET.md). The URL follows Vite's configured base. This component is
+ * only mounted by the Ultimate scene, so no other scene ever requests them. A failed load (offline, blocked, missing file) keeps
+ * the procedural lamps and planters this component always had; `?lowpoly=off` (dev builds only) forces them for comparisons.
+ */
+const LOWPOLY_BASE = `${import.meta.env.BASE_URL}assets/restaurant-3d/models/lowpoly-street`
+const LAMP_SCALE = 0.9
+const PLANTER_SCALE = 0.91
+/** The lamp's pole axis sits at z = -0.49 in the model; shifted so the axis lands on the plan point before any yaw. */
+const LAMP_AXIS_Z = -0.49
+let lowpoly: { lamp: FlatPiece; planter: FlatPiece } | null = null
+let alive = true
+
+function buildLowpolyPieces(lamp: Object3D, planter: Object3D): { lamp: FlatPiece; planter: FlatPiece } {
+  const lampPiece = flattenModel(lamp, {}, m => (m.name === 'lp_glass' ? materials.lampGlow : materials.pole))
+  lampPiece.geometry.scale(LAMP_SCALE, LAMP_SCALE, LAMP_SCALE)
+  lampPiece.geometry.translate(0, 0, -LAMP_AXIS_Z * LAMP_SCALE)
+  const planterPiece = flattenModel(planter, {}, m => (m.name === 'lp_foliage' ? materials.shrub : materials.planter))
+  planterPiece.geometry.scale(PLANTER_SCALE, PLANTER_SCALE, PLANTER_SCALE)
+  return { lamp: lampPiece, planter: planterPiece }
+}
+
+async function loadLowpoly(): Promise<void> {
+  // `?lowpoly=off` (dev builds only) keeps the procedural props: the before/after comparison switch.
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('lowpoly') === 'off') return
+  try {
+    const [lamp, planter] = await Promise.all([`${LOWPOLY_BASE}/asset-props-lamp-post.glb`, `${LOWPOLY_BASE}/asset-props-planter.glb`].map(loadKayKitModel))
+    if (!alive) return
+    lowpoly = buildLowpolyPieces(lamp, planter)
+    build()
+  } catch (error) {
+    console.warn('[restaurant-3d] lowpoly street props unavailable, keeping the procedural ones', error)
+  }
+}
+
+onMounted(() => {
+  build()
+  void loadLowpoly()
+})
 watch(key, build)
 onBeforeUnmount(() => {
+  alive = false
   clear()
   for (const m of materials.all) m.dispose()
+  if (lowpoly) {
+    lowpoly.lamp.geometry.dispose()
+    lowpoly.planter.geometry.dispose()
+    lowpoly = null
+  }
 })
 </script>
 

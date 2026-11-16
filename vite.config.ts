@@ -7,6 +7,12 @@ import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, loadEnv } from 'vite'
 import { validateEnv } from './src/config/env.ts'
 
+/**
+ * Dev-only serving of the license-pending Ultimate demo pack (converted GLBs of the Low Poly Ultimate Pack, licence unverified):
+ * `configureServer` never runs in a build and nothing here is under `public/`, so none of it reaches `dist`.
+ * (The two lowpoly street GLBs are NOT served from here: they are authorized, ship as static assets under
+ * `public/assets/restaurant-3d/models/lowpoly-street/` and are copied to `dist` by Vite.)
+ */
 const ultimateLocalAssets = path.resolve(import.meta.dirname, 'assets-source/restaurant-3d/converted-unused/ultimate-pack')
 const ultimateUrlPrefix = '/assets/restaurant-3d/models/ultimate-pack/'
 

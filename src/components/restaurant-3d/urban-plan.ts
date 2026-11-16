@@ -155,6 +155,103 @@ export function planWallModules(entrance: Pt | null | undefined): WallModulePlan
   return out
 }
 
+// ---- static architectural cutaway (Phase 3.1K-E1) ---------------------------------------------------------------------
+
+/**
+ * The perimeter is a FIXED architectural cutaway, independent of the camera and of the entrance: the BACK wall (north,
+ * z = -8) and the LEFT-hand wall (west, x = -10) keep their full height; the FRONT wall (south, towards the street and
+ * the default camera) and the RIGHT-hand wall (east, the terrace side) are low walls. "Back / left / front / right" are
+ * as seen from the default camera, which sits south-east of the room looking north-west: screen-right is +x / -z, so the
+ * wall on the left of the screen is x = -10 and the one behind the room is z = -8 (verified on a render).
+ */
+export const FULL_WALL_SIDES: readonly WallSide[] = ['north', 'west']
+export const LOW_WALL_SIDES: readonly WallSide[] = ['south', 'east']
+/** Height of the full walls (the converted wall module) and of the low perimeter walls (m). */
+export const WALL_HEIGHT = 3
+export const LOW_WALL_HEIGHT = 0.4
+export const isLowWall = (side: WallSide): boolean => LOW_WALL_SIDES.includes(side)
+
+export interface WallPiece extends WallModulePlan {
+  /** Low perimeter wall (0.4 m) instead of a full-height module. */
+  low: boolean
+}
+
+/**
+ * Wall modules as they are BUILT: full walls as planned (door modules keep their doorway); on the low walls a door module
+ * becomes two low flanks with a real 0.9 m opening between them (the entrance, or the terrace passage), and windows are
+ * dropped (a tall window cannot hang above a 0.4 m wall).
+ */
+export function planWallPieces(entrance: Pt | null | undefined): WallPiece[] {
+  const out: WallPiece[] = []
+  for (const m of planWallModules(entrance)) {
+    if (!isLowWall(m.side)) {
+      out.push({ ...m, low: false })
+    } else if (m.kind === 'wall') {
+      out.push({ ...m, window: false, low: true })
+    } else {
+      const flank = (m.stretch * WALL_MODULE - DOOR_OPENING) / 2
+      for (const sign of [-1, 1]) {
+        out.push({ side: m.side, kind: 'wall', along: m.along + sign * (DOOR_OPENING / 2 + flank / 2), stretch: flank / WALL_MODULE, window: false, low: true })
+      }
+    }
+  }
+  return out
+}
+
+export interface LowWallRun {
+  side: WallSide
+  /** World `along` extent of one continuous low wall (between corner piers / openings). */
+  from: number
+  to: number
+}
+
+/**
+ * Continuous low-wall runs (E2): the low pieces of `planWallPieces` merged where they touch, so each run is ONE box with
+ * no seams and the openings are exactly the gaps between runs.
+ */
+export function lowWallRuns(entrance: Pt | null | undefined): LowWallRun[] {
+  const runs: LowWallRun[] = []
+  for (const side of LOW_WALL_SIDES) {
+    const spans = planWallPieces(entrance)
+      .filter(p => p.side === side)
+      .map(p => [p.along - (p.stretch * WALL_MODULE) / 2, p.along + (p.stretch * WALL_MODULE) / 2] as const)
+      .sort((a, b) => a[0] - b[0])
+    for (const [a, b] of spans) {
+      const last = runs[runs.length - 1]
+      if (last && last.side === side && Math.abs(last.to - a) < 1e-6) last.to = b
+      else runs.push({ side, from: a, to: b })
+    }
+  }
+  return runs
+}
+
+export interface WallPier {
+  x: number
+  z: number
+  /** Footprint (m). */
+  w: number
+  d: number
+  height: number
+  low: boolean
+}
+
+/**
+ * The four corner piers (E2): plain boxes filling the 0.45 m square between the ends of two wall runs and the outer corner.
+ * Full height where a full wall ends or two full walls meet (NW, NE, SW), low only where both walls are low (SE).
+ */
+export function wallPiers(): WallPier[] {
+  const hx = runHalf('south')
+  const hz = runHalf('east')
+  const out: WallPier[] = []
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const low = sx > 0 && sz > 0
+      out.push({ x: (sx * (hx + OUTER_X)) / 2, z: (sz * (hz + OUTER_Z)) / 2, w: OUTER_X - hx, d: OUTER_Z - hz, height: low ? LOW_WALL_HEIGHT : WALL_HEIGHT, low })
+    }
+  }
+  return out
+}
+
 // ---- urban layout ---------------------------------------------------------------------------------------------------
 
 /** Sidewalk depth (m): 3.2 in D2A, wider now so trees, the door lane and a walking aisle coexist. */
@@ -192,6 +289,10 @@ export interface Placement {
 export interface TreePlan extends Placement {
   scale: number
   tone: number
+  /** Crown width factor (0.85-1.2). */
+  w: number
+  /** Which side the lobe leans to (+1 / -1 along the wall). */
+  flip: 1 | -1
 }
 export interface BoxPlan extends Placement {
   w: number
@@ -205,9 +306,13 @@ export interface BoxPlan extends Placement {
  * behind a tree is covered from head to feet from the default (elevated) camera.
  */
 export const TREE_SHAPE = {
-  trunk: { r: 0.14, h: 1.9 },
-  crown: { y: 2.15, r: 0.95 },
-  lobe: { dx: 0.42, dy: -0.2, dz: -0.28, r: 0.6 },
+  trunk: { r: 0.14, h: 2.0 },
+  /** Main crown: taller than wide (an oval, not a ball); `w` (per tree, 0.85-1.2) widens or slims it. */
+  crown: { y: 2.3, rx: 0.82, ry: 1.2 },
+  /** Lower side lobe (mirrored per tree by `flip`): breaks the silhouette. */
+  lobe: { dx: 0.5, dy: -0.3, dz: -0.3, rx: 0.6, ry: 0.75 },
+  /** Small top tuft (drawn only; it never counts as cover). */
+  top: { dx: -0.15, dy: 0.95, dz: 0.1, r: 0.42 },
   bed: { y: 0.55, rx: 0.62, ry: 0.6 },
 } as const
 /** Nav footprint of a tree (the shrub bed). */
@@ -232,9 +337,8 @@ export interface UrbanPlan {
   /** Opposite sidewalk (scenery): curb at `road.d1`, walking surface from `d0`. */
   farSidewalk: { a0: number; a1: number; d0: number; depth: number }
   trees: TreePlan[]
-  /** Scenery trees on the far sidewalk and around the lot (no navigation role). */
+  /** Scenery trees on the far sidewalk (no navigation role). */
   farTrees: TreePlan[]
-  lotTrees: Array<TreePlan & { x: number; z: number }>
   planters: BoxPlan[]
   lamps: Placement[]
   farLamps: Placement[]
@@ -258,10 +362,15 @@ export interface UrbanPlan {
   corridor: WorldRect
 }
 
+/** Width (m) of the two planters flanking the door (the ones the lowpoly planter model replaces in the Ultimate fixture). */
+export const DOOR_PLANTER_WIDTH = 1.1
+
 /** Lane (mid-sidewalk) distance from the wall (m) where pedestrians walk. */
 export const LANE_D = 1.4
 /** Distance of the street trees from the building (m): mid-sidewalk, so a tree can hide a guest on either side of it. */
 export const TREE_D = 2.7
+/** Street trees stand within this distance (m) of the door line, either side. */
+const TREE_WINDOW = 21
 const LAMP_D = SIDEWALK_DEPTH - 0.3
 /** Extent (m) of the walkable outdoor grid; obstacles outside it are scenery only. */
 export const OUTDOOR_GRID = { width: 64, depth: 56 } as const
@@ -290,14 +399,18 @@ export function planUrban(entrance: Pt | null | undefined): UrbanPlan {
   const road = { a0: -ROAD_HALF_LENGTH, a1: ROAD_HALF_LENGTH, d0: roadD0, d1: roadD0 + ROAD_WIDTH }
   const farSidewalk = { a0: -ROAD_HALF_LENGTH, a1: ROAD_HALF_LENGTH, d0: road.d1 + CURB_WIDTH, depth: FAR_SIDEWALK_DEPTH }
 
-  // Street trees: irregular spacing (5.5-9 m), a little lateral jitter, three sizes; never within 3.4 m of the door line.
+  // Street trees: a handful (6-10) where they matter, around the door, with irregular spacing (5.5-7.5 m), a little lateral
+  // jitter, varied size and crown width; never within 3.4 m of the door line.
+  const mkTree = (a: number, d: number, i: number, size = 0.28): TreePlan => ({
+    a, d, scale: 0.9 + rand(i + 80) * size, tone: Math.floor(rand(i + 120) * 3), w: 0.85 + rand(i + 160) * 0.35, flip: rand(i + 200) < 0.5 ? -1 : 1,
+  })
   const trees: TreePlan[] = []
-  let cursor = sidewalk.a0 + 6
-  for (let i = 0; cursor < sidewalk.a1 - 6; i++) {
+  let cursor = doorA - TREE_WINDOW
+  for (let i = 0; cursor < doorA + TREE_WINDOW; i++) {
     const a = cursor
-    cursor += 5.5 + rand(i + 1) * 3.5
+    cursor += 5.5 + rand(i + 1) * 2
     if (Math.abs(a - doorA) < 3.4) continue
-    trees.push({ a, d: TREE_D + (rand(i + 40) - 0.5) * 0.5, scale: 0.9 + rand(i + 80) * 0.28, tone: Math.floor(rand(i + 120) * 3) })
+    trees.push(mkTree(a, TREE_D + (rand(i + 40) - 0.5) * 0.5, i))
   }
   // Streetlights at the curb, ~15 m apart, never closer than 2.6 m to a tree or 3 m to the door.
   const lamps: Placement[] = []
@@ -317,16 +430,16 @@ export function planUrban(entrance: Pt | null | undefined): UrbanPlan {
   const planters: BoxPlan[] = []
   for (const off of entry ? [-1.45, 1.45, -6.2, 6.2] : [-6.2, 6.2]) {
     const a = doorA + off
-    if (Math.abs(a) < frame.half - 1.2) planters.push({ a, d: 0.32, w: off === -1.45 || off === 1.45 ? 1.1 : 1.8, h: 0.55, depth: 0.5 })
+    if (Math.abs(a) < frame.half - 1.2) planters.push({ a, d: 0.32, w: off === -1.45 || off === 1.45 ? DOOR_PLANTER_WIDTH : 1.8, h: 0.55, depth: 0.5 })
   }
 
-  // Far side (scenery): irregular trees and lamps on the opposite pavement.
+  // Far side (scenery): a few trees on the opposite pavement, only across from the restaurant.
   const farTrees: TreePlan[] = []
   const farD = farSidewalk.d0 + 1.7
-  cursor = farSidewalk.a0 + 3
-  for (let i = 0; cursor < farSidewalk.a1 - 3; i++) {
-    farTrees.push({ a: cursor, d: farD + (rand(i + 300) - 0.5) * 0.5, scale: 0.9 + rand(i + 340) * 0.32, tone: Math.floor(rand(i + 380) * 3) })
-    cursor += 4.5 + rand(i + 420) * 3
+  cursor = doorA - 24
+  for (let i = 0; cursor < doorA + 24; i++) {
+    farTrees.push(mkTree(cursor, farD + (rand(i + 300) - 0.5) * 0.5, i + 300, 0.32))
+    cursor += 11 + rand(i + 420) * 4
   }
   const farLamps: Placement[] = []
   for (let i = 0, a = farSidewalk.a0 + 12; a < farSidewalk.a1 - 6; i++, a += 14 + rand(i + 500) * 4) lampAt(a, farSidewalk.d0 + 0.3, farLamps, farTrees, false)
@@ -355,23 +468,7 @@ export function planUrban(entrance: Pt | null | undefined): UrbanPlan {
   const margin = (s: WallSide) => (s === side ? SIDEWALK_DEPTH : s === tSide ? DECK_DEPTH + 2 : PAVED_MARGIN)
   const apron = { minX: -OUTER_X - margin('west'), maxX: OUTER_X + margin('east'), minZ: -OUTER_Z - margin('north'), maxZ: OUTER_Z + margin('south') }
 
-  // Scenery trees around the lot (behind the building and beyond the deck): a loose line along the apron edge.
-  const lotTrees: UrbanPlan['lotTrees'] = []
-  // Two loose rows (at the apron edge and 4.5 m beyond it) so the lot never ends in bare ground.
-  for (const s of ['west', 'east', 'north', 'south'] as const) {
-    if (s === side) continue
-    const f = SIDE_FRAMES[s]
-    ;[0, 1].forEach(row => {
-      const reachA = (s === tSide ? 10 : f.half + 4) + row * 8
-      for (let i = 0, a = -reachA + row * 2; a <= reachA; i++, a += 4.2 + row * 2.4 + rand(i + 600 + f.face + row * 50) * 2.2) {
-        const dd = margin(s) - 0.9 + row * 4.5 + (rand(i + 700 + row * 30) - 0.5) * 0.8
-        const p = toWorld(s, a, dd)
-        // Never on the street's sidewalk / road (a lot tree beside the building end would stand on the pavement).
-        if (toLocal(side, p.x, p.z).d > -1.5) continue
-        lotTrees.push({ a, d: dd, x: p.x, z: p.z, scale: 0.85 + rand(i + 800 + row * 20) * 0.3, tone: Math.floor(rand(i + 900 + row * 10) * 3) })
-      }
-    })
-  }
+  // No trees behind or around the restaurant (MVP clean-up): the apron meets the ground directly.
 
   // Outdoor obstacles (world); scenery beyond the walkable grid is left out.
   const inGrid = (x: number, z: number) => Math.abs(x) < OUTDOOR_GRID.width / 2 - 0.5 && Math.abs(z) < OUTDOOR_GRID.depth / 2 - 0.5
@@ -384,7 +481,6 @@ export function planUrban(entrance: Pt | null | undefined): UrbanPlan {
     const p = toWorld(side, t.a, t.d)
     if (inGrid(p.x, p.z)) obstacles.push({ kind: 'circle', x: p.x, z: p.z, r: TREE_NAV_RADIUS, name: 'tree' })
   }
-  for (const t of lotTrees) if (inGrid(t.x, t.z)) obstacles.push({ kind: 'circle', x: t.x, z: t.z, r: TREE_NAV_RADIUS, name: 'lot-tree' })
   for (const l of lamps) {
     const p = toWorld(side, l.a, l.d)
     if (inGrid(p.x, p.z)) obstacles.push({ kind: 'circle', x: p.x, z: p.z, r: 0.16, name: 'lamp' })
@@ -407,9 +503,15 @@ export function planUrban(entrance: Pt | null | undefined): UrbanPlan {
   const corridor = localRect(side, doorA - 0.7, doorA + 0.7, -WALL_T - 2.6, -WALL_T)
 
   return {
-    side, hasEntrance: !!entry, doorA, doorAlong, doorOutside, front, out: frame.n, sidewalk, road, farSidewalk, trees, farTrees, lotTrees, planters,
+    side, hasEntrance: !!entry, doorA, doorAlong, doorOutside, front, out: frame.n, sidewalk, road, farSidewalk, trees, farTrees, planters,
     lamps, farLamps, terrace: { side: tSide, a: tA, deck, tables, plants, hedges }, apron, obstacles, lane, reception, corridor,
   }
+}
+
+/** Terrace corners only: what a phone-portrait default view must contain besides the room (the street needs Centrar vista). */
+export function terraceContextPoints(plan: UrbanPlan): Pt[] {
+  const deck = plan.terrace.deck
+  return [deck.a0, deck.a1].map(a => toWorld(plan.terrace.side, a, DECK_DEPTH + 0.6))
 }
 
 /** Framing points (world, y = 0) that keep the street, sidewalk ends and terrace inside the default view. */
