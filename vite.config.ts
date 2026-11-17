@@ -46,7 +46,13 @@ function localUltimateDemoAssets() {
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  validateEnv(loadEnv(mode, process.cwd(), 'VITE_'), mode)
+  const resolved = validateEnv(loadEnv(mode, process.cwd(), 'VITE_'), mode)
+  if (resolved.dashboard3dFallback) {
+    // Safe default, never a failed deploy: say why the requested Dashboard room was not applied.
+    console.warn(`[aforo] VITE_DASHBOARD_3D resolved to "${resolved.dashboard3d}" (${resolved.dashboard3dFallback === 'invalid-value'
+      ? 'the value is not off|kaykit|ultimate'
+      : '"ultimate" outside a local build needs VITE_ENABLE_ULTIMATE_DASHBOARD_QA=true'}).`)
+  }
   return {
     // TresJS' documented template options: its <Tres*> tags are renderer elements, not Vue components.
     plugins: [vue({ ...templateCompilerOptions }), tailwindcss(), localUltimateDemoAssets()],

@@ -14,6 +14,7 @@ try {
   const tiers = await server.ssrLoadModule('/src/components/restaurant-3d/operational-hierarchy.ts')
   const cut = await server.ssrLoadModule('/src/components/restaurant-3d/wall-cutaway.ts')
   const viewport = await server.ssrLoadModule('/src/components/restaurant-3d/overlay-viewport.ts')
+  const collisions = await server.ssrLoadModule('/src/components/restaurant-3d/overlay-collision.ts')
   const { mockLayout } = await server.ssrLoadModule('/src/data/restaurant-3d/mock-layout.ts')
 
   const sizes = [[390, 654], [375, 477], [918, 680], [1078, 680]]
@@ -100,6 +101,58 @@ try {
     assert.equal(out.y, 300)
     const left = metrics.clampOverlay({ x: 10, y: 300 }, pill, canvas, none, 6)
     assert.equal(left.x, 6 + 129 / 2)
+  })
+  check('badge priority is preserved while a table label moves clear of an active badge', () => {
+    const placed = collisions.resolveOverlayCollisions([
+      { id: 'table-1', kind: 'label', rank: 5, position: { x: 100, y: 100 }, size: { width: 70, height: 22 } },
+      { id: 'event-1', kind: 'badge', rank: 2, position: { x: 100, y: 100 }, size: { width: 120, height: 30 } },
+    ])
+    assert.deepEqual(placed.get('event-1'), { x: 100, y: 100 })
+    assert.ok(Math.abs(placed.get('table-1').y - 100) <= 96)
+    assert.ok(Math.abs(placed.get('table-1').x - 100) <= 96)
+    assert.ok(placed.get('table-1').y !== 100 || placed.get('table-1').x !== 100)
+  })
+  check('nearby badges remain legible together and labels yield to both', () => {
+    const points = [
+      { id: 'label', kind: 'label', rank: 5, position: { x: 100, y: 100 }, size: { width: 70, height: 22 } },
+      { id: 'event-a', kind: 'badge', rank: 2, position: { x: 100, y: 100 }, size: { width: 120, height: 30 } },
+      { id: 'event-b', kind: 'badge', rank: 3, position: { x: 104, y: 104 }, size: { width: 112, height: 30 } },
+    ]
+    const placed = collisions.resolveOverlayCollisions(points)
+    const box = (id, size) => ({ left: placed.get(id).x - size.width / 2, right: placed.get(id).x + size.width / 2, top: placed.get(id).y - size.height / 2, bottom: placed.get(id).y + size.height / 2 })
+    const overlap = (a, b) => a.left < b.right + 5 && a.right + 5 > b.left && a.top < b.bottom + 5 && a.bottom + 5 > b.top
+    assert.equal(overlap(box('event-a', points[1].size), box('event-b', points[2].size)), false)
+    assert.equal(overlap(box('label', points[0].size), box('event-a', points[1].size)), false)
+    assert.equal(overlap(box('label', points[0].size), box('event-b', points[2].size)), false)
+  })
+  check('event appearance, priority update and removal recompute overlay positions without stale badges', () => {
+    const label = { id: 'table-4', kind: 'label', rank: 5, position: { x: 180, y: 260 }, size: { width: 72, height: 22 } }
+    const created = { id: 'event-4', kind: 'badge', rank: 4, position: { x: 180, y: 260 }, size: { width: 118, height: 30 } }
+    const initial = collisions.resolveOverlayCollisions([label])
+    const active = collisions.resolveOverlayCollisions([label, created])
+    const escalated = collisions.resolveOverlayCollisions([label, { ...created, rank: 1 }])
+    const removed = collisions.resolveOverlayCollisions([label])
+    assert.equal(initial.size, 1)
+    assert.equal(active.size, 2)
+    assert.deepEqual(escalated.get('event-4'), { x: 180, y: 260 })
+    assert.equal(removed.has('event-4'), false)
+    assert.deepEqual(removed.get('table-4'), initial.get('table-4'))
+  })
+  check('a still-free slot is kept across small moves (no hop), but dropped when it is blocked or much worse', () => {
+    const badge = { id: 'event-1', kind: 'badge', rank: 1, position: { x: 200, y: 300 }, size: { width: 120, height: 30 } }
+    const label = { id: 'table-1', kind: 'label', rank: 5, position: { x: 200, y: 304 }, size: { width: 72, height: 22 } }
+    const first = collisions.resolveOverlayCollisions([badge, label])
+    const prior = new Map([['table-1', { x: first.get('table-1').x - 200, y: first.get('table-1').y - 304 }]])
+    // The badge drifts 2 px: the memoryless best slot may change, the remembered one stays while free.
+    const moved = collisions.resolveOverlayCollisions([{ ...badge, position: { x: 202, y: 301 } }, label], 5, 96, undefined, prior)
+    assert.deepEqual({ x: moved.get('table-1').x - 200, y: moved.get('table-1').y - 304 }, prior.get('table-1'))
+    // A remembered offset that now collides is abandoned.
+    const stale = new Map([['table-1', { x: 0, y: 0 }]])
+    const resolved = collisions.resolveOverlayCollisions([badge, label], 5, 96, undefined, stale)
+    assert.notDeepEqual(resolved.get('table-1'), { x: 200, y: 304 })
+    // A remembered offset far worse than the best is replaced by the best.
+    const far = new Map([['table-1', { x: 0, y: -96 }]])
+    assert.deepEqual(collisions.resolveOverlayCollisions([label], 5, 96, undefined, far).get('table-1'), { x: 200, y: 304 })
   })
   check('edge clamp respects safe-area insets', () => {
     const out = metrics.clampOverlay({ x: 385, y: 300 }, { width: 100, height: 28 }, canvas, { ...none, right: 47 }, 6)

@@ -829,6 +829,8 @@ export default {
         viewLabel: 'Dining room view',
         planView: 'Floor plan',
         sceneError: 'The 3D dining room could not be loaded.',
+        sceneRuntimeError: 'The 3D dining room stopped working. You can keep working from the floor plan.',
+        sceneNoWebgl: 'This device cannot display the 3D dining room. Use the floor plan.',
         sceneEmpty: 'This restaurant does not have a 3D dining room set up yet.',
         showPlan: 'View floor plan',
         sceneLoading: 'Loading the 3D dining room…',

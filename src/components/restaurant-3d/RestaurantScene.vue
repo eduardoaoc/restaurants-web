@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { ACESFilmicToneMapping, NeutralToneMapping } from 'three'
 import { useI18n } from 'vue-i18n'
@@ -15,6 +15,8 @@ import type { RestaurantOperationalState } from '@/types/restaurant-3d/restauran
 import type { OperationsLiveSnapshot, OperationsTable } from '@/types/operations'
 import type { OperationalEvent } from '@/types/restaurant-3d/operational-event'
 import CameraRig from './CameraRig.vue'
+import { SCENE_FAILURE_KEY } from './scene-runtime-guard'
+import { sceneCommands } from './scene-commands'
 import AddTablePanel from './AddTablePanel.vue'
 import EditorToolbar from './EditorToolbar.vue'
 import EntranceFloorMarker from './EntranceFloorMarker.vue'
@@ -49,6 +51,8 @@ import { useSceneClock } from './use-scene-clock'
 import { LIGHT_STAGE, sceneAppearance } from './scene-appearance'
 import { minSeatsForBackendTable, tableMappingState, validateCapacityAgainstOccupancy, validateTableMappings, type ActiveGuestCounts, type BackendTableOption } from './table-mapping'
 
+// Present only when a host wraps the scene in SceneRuntimeGuard (the Dashboard); the fixture and the editor have none.
+const reportSceneFailure = inject(SCENE_FAILURE_KEY, null)
 const props = withDefaults(defineProps<{
   mode?: RestaurantSceneMode
   /** Layout to edit/show. Read once on mount: re-key the component to load another. */
@@ -222,6 +226,8 @@ function recenterView(): void {
     if (hostOwnsSelection.value) emit('tableSelected', null)
     else clearSelection()
   }
+// The Dashboard stage draws its own Centrar vista button (the scene's one is hidden there) and asks through this.
+watch(() => sceneCommands.recenter, () => { if (props.stage) recenterView() })
 }
 
 function clearSelection(): void {
@@ -511,16 +517,23 @@ if (import.meta.env.DEV) {
 // setup, so this is an estimate; CameraRig re-fits to the measured canvas on mount (unless the person has moved the camera).
 // Chosen once per mount (see graphics-quality.ts): predictable, no mid-session quality changes.
 const quality = chooseQuality(detectDeviceHints())
-const compactViewport = window.innerWidth <= 640
+/** A phone in landscape (short screen): the stage keeps only a strip of stats on top and a row of toggles below. */
+const STAGE_SHORT_VIEWPORT_PX = 520
+const shortStage = props.stage && window.innerHeight <= STAGE_SHORT_VIEWPORT_PX
+const compactViewport = window.innerWidth <= 640 || shortStage
 /** Dashboard stage: raised, mostly frontal view (about 12 degrees off the front axis, 33 degrees up) so the room reads as a maquette. */
 const STAGE_DIRECTION: [number, number, number] = [0.17, 0.55, 0.82]
+/** Short, wide stage (a phone in landscape): steeper, so the room's depth uses the little height there is. */
+const STAGE_SHORT_DIRECTION: [number, number, number] = [0.14, 0.8, 0.58]
 const STAGE_WALL_HEIGHT = 2.4
 /** A phone-wide stage needs the camera farther back than the demo room's 70 m to fit the whole room. */
 const STAGE_MAX_DISTANCE = 110
 /** Px kept free around the room on the dashboard stage: the stat row on top, the legend/queue row below, a little at the sides. */
-const STAGE_INSETS = window.innerWidth <= 640
-  ? { top: 108, right: 12, bottom: 64, left: 12 }
-  : { top: 76, right: 40, bottom: 72, left: 40 }
+const STAGE_INSETS = shortStage
+  ? { top: 60, right: 12, bottom: 64, left: 12 }
+  : window.innerWidth <= 640
+    ? { top: 108, right: 12, bottom: 64, left: 12 }
+    : { top: 76, right: 40, bottom: 72, left: 40 }
 const initialFrame = frameRestaurant({
   tables: tables.value,
   entrance: draftEntrance.value,
@@ -529,7 +542,7 @@ const initialFrame = frameRestaurant({
   wallHeight: props.stage ? STAGE_WALL_HEIGHT : props.environment === 'ultimate' ? 3 : undefined,
   maxDistance: props.stage ? STAGE_MAX_DISTANCE : props.environment === 'ultimate' ? 70 : undefined,
   // Isometric-like view (corner of the room at the top centre): the Ultimate demo and the dashboard stage.
-  direction: props.stage ? STAGE_DIRECTION : props.environment === 'ultimate' ? ultimateDirection(window.innerWidth) : undefined,
+  direction: props.stage ? (shortStage ? STAGE_SHORT_DIRECTION : STAGE_DIRECTION) : props.environment === 'ultimate' ? ultimateDirection(window.innerWidth) : undefined,
   width: props.stage ? window.innerWidth : compactViewport ? window.innerWidth : Math.min(window.innerWidth - 48, 1100),
   height: props.stage ? window.innerHeight - 56 : Math.max(360, Math.min(720, window.innerHeight - (compactViewport ? 190 : 220))),
   viewportWidth: window.innerWidth,
@@ -547,13 +560,14 @@ const cameraTarget = initialFrame.target
   >
     <TresCanvas
       :clear-color="stage ? LIGHT_STAGE.background : '#151515'"
+      @error="reportSceneFailure?.('context-creation')"
       shadows
       :tone-mapping="ultimateFinal ? NeutralToneMapping : ACESFilmicToneMapping"
       :tone-mapping-exposure="ultimateFinal ? 1.25 : 1"
       :dpr="quality.dpr"
     >
       <!-- Urban scene: the finite world dissolves into the background colour before its far end (see camera-limits.ts). -->
-      <TresFog v-if="urban" :args="['#151515', WORLD_FOG.near, WORLD_FOG.far]" attach="fog" />
+      <TresFog v-if="urban" :args="[stage ? LIGHT_STAGE.background : '#151515', WORLD_FOG.near, WORLD_FOG.far]" attach="fog" />
 
       <!-- Câmera inicial estilo isométrico -->
       <TresPerspectiveCamera
@@ -605,7 +619,7 @@ const cameraTarget = initialFrame.target
 
       <template v-if="environment === 'ultimate'">
         <UltimateEnvironment :finish="finish" :entrance="entrance" :plan="urban" />
-        <UrbanExterior v-if="urban" :plan="urban" />
+        <UrbanExterior v-if="urban" :plan="urban" :stage="stage" />
       </template>
       <template v-else>
         <ModularFloor :light="stage" />

@@ -829,6 +829,8 @@ export default {
         viewLabel: 'Vista del saló',
         planView: 'Plànol',
         sceneError: 'No s’ha pogut carregar el saló 3D.',
+        sceneRuntimeError: 'El saló 3D s’ha aturat. Pots continuar treballant amb el plànol.',
+        sceneNoWebgl: 'Aquest dispositiu no pot mostrar el saló 3D. Usa el plànol.',
         sceneEmpty: 'Este restaurant encara no té un saló 3D configurat.',
         showPlan: 'Veure plànol',
         sceneLoading: 'Carregant el saló 3D…',

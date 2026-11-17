@@ -22,9 +22,9 @@ import {
  *
  * The terrace deck, its hedges and the ground are drawn whatever the terrace's operational state: it is scenery.
  */
-const props = defineProps<{ plan: UrbanPlan }>()
+const props = defineProps<{ plan: UrbanPlan; /** Dashboard light stage: pale ground and asphalt (see URBAN_STAGE_PALETTE). */ stage?: boolean }>()
 const root = ref<Group | null>(null)
-const materials = createUrbanMaterials()
+const materials = createUrbanMaterials(props.stage)
 const disposables: { dispose(): void }[] = []
 const key = computed(() => `${props.plan.side}:${props.plan.doorA.toFixed(2)}:${props.plan.hasEntrance}`)
 

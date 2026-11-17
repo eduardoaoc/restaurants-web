@@ -318,7 +318,9 @@ function refit(instant = false): void {
 
 /** The urban scene frames with its own direction (isometric, or the phone's across-the-terrace view) and context. */
 const urbanDirection = (): Vec3 | null => (props.context?.length ? ultimateDirection(window.innerWidth) : null)
-const framingContext = () => (window.innerWidth <= COMPACT_VIEWPORT_PX && props.compactContext?.length ? props.compactContext : props.context)
+// A stage (it passes frame insets) on a short screen, like a phone in landscape, also frames the room without the street.
+const shortStage = () => window.innerHeight <= 520 && props.frameInsets.top + props.frameInsets.bottom > 0
+const framingContext = () => ((window.innerWidth <= COMPACT_VIEWPORT_PX || shortStage()) && props.compactContext?.length ? props.compactContext : props.context)
 
 /**
  * "Centrar vista": eases back to the balanced three-quarter overview of the whole restaurant (floor, terrace and, in the

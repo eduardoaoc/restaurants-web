@@ -11,6 +11,15 @@ try {
   const urban = await server.ssrLoadModule('/src/components/restaurant-3d/urban-plan.ts')
   const exterior = readFileSync('src/components/restaurant-3d/UrbanExterior.vue', 'utf8')
   const vite = readFileSync('vite.config.ts', 'utf8')
+  const router = readFileSync('src/router/index.ts', 'utf8')
+  const preview = readFileSync('src/views/experiments/Restaurant3DUltimatePreviewView.vue', 'utf8')
+
+  check('full-scene preview is compile-time opt-in and the dev fixture route stays dev-only', () => {
+    assert.match(router, /import\.meta\.env\.VITE_ENABLE_ULTIMATE_FIXTURE_PREVIEW\s*===\s*'true'[\s\S]*?\$\{import\.meta\.env\.BASE_URL\}qa\/restaurant-3d-ultimate-preview/)
+    assert.match(router, /import\.meta\.env\.DEV[\s\S]*?\/dev\/restaurant-3d-fixture/)
+    assert.match(preview, /Restaurant3DFixtureView/)
+    assert.match(preview, /<Restaurant3DFixtureView\s*\/>/)
+  })
 
   check('exactly two door planters (1.1 m) per entrance; the larger ones stay procedural', () => {
     for (const e of [{ x: -9.4, z: 3.1 }, { x: 9.4, z: -2.3 }, { x: 4.2, z: -7.4 }, { x: -5.5, z: 7.6 }]) {

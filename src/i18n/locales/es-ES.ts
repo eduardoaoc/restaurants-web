@@ -829,6 +829,8 @@ export default {
         viewLabel: 'Vista del salón',
         planView: 'Plano',
         sceneError: 'No se pudo cargar el salón 3D.',
+        sceneRuntimeError: 'El salón 3D se ha detenido. Puedes seguir trabajando con el plano.',
+        sceneNoWebgl: 'Este dispositivo no puede mostrar el salón 3D. Usa el plano.',
         sceneEmpty: 'Este restaurante aún no tiene un salón 3D configurado.',
         showPlan: 'Ver plano',
         sceneLoading: 'Cargando el salón 3D…',

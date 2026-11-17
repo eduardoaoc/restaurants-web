@@ -28,7 +28,7 @@ const props = defineProps<{
   mappingLabel?: string
 }>()
 
-const { calculatePosition, attrs: overlayAttrs } = useEdgeClamp()
+const { calculatePosition, attrs: overlayAttrs } = useEdgeClamp('label')
 /** Light stage: a floating numbered pin ("3") instead of the "Mesa 03" pill; the occupancy line stays a small caption. */
 const pin = computed(() => String(props.tableNumber))
 const title = computed(() => `Mesa ${String(props.tableNumber).padStart(2, '0')}`)
@@ -81,7 +81,41 @@ const detail = computed(() =>
   line-height: 1.2;
   white-space: nowrap;
   user-select: none;
+  position: relative;
 }
+
+/* Leader: when the collision layout moves a label away from its table, a thin tail and an anchor dot keep the
+   association unambiguous. Vars and the data-leader flag come from use-edge-clamp; without the flag nothing is drawn. The tail sits behind
+   the label (negative z-index in the Html wrapper's stacking context) so it appears to leave the pill's edge. */
+.table-info-label::before,
+.table-info-label::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
+  display: none;
+}
+.table-info-label::before {
+  z-index: -1;
+  width: var(--leader-len, 0px);
+  height: 2px;
+  margin-top: -1px;
+  background: rgb(23 24 28 / 0.78);
+  transform-origin: 0 50%;
+  transform: rotate(var(--leader-angle, 0rad));
+}
+.table-info-label::after {
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 999px;
+  background: rgb(23 24 28 / 0.9);
+  box-shadow: 0 0 0 1.5px rgb(242 234 227 / 0.7);
+  transform: translate(var(--leader-dx, 0px), var(--leader-dy, 0px));
+}
+.table-info-label[data-leader]::before,
+.table-info-label[data-leader]::after { display: block; }
 
 .table-info-label__title {
   font-size: 12px;

@@ -19,8 +19,8 @@ const PRESENTATION: Record<string, { label: string; tone: 'attention' | 'urgent'
 }
 const PRIORITY = Object.keys(PRESENTATION)
 const selectedFlag = computed(() => PRIORITY.find(value => props.flags.includes(value)) ?? null)
-const { calculatePosition, attrs: overlayAttrs } = useEdgeClamp()
 const tier = computed(() => selectedFlag.value ? flagTier(PRESENTATION[selectedFlag.value].tone) : 5)
+const { calculatePosition, attrs: overlayAttrs } = useEdgeClamp('badge', () => tier.value)
 </script>
 
 <template>

@@ -81,6 +81,16 @@ const router = createRouter({
           meta: { public: true },
         }]
       : []),
+    // Explicit opt-in production preview for the full Ultimate fixture. The build flag is
+    // compile-time; a URL query can never add this route to the standard production build.
+    ...(import.meta.env.VITE_ENABLE_ULTIMATE_FIXTURE_PREVIEW === 'true'
+      ? [{
+          path: `${import.meta.env.BASE_URL}qa/restaurant-3d-ultimate-preview`,
+          name: 'ultimate-fixture-preview',
+          component: () => import('@/views/experiments/Restaurant3DUltimatePreviewView.vue'),
+          meta: { public: true },
+        }]
+      : []),
     { path: '/', redirect: '/app' },
     {
       path: '/login',

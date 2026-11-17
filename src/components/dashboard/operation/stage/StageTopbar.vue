@@ -18,6 +18,8 @@ const props = defineProps<{
   canRefresh?: boolean
   canViewReports?: boolean
   timezone: string
+  /** `false` when the build turns the 3D room off: Plan is the only view, so there is nothing to choose. */
+  threeDEnabled?: boolean
 }>()
 const emit = defineEmits<{ 'update:floorView': ['plan' | '3d']; refresh: [] }>()
 const { t, locale } = useI18n()
@@ -47,7 +49,7 @@ const connectionLabel = computed(() => t(`operations.connection.${props.refreshi
 
 const views = computed(() => [
   { id: 'plan' as const, label: t('operations.board.floor.planView') },
-  { id: '3d' as const, label: '3D' },
+  ...(props.threeDEnabled === false ? [] : [{ id: '3d' as const, label: '3D' }]),
 ])
 // Arrow keys move between the two options (roving tabindex), like a radio group.
 function onKey(event: KeyboardEvent): void {
@@ -82,7 +84,7 @@ function onKey(event: KeyboardEvent): void {
         <AButton v-if="stage && canViewReports" as="RouterLink" :to="{ name: 'app-dashboard-analytics' }" variant="ghost" size="sm" class="hidden lg:inline-flex">
           <template #leading><PhChartBar /></template>{{ t('operations.tabs.analysis') }}
         </AButton>
-        <div class="flex gap-1 rounded-saloa-md bg-surface-subtle p-1" role="radiogroup" :aria-label="t('operations.board.floor.viewLabel')" @keydown="onKey">
+        <div v-if="views.length > 1" class="flex gap-1 rounded-saloa-md bg-surface-subtle p-1" role="radiogroup" :aria-label="t('operations.board.floor.viewLabel')" @keydown="onKey">
           <button
             v-for="view in views"
             :key="view.id"

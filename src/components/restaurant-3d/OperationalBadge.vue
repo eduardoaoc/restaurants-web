@@ -20,9 +20,9 @@ const props = defineProps<{
 }>()
 
 // Never clipped by the canvas edge: nudged inwards instead of hidden (see use-edge-clamp.ts).
-const { calculatePosition, attrs: overlayAttrs } = useEdgeClamp()
 // Presentation rank only (operational-hierarchy.ts): decides stacking order and how heavy the rim is.
 const tier = computed(() => eventTier(props.badge.priority, props.badge.visualState))
+const { calculatePosition, attrs: overlayAttrs } = useEdgeClamp('badge', () => tier.value)
 const colorStyle = computed(() => ({
   '--operational-color': VISUAL_PALETTE[props.badge.visualState].dot,
   '--operational-rim': `${tierRimPx(tier.value)}px`,

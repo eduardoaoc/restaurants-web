@@ -9,6 +9,13 @@
     .stage-panel { backdrop-filter: blur(12px) saturate(140%); }
   }
 }
+/* Short screens (a phone in landscape): the four stat cards become one thin strip so the room keeps the height. */
+@media (max-height: 520px) {
+  .stage-stats .stage-panel { display: flex; align-items: baseline; justify-content: space-between; gap: 0.375rem; padding: 0.25rem 0.5rem; }
+  .stage-stats dt { -webkit-line-clamp: 1; line-clamp: 1; }
+  .stage-stats dd { margin-top: 0; font-size: var(--text-title-md); line-height: 1.25rem; }
+  .stage-stats dd + dd { display: none; }
+}
 @media (prefers-contrast: more), (prefers-reduced-transparency: reduce) {
   .stage-panel { background: var(--color-surface); }
 }

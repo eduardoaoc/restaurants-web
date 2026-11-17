@@ -8,6 +8,25 @@ export function validateOrigin(value: string, name: string, secure: boolean): st
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== '/' || (secure && (url.protocol !== 'https:' || local))) invalid(name)
   return url.origin
 }
+export type Dashboard3DMode = 'off' | 'kaykit' | 'ultimate'
+export type Dashboard3DFallback = 'invalid-value' | 'ultimate-requires-qa-flag'
+const DASHBOARD_3D_MODES: readonly Dashboard3DMode[] = ['off', 'kaykit', 'ultimate']
+
+/**
+ * Which 3D room the Dashboard uses. Never throws: an unset or unknown value, and `ultimate` outside the places it is
+ * allowed (local builds, or a staging/production build that also sets `VITE_ENABLE_ULTIMATE_DASHBOARD_QA=true`),
+ * resolve to the shipped KayKit room, with the reason reported so the build can say so. The isolated fixture preview
+ * (`VITE_ENABLE_ULTIMATE_FIXTURE_PREVIEW`) is a separate switch and is not read here.
+ */
+export function resolveDashboard3D(requested: string, secure: boolean, qaEnabled: boolean): { mode: Dashboard3DMode; fallback: Dashboard3DFallback | null } {
+  const value = requested.trim().toLowerCase()
+  if (value === '') return { mode: 'kaykit', fallback: null }
+  const mode = DASHBOARD_3D_MODES.find(candidate => candidate === value)
+  if (!mode) return { mode: 'kaykit', fallback: 'invalid-value' }
+  if (mode === 'ultimate' && secure && !qaEnabled) return { mode: 'kaykit', fallback: 'ultimate-requires-qa-flag' }
+  return { mode, fallback: null }
+}
+
 export type BuildTarget = 'local' | 'staging' | 'production'
 export function resolveBuildTarget(mode: string): BuildTarget {
   if (mode === 'development') return 'local'
@@ -42,5 +61,9 @@ export function validateEnv(env: BuildEnv, mode: string) {
   } : null
   // The integrated app shell is the default for authenticated frontend routes.
   // Keep an explicit false available for a temporary local rollback.
-  return { target, apiUrl, publicAppUrl, realtimeConfigured, reverb, shellV2: read('VITE_SHELL_V2') !== 'false' }
+  const dashboard3D = resolveDashboard3D(read('VITE_DASHBOARD_3D'), secure, read('VITE_ENABLE_ULTIMATE_DASHBOARD_QA') === 'true')
+  return {
+    target, apiUrl, publicAppUrl, realtimeConfigured, reverb, shellV2: read('VITE_SHELL_V2') !== 'false',
+    dashboard3d: dashboard3D.mode, dashboard3dFallback: dashboard3D.fallback,
+  }
 }

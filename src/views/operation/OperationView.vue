@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, h, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
+import { computed, defineAsyncComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhCalendarX, PhCaretRight, PhPencilSimple, PhTable } from '@phosphor-icons/vue'
+import { PhCalendarX, PhCaretRight, PhCrosshairSimple, PhPencilSimple, PhTable } from '@phosphor-icons/vue'
 
 import EmptyState from '@/components/dashboard/EmptyState.vue'
 import AStatStrip from '@/components/dashboard/AStatStrip.vue'
@@ -20,6 +20,8 @@ import StageTableCard from '@/components/dashboard/operation/stage/StageTableCar
 import StageTopbar from '@/components/dashboard/operation/stage/StageTopbar.vue'
 import TableDetailsDrawer from '@/components/dashboard/table/TableDetailsDrawer.vue'
 import AButton from '@/components/ui/AButton.vue'
+import AIconButton from '@/components/ui/AIconButton.vue'
+import { sceneCommands } from '@/components/restaurant-3d/scene-commands'
 import ASurface from '@/components/ui/ASurface.vue'
 import { useActivityPanelToggle } from '@/composables/useActivityPanelToggle'
 import { usePermissions } from '@/composables/usePermissions'
@@ -27,6 +29,10 @@ import { useRestaurantFloorLayout } from '@/composables/useRestaurantFloorLayout
 import { useRecentActivity } from '@/composables/useRecentActivity'
 import '@/components/dashboard/operation/stage/stage.css'
 import { useShellStage } from '@/composables/useShellStage'
+import { appConfig } from '@/config/runtime'
+import type { Dashboard3DMode } from '@/config/env'
+import SceneRuntimeGuard from '@/components/restaurant-3d/SceneRuntimeGuard.vue'
+import { supportsWebGL, type SceneFailureReason } from '@/components/restaurant-3d/scene-runtime-guard'
 import type { RealtimeConnectionState } from '@/types/realtime'
 import { formatDateOnly } from '@/utils/format'
 import { SERVICE_ACCESS_PERMISSIONS } from '@/types/auth-context'
@@ -45,6 +51,8 @@ const props = defineProps<{
   lastRealtimeEvent: ReceivedRealtimeEvent | null
   /** Carta 8.1B — a table to auto-open once `snapshot` actually has it (deep-link from a QR scan or a bookmarked URL). Null/undefined the rest of the time. */
   pendingTableId?: number | null
+  /** Which 3D room to use; the build decides (`VITE_DASHBOARD_3D`). A prop so each mode can be exercised without a rebuild. */
+  scene3d?: Dashboard3DMode
   /** Realtime connection, shown in the compact top bar of the 3D stage. */
   connectionState?: RealtimeConnectionState
 }>()
@@ -67,13 +75,18 @@ const selectedAlertId = ref<string | null>(null)
 const showEditor = ref(false)
 // The 3D room is the default whenever the restaurant has a saved layout; Plan stays one click away. Until the person
 // chooses, an empty (never saved) layout falls back to Plan on its own.
-const floorView = ref<'plan' | '3d'>('3d')
+const sceneMode = computed<Dashboard3DMode>(() => props.scene3d ?? appConfig.dashboard3d)
+const threeDEnabled = computed(() => sceneMode.value !== 'off')
+const floorView = ref<'plan' | '3d'>(threeDEnabled.value ? '3d' : 'plan')
 const userChoseView = ref(false)
 function setFloorView(view: 'plan' | '3d'): void {
   userChoseView.value = true
-  floorView.value = view
+  floorView.value = view === '3d' && !threeDEnabled.value ? 'plan' : view
+  // Leaving or re-entering 3D is a fresh attempt: a previous run-time failure never sticks to the new view.
+  sceneRuntimeFailure.value = null
 }
-const showScene = computed(() => floorView.value === '3d')
+// `off` never touches the scene: no chunk, no layout request.
+const showScene = computed(() => threeDEnabled.value && floorView.value === '3d')
 
 // The 3D scene is a heavy chunk: loaded only when the 3D view is first opened.
 // A failed download is surfaced as state (never a blank panel). The browser
@@ -91,6 +104,24 @@ const RestaurantScene = defineAsyncComponent({
 function showPlan(): void {
   setFloorView('plan')
 }
+// Run-time scene failures (initialisation/render error, WebGL context lost or unavailable). Chunk and layout failures
+// keep their own flags below; all three end at the same panel with the plan one click away.
+const sceneRuntimeFailure = ref<SceneFailureReason | null>(null)
+const sceneAttempt = ref(0)
+// Probed lazily and once, and never while 3D is off.
+let webglProbe: boolean | null = null
+const deviceSupportsWebGL = (): boolean => (webglProbe ??= supportsWebGL())
+function onSceneFailed(reason: SceneFailureReason): void { sceneRuntimeFailure.value = reason }
+function retryScene(): void {
+  sceneRuntimeFailure.value = null
+  sceneAttempt.value++
+}
+// A different restaurant starts from a clean slate: no failure carried over, and a Plan that was only the automatic
+// fallback for a restaurant without a layout gives way to 3D again (a view the person chose is kept).
+watch(() => props.restaurantId, () => {
+  sceneRuntimeFailure.value = null
+  if (!userChoseView.value && threeDEnabled.value) floorView.value = '3d'
+})
 const layoutRestaurantId = computed(() => showScene.value && props.snapshot ? props.restaurantId : null)
 const { state: layoutState, layout: sceneLayout, revision: layoutRevision, reload: reloadLayout } =
   useRestaurantFloorLayout(layoutRestaurantId)
@@ -151,8 +182,16 @@ const sceneLinkedTableIds = computed<ReadonlySet<number>>(() => new Set(
   sceneLayout.value?.tables.flatMap(table => table.backendTableId == null ? [] : [table.backendTableId]) ?? [],
 ))
 const tablesOutsideScene = computed(() => allTables.value.filter(table => !sceneLinkedTableIds.value.has(table.id)))
-const sceneReady = computed(() => !sceneChunkFailed.value && !!sceneLayout.value?.tables.length)
-const sceneUnavailable = computed(() => sceneChunkFailed.value || layoutState.value === 'error')
+const sceneBlockedByDevice = computed(() => showScene.value && !deviceSupportsWebGL())
+const sceneReady = computed(() => !sceneChunkFailed.value && !sceneBlockedByDevice.value && !sceneRuntimeFailure.value && !!sceneLayout.value?.tables.length)
+const sceneUnavailable = computed(() => sceneChunkFailed.value || sceneBlockedByDevice.value || !!sceneRuntimeFailure.value || layoutState.value === 'error')
+const sceneFailureMessage = computed(() => sceneBlockedByDevice.value
+  ? t('operations.board.floor.sceneNoWebgl')
+  : sceneRuntimeFailure.value ? t('operations.board.floor.sceneRuntimeError') : t('operations.board.floor.sceneError'))
+// Retry only helps where something can change: a layout request, or a scene that crashed on a device that does render.
+const sceneRetryAction = computed<(() => void) | null>(() => sceneChunkFailed.value || sceneBlockedByDevice.value
+  ? null
+  : sceneRuntimeFailure.value ? retryScene : () => { void reloadLayout() })
 
 function selectSceneTable(id: string | null): void {
   const backendId = sceneLayout.value?.tables.find(table => table.id === id)?.backendTableId
@@ -255,20 +294,35 @@ const selectedTableEvents = computed(() => selectedTableId.value === null
   : recentActivity.events.value.filter(event => event.table?.id === selectedTableId.value).slice(0, 4))
 const activityPanel = useActivityPanelToggle()
 
+// Where focus was when a selection began (a list row, an alert's "see table"): closing the selection returns there, so a
+// keyboard user is not dropped at the top of the page. A pointer tap on the room leaves nothing to return to.
+let selectionOrigin: HTMLElement | null = null
+function rememberSelectionOrigin(): void {
+  if (selectedTableId.value !== null) return
+  const active = document.activeElement
+  selectionOrigin = active instanceof HTMLElement && active !== document.body ? active : null
+}
 function selectTable(table: OperationsTable): void {
+  rememberSelectionOrigin()
   selectedTableId.value = table.id
   selectedAlertId.value = null
 }
 
 function selectAlert(alert: OperationsAlert): void {
+  rememberSelectionOrigin()
   selectedAlertId.value = alert.id
   selectedTableId.value = alert.table_id
 }
 
 function clearSelection(): void {
+  const hadSelection = selectedTableId.value !== null
   selectedTableId.value = null
   selectedAlertId.value = null
+  const origin = selectionOrigin
+  selectionOrigin = null
+  if (hadSelection && origin) void nextTick(() => { if (origin.isConnected) origin.focus({ preventScroll: true }) })
 }
+function recenterScene(): void { sceneCommands.recenter++ }
 
 // --- Dashboard stage (3D room as the page background) -----------------------------------------------------------
 // Presentation only: same snapshot, same selection, same details sheet and actions as the Plan view.
@@ -277,7 +331,8 @@ const stageMode = computed(() => showScene.value && hasAnyTables.value && !!prop
 watch(stageMode, active => shellStage.set(active), { immediate: true })
 onBeforeUnmount(() => shellStage.set(false))
 
-const wideMedia = window.matchMedia('(min-width: 768px)')
+// Wide arrangement (floating card + both docks) needs room in both directions: a phone in landscape is not wide.
+const wideMedia = window.matchMedia('(min-width: 768px) and (min-height: 521px)')
 const wide = ref(wideMedia.matches)
 const onWideChange = (): void => { wide.value = wideMedia.matches }
 wideMedia.addEventListener('change', onWideChange)
@@ -389,6 +444,7 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
       <StageTopbar
         v-if="hasAnyTables"
         :floor-view="floorView"
+        :three-d-enabled="threeDEnabled"
         :stage="stageMode"
         :day-state="dayState"
         :connection-state="connectionState"
@@ -548,25 +604,26 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
       <div v-else class="stage" @keydown.esc="onStageEscape">
         <h1 class="sr-only">{{ t('operations.board.title') }}</h1>
         <div class="stage-scene">
-          <RestaurantScene
-            v-if="sceneReady"
-            :key="layoutRevision"
-            :layout="sceneLayout!"
-            :entrance="sceneLayout!.entrance"
-            :restaurant-id="restaurantId"
-            :operations-snapshot="snapshot"
-            :selected-layout-table-id="selectedSceneTableId"
-            :diagnostics="false"
-            stage
-            @table-selected="selectSceneTable"
-          />
+          <SceneRuntimeGuard v-if="sceneReady" :key="`${layoutRevision}-${sceneAttempt}`" @failed="onSceneFailed">
+            <RestaurantScene
+              :layout="sceneLayout!"
+              :entrance="sceneLayout!.entrance"
+              :restaurant-id="restaurantId"
+              :operations-snapshot="snapshot"
+              :selected-layout-table-id="selectedSceneTableId"
+              :environment="sceneMode === 'ultimate' ? 'ultimate' : 'kaykit'"
+              :diagnostics="false"
+              stage
+              @table-selected="selectSceneTable"
+            />
+          </SceneRuntimeGuard>
           <div v-else class="stage-scene-state">
             <div class="stage-panel flex max-w-sm flex-col items-start gap-3 rounded-saloa-lg p-4" :role="sceneUnavailable ? 'alert' : 'status'">
               <p class="text-body-sm text-fg">
-                {{ sceneUnavailable ? t('operations.board.floor.sceneError') : t('operations.board.floor.sceneLoading') }}
+                {{ sceneUnavailable ? sceneFailureMessage : t('operations.board.floor.sceneLoading') }}
               </p>
               <div v-if="sceneUnavailable" class="flex flex-wrap gap-2">
-                <AButton v-if="!sceneChunkFailed" variant="secondary" size="sm" @click="reloadLayout">{{ t('operations.board.activity.retry') }}</AButton>
+                <AButton v-if="sceneRetryAction" variant="secondary" size="sm" @click="sceneRetryAction">{{ t('operations.board.activity.retry') }}</AButton>
                 <AButton variant="secondary" size="sm" @click="showPlan">{{ t('operations.board.floor.showPlan') }}</AButton>
               </div>
             </div>
@@ -583,8 +640,12 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
                 <AButton v-if="canManageDailyOperation" as="RouterLink" :to="{ name: 'app-day-close' }" size="sm" class="shrink-0">{{ t('dailyOperation.goToOpen') }}</AButton>
               </div>
             </div>
-            <div v-if="stageCardVisible && selectedTable" class="stage-col stage-col--end stage-card-slot">
+            <div class="stage-col stage-col--end stage-card-slot">
+              <AButton class="stage-recenter self-end" variant="secondary" size="sm" @click="recenterScene">
+                <template #leading><PhCrosshairSimple /></template>{{ t('floorLayout.recenterView') }}
+              </AButton>
               <StageTableCard
+                v-if="stageCardVisible && selectedTable"
                 :table="selectedTable"
                 :timing-previous="selectedSessionTiming?.kind === 'previous'"
                 @close="clearSelection"
@@ -646,6 +707,7 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
             <AButton variant="secondary" size="sm" :aria-pressed="mobilePanel === 'tables'" @click="mobilePanel = mobilePanel === 'tables' ? null : 'tables'">
               {{ t('operations.board.stage.tablesShort') }}
             </AButton>
+            <AIconButton variant="secondary" size="sm" :label="t('floorLayout.recenterView')" @click="recenterScene"><PhCrosshairSimple /></AIconButton>
           </div>
         </div>
       </div>
@@ -715,7 +777,7 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
 .stage-toggles { display: flex; justify-content: center; gap: 0.5rem; pointer-events: auto; }
 .stage-toggles button[aria-pressed='true'] { box-shadow: inset 0 0 0 1px currentColor; }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (min-height: 521px) {
   .stage-ui { padding: 1rem; }
   .stage-col--start { width: min(45rem, 100%); }
   .stage-card-slot { display: flex; width: 19rem; max-height: min(24rem, 100%); }
@@ -723,6 +785,13 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
   .stage-dock--start { width: min(28rem, calc(100% - 23.5rem)); max-height: min(24rem, 46dvh); overflow-y: auto; }
   .stage-dock--end { width: 22rem; max-height: min(22rem, 42dvh); flex-direction: column; }
   .stage-toggles { display: none; }
+}
+
+/* Short screens (a phone in landscape): the panels leave the room's view and the open dock may use most of the height. */
+@media (max-height: 520px) {
+  .stage { min-height: 0; }
+  .stage-ui { gap: 0.5rem; padding: 0.5rem; }
+  .stage-dock.is-open { max-height: 72dvh; }
 }
 
 /* SALOA §10.2 generic entrance: first paint only, opacity + 4px rise; nothing moves when motion is reduced. */
