@@ -11,6 +11,8 @@ export interface OverlayFocusOptions {
 
 interface Entry extends OverlayFocusOptions { trigger: HTMLElement | null }
 const stack: Entry[] = []
+/** A top-level element carrying this attribute is neither made inert nor refocused away while a modal is open. */
+export const INERT_EXEMPT_ATTRIBUTE = 'data-overlay-exempt'
 const inertBefore = new Map<HTMLElement, boolean>()
 let overflowBefore: string | null = null
 let paddingBefore = ''
@@ -37,6 +39,8 @@ function syncBackground(): void {
   if (modal) {
     for (const child of document.body.children) {
       if (!(child instanceof HTMLElement) || child === modal.root || child.contains(modal.root)) continue
+      // Live operational alerts stay reachable above any modal (see OperationalToastHost): hover/focus pause, dismiss, action.
+      if (child.hasAttribute(INERT_EXEMPT_ATTRIBUTE)) continue
       // Nonmodal overlays opened above this modal remain reachable.
       if (stack.slice(stack.indexOf(modal) + 1).some(entry => child === entry.root || child.contains(entry.root))) continue
       inertBefore.set(child, child.inert)
@@ -72,6 +76,7 @@ function onKeydown(event: KeyboardEvent): void {
 function onFocusin(event: FocusEvent): void {
   const top = stack.at(-1)
   if (!top?.modal || correctingFocus || top.panel.contains(event.target as Node)) return
+  if (event.target instanceof Element && event.target.closest(`[${INERT_EXEMPT_ATTRIBUTE}]`)) return
   correctingFocus = true
   focusEdge(top, shiftTab)
   correctingFocus = false

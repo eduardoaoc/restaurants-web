@@ -9,6 +9,7 @@ import { overlayViewport, updateOverlayDensity } from './overlay-viewport'
 import { CAMERA_FOV, frameRestaurant, ultimateDirection } from './framing'
 import { COMPACT_VIEWPORT_PX } from './overlay-metrics'
 import { cameraLimits, clampTarget } from './camera-limits'
+import { sceneCommands, ZOOM_STEP } from './scene-commands'
 
 /**
  * OrbitControls plus the "focus a table" camera move. Lives inside the
@@ -37,6 +38,8 @@ const props = withDefaults(defineProps<{
   includeFloor?: boolean
   /** Px kept free on each side of the framed content (the dashboard stage's floating panels). */
   frameInsets?: { top: number; right: number; bottom: number; left: number }
+  /** Closest the automatic framing may place the camera (m); manual zoom keeps its own range. */
+  frameMinDistance?: number
   /** Farthest the camera may sit (m). Defaults to the demo-room range when walls are framed, else the table-only range. */
   maxDistance?: number
   /** Height (m) of the walls to keep in frame when the floor is framed; 0 = ignore. */
@@ -51,7 +54,14 @@ const props = withDefaults(defineProps<{
   bottomInset?: number
   /** Orbit target of the starting pose (the owner framed the layout before the canvas had a size). */
   initialTarget: [number, number, number]
-}>(), { orbitEnabled: true, entrance: null, includeFloor: false, bottomInset: 0, frameInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) })
+  /**
+   * The canvas sits inside a page that scrolls (the Dashboard): a one-finger vertical drag and the plain mouse wheel
+   * scroll the page; zoom is Ctrl/Cmd + wheel, a two-finger pinch or the zoom buttons.
+   */
+  pageScroll?: boolean
+  /** Keep the dashboard's elevated overview as the default when re-fitting or recentering. */
+  initialDirection?: Vec3 | null
+}>(), { pageScroll: false, orbitEnabled: true, entrance: null, includeFloor: false, bottomInset: 0, frameInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) })
 
 const DURATION_MS = 300
 /** Camera-to-target distance when focused (the default view sits at ~18 m). */
@@ -215,6 +225,44 @@ watch(
   },
 )
 
+/** One step of the zoom buttons: along the current viewing direction, inside the camera's own distance range. */
+function zoomBy(factor: number): void {
+  const from = currentPose()
+  if (!from) return
+  const offset: Vec3 = [from.position[0] - from.target[0], from.position[1] - from.target[1], from.position[2] - from.target[2]]
+  const length = Math.hypot(...offset) || 1
+  const next = Math.min(maxDistance.value, Math.max(minDistance.value, length * factor))
+  if (Math.abs(next - length) < 0.01) return
+  userMovedCamera = true
+  moveTo({
+    position: [from.target[0] + (offset[0] / length) * next, from.target[1] + (offset[1] / length) * next, from.target[2] + (offset[2] / length) * next],
+    target: from.target,
+    shift: from.shift,
+  })
+}
+watch(() => sceneCommands.zoomIn, () => zoomBy(ZOOM_STEP))
+watch(() => sceneCommands.zoomOut, () => zoomBy(1 / ZOOM_STEP))
+
+/**
+ * Embedded in a scrolling page: OrbitControls marks the canvas `touch-action: none` and swallows every wheel event, which
+ * would trap the page. Vertical touch pans go back to the browser (the page scrolls) while horizontal drags still rotate,
+ * and the wheel only zooms with Ctrl/Cmd held (a trackpad pinch arrives as Ctrl + wheel).
+ */
+let releasePageScroll: (() => void) | null = null
+function enablePageScroll(): void {
+  const canvas = renderer.domElement
+  if (!props.pageScroll || !canvas || releasePageScroll) return
+  const previous = canvas.style.touchAction
+  canvas.style.touchAction = 'pan-y'
+  const onWheel = (event: WheelEvent) => { if (!event.ctrlKey && !event.metaKey) event.stopImmediatePropagation() }
+  canvas.addEventListener('wheel', onWheel, { capture: true })
+  releasePageScroll = () => {
+    canvas.style.touchAction = previous
+    canvas.removeEventListener('wheel', onWheel, { capture: true })
+    releasePageScroll = null
+  }
+}
+
 // --- Responsive framing -------------------------------------------------------------------------------------------
 // The camera is fitted to the restaurant's real bounds — table footprints, labels and the operational pills at their
 // on-screen size — inside the canvas minus the device's safe areas (framing.ts). It re-fits when the canvas is resized
@@ -262,7 +310,9 @@ function syncDensity() {
 function syncViewport() {
   const canvas = renderer.domElement
   const rect = canvas?.getBoundingClientRect()
-  const insets = rect
+  // A canvas inside a scrolling page is wherever the scroll left it, partly below the fold or under the bottom bar: that is
+  // not an unsafe area of the canvas itself, and counting it would make the fit think the room never fits.
+  const insets = rect && !props.pageScroll
     ? canvasSafeInsets(rect, { width: window.innerWidth, height: window.innerHeight }, readSafeAreaInsets())
     : { left: 0, right: 0, top: 0, bottom: 0 }
   // Overlays keep out of the covered strip; the framing below handles it by shifting the view instead.
@@ -289,6 +339,7 @@ function refit(instant = false): void {
   const turned = 1 - (unit[0] * dir[0] + unit[1] * dir[1] + unit[2] * dir[2]) / length > 1e-4
   const framed = frameRestaurant({
     direction: unit,
+    minDistance: props.frameMinDistance,
     tables: props.tables,
     entrance: props.entrance,
     includeFloor: props.includeFloor,
@@ -317,7 +368,7 @@ function refit(instant = false): void {
 }
 
 /** The urban scene frames with its own direction (isometric, or the phone's across-the-terrace view) and context. */
-const urbanDirection = (): Vec3 | null => (props.context?.length ? ultimateDirection(window.innerWidth) : null)
+const urbanDirection = (): Vec3 | null => props.initialDirection ?? (props.context?.length ? ultimateDirection(window.innerWidth) : null)
 // A stage (it passes frame insets) on a short screen, like a phone in landscape, also frames the room without the street.
 const shortStage = () => window.innerHeight <= 520 && props.frameInsets.top + props.frameInsets.bottom > 0
 const framingContext = () => ((window.innerWidth <= COMPACT_VIEWPORT_PX || shortStage()) && props.compactContext?.length ? props.compactContext : props.context)
@@ -360,6 +411,8 @@ const scheduleRefit = () => {
 }
 watch([sizes.width, sizes.height], scheduleRefit)
 watch(() => props.includeFloor, scheduleRefit)
+watch(() => props.initialDirection, scheduleRefit, { deep: true })
+watch(() => props.frameInsets, scheduleRefit, { deep: true })
 watch(() => props.reframeKey, () => { userMovedCamera = false; scheduleRefit() })
 watch(() => props.bottomInset, scheduleRefit)
 onMounted(() => {
@@ -370,6 +423,7 @@ onMounted(() => {
       target.addEventListener('start', onUserStart)
       target.addEventListener('end', onUserEnd)
       target.addEventListener('change', onControlsChange)
+      enablePageScroll()
     } else setTimeout(attach, 50)
   }
   attach()
@@ -380,6 +434,7 @@ onMounted(() => {
         userMovedCamera = true
         applyPose({ position, target, shift: [0, 0] })
       },
+      pose: () => currentPose(),
     }
   }
   window.addEventListener('orientationchange', scheduleRefit)
@@ -387,6 +442,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  releasePageScroll?.()
   cancelAnimation()
   if (import.meta.env.DEV) delete (window as unknown as { __sceneCam?: unknown }).__sceneCam
   clearTimeout(fitTimer)

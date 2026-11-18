@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhCaretDown, PhCheck, PhMinus, PhPlus, PhUserCircleMinus, PhX } from '@phosphor-icons/vue'
+import {
+  PhArrowsLeftRight, PhBellRinging, PhCaretDown, PhCheck, PhCreditCard, PhDotsThree, PhMinus, PhPencilSimple, PhPlus, PhReceipt,
+  PhUserCircleMinus, PhUserPlus, PhX,
+} from '@phosphor-icons/vue'
 
 import { normalizeApiError } from '@/api/errors'
 import AButton from '@/components/ui/AButton.vue'
@@ -21,7 +24,7 @@ import type { SessionBill } from '@/types/table-sessions'
 import { serviceTableStatus } from '@/utils/service-table-status'
 import { describeApiError } from '@/utils/error-message'
 import { formatDuration, formatMoney } from '@/utils/format'
-import type { OperationTiming } from '@/utils/operation-timing'
+import { formatOperationInstant, type OperationTiming } from '@/utils/operation-timing'
 import OperationTimeLabel from '@/components/dashboard/operation/OperationTimeLabel.vue'
 import BillReceiptSheet from './BillReceiptSheet.vue'
 import ServiceOrderComposer from '@/components/service/ServiceOrderComposer.vue'
@@ -97,6 +100,7 @@ const showBill = ref(false)
 const showReceipt = ref(false)
 const showTransfer = ref(false)
 const showWaiterMenu = ref(false)
+const showMoreActions = ref(false)
 const showOrderComposer = ref(false)
 const showCloseConfirm = ref(false)
 const showGuestCountEditor = ref(false)
@@ -163,6 +167,7 @@ watch(
     showReceipt.value = false
     showTransfer.value = false
     showWaiterMenu.value = false
+    showMoreActions.value = false
     showOrderComposer.value = false
     showCloseConfirm.value = false
     showGuestCountEditor.value = false
@@ -208,6 +213,16 @@ const servicePrimaryAction = computed<ServicePrimaryAction | null>(() => {
   if (table.session && canCreateOrders.value) return 'new-order'
   return null
 })
+
+// Frequent actions are icon + short label tiles (≥44 px, 8 px apart); the rest hide behind "More actions".
+const tileClass = 'flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-saloa-md border border-hairline bg-surface px-2 py-2 text-center text-label-md font-medium text-fg transition-colors duration-fast ease-out hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50 aria-expanded:bg-surface-subtle'
+const transferBlocked = computed(() => props.freeTables.length === 0)
+const hasMoreActions = computed(() => canTransferTables.value || canViewReceipt.value)
+const restaurantTimezone = computed(() => restaurantStore.currentSettings?.timezone ?? 'Europe/Madrid')
+function startedAt(): string | null {
+  const started = props.table?.session?.started_at
+  return started ? formatOperationInstant(new Date(started), locale.value, restaurantTimezone.value) : null
+}
 
 function scrollBehavior(): ScrollBehavior {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
@@ -430,20 +445,14 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
       @close="emit('close')"
       @keydown.esc="inlineMode && emit('close')"
     >
-      <template v-if="serviceMode" #header>{{ table.name }}</template>
-      <div v-if="serviceMode" class="mb-3 flex min-w-0 flex-wrap items-center gap-2">
-        <AStatusBadge v-if="serviceStatus" :state="serviceStatus.state" :label="t(serviceStatus.labelKey)" :icon="serviceStatus.icon" />
-        <span v-if="table.session?.assigned_waiter?.name" class="break-words text-body-sm text-fg-muted">
-          {{ table.session.assigned_waiter.name }}
+      <!-- Header: table, state and (from the modal itself) close. -->
+      <template v-if="modalMode" #header>
+        <span class="inline-flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <span class="min-w-0 break-words">{{ table.name }}</span>
+          <AStatusBadge v-if="serviceStatus" :state="serviceStatus.state" :label="t(serviceStatus.labelKey)" :icon="serviceStatus.icon" />
         </span>
-      </div>
-      <div v-else-if="dashboardMode" class="mb-3 flex min-w-0 flex-wrap items-center gap-2">
-        <AStatusBadge v-if="serviceStatus" :state="serviceStatus.state" :label="t(serviceStatus.labelKey)" :icon="serviceStatus.icon" />
-        <span v-if="table.session?.assigned_waiter?.name" class="break-words text-body-sm text-fg-muted">
-          {{ table.session.assigned_waiter.name }}
-        </span>
-      </div>
-      <div v-else class="flex items-start justify-between gap-3">
+      </template>
+      <div v-if="!modalMode" class="flex items-start justify-between gap-3">
         <div>
           <h3 class="text-title-lg font-semibold text-on-surface">{{ table.name }}</h3>
           <AStatusBadge v-if="serviceStatus" class="mt-1" :state="serviceStatus.state" :label="t(serviceStatus.labelKey)" :icon="serviceStatus.icon" />
@@ -462,6 +471,65 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
         {{ feedback.message }}
       </p>
 
+      <!-- No active session: only real action is opening one, and only for a user who holds manage_tables -->
+      <div v-if="!table.session && canOpenTable" class="mt-4 flex flex-col gap-3">
+        <p class="text-body-md text-on-surface-variant">{{ t('tableDrawer.freeHint') }}</p>
+        <ATextField v-model="openGuestCount" :label="t('tableDrawer.guestCount')" inputmode="numeric" type="number" />
+        <AButton v-if="!serviceMode" :loading="submittingAction === 'open'" @click="openTable">{{ t('tableDrawer.actions.open') }}</AButton>
+      </div>
+      <p v-else-if="!table.session" class="mt-4 text-body-md text-on-surface-variant">{{ t('tableDrawer.freeHint') }}</p>
+
+      <template v-else>
+        <!-- 2 · Compact summary: guests, time, waiter, total. -->
+        <dl class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4" data-table-summary>
+          <div class="min-w-0 rounded-saloa-md bg-surface-subtle px-3 py-2">
+            <dt class="text-label-md text-fg-muted">{{ t('tableDrawer.guests') }}</dt>
+            <dd class="mt-0.5 flex items-center gap-1 text-title-md font-semibold tabular-nums text-fg">
+              {{ authoritativeGuestCount }}
+              <AIconButton v-if="canUpdateGuestCount && !showGuestCountEditor" size="sm" class="-my-1" :label="t('tableDrawer.editGuests')" :disabled="guestCountSaving" @click="beginGuestCountEdit">
+                <PhPencilSimple :size="16" />
+              </AIconButton>
+            </dd>
+          </div>
+          <div class="min-w-0 rounded-saloa-md bg-surface-subtle px-3 py-2">
+            <dt class="text-label-md text-fg-muted">{{ sessionTiming?.kind === 'previous' ? t('operations.board.timing.previousSession') : t('tableDrawer.elapsed') }}</dt>
+            <dd class="mt-0.5 font-semibold tabular-nums text-fg" :class="sessionTiming?.kind === 'previous' ? 'text-body-sm' : 'text-title-md'">
+              <OperationTimeLabel v-if="sessionTiming" :timing="sessionTiming" :timezone="restaurantTimezone" />
+              <template v-else>{{ formatDuration(table.session.elapsed_seconds) }}</template>
+            </dd>
+          </div>
+          <div class="min-w-0 rounded-saloa-md bg-surface-subtle px-3 py-2">
+            <dt class="text-label-md text-fg-muted">{{ t('tableDrawer.waiter') }}</dt>
+            <dd class="mt-0.5 truncate text-title-md font-semibold text-fg">{{ table.session.assigned_waiter?.name ?? t('tableDrawer.pendingAssignment') }}</dd>
+          </div>
+          <div class="min-w-0 rounded-saloa-md bg-surface-subtle px-3 py-2">
+            <dt class="text-label-md text-fg-muted">{{ t('tableDrawer.total') }}</dt>
+            <dd class="mt-0.5 truncate text-title-md font-semibold tabular-nums text-fg">{{ table.billing ? formatMoney(table.billing.total, locale, currency) : '—' }}</dd>
+          </div>
+        </dl>
+        <div v-if="canUpdateGuestCount && showGuestCountEditor" class="mt-3 rounded-lg border border-outline-variant bg-surface-container p-3">
+          <p class="text-label-lg font-medium text-on-surface">{{ t('tableDrawer.guestCount') }}</p>
+          <div class="mt-2 flex items-center justify-center gap-4">
+            <AIconButton
+              :label="t('tableDrawer.decreaseGuests')"
+              :disabled="guestCountDraft <= 1 || guestCountSaving || waitingForGuestCountRefresh"
+              @click="changeGuestCount(-1)"
+            ><PhMinus :size="18" /></AIconButton>
+            <output class="min-w-10 text-center text-title-lg font-semibold tabular-nums text-on-surface" aria-live="polite">{{ guestCountDraft }}</output>
+            <AIconButton
+              :label="t('tableDrawer.increaseGuests')"
+              :disabled="guestCountDraft >= guestCountLimit || guestCountSaving || waitingForGuestCountRefresh"
+              @click="changeGuestCount(1)"
+            ><PhPlus :size="18" /></AIconButton>
+          </div>
+          <p class="mt-2 text-center text-body-sm text-on-surface-variant">{{ t('tableDrawer.guestCountCapacity', { capacity: guestCountLimit }) }}</p>
+          <div class="mt-3 flex gap-2">
+            <AButton variant="secondary" :disabled="guestCountSaving" @click="cancelGuestCountEdit">{{ t('common.cancel') }}</AButton>
+            <AButton :disabled="!guestCountCanSave" @click="requestGuestCountConfirmation">{{ t('tableDrawer.saveGuestCount') }}</AButton>
+          </div>
+        </div>
+
+        <!-- Pending customer requests: urgent context, shown only when there are any. -->
       <TableRequestsPanel
         v-if="table.session && canHandleTableRequests"
         id="service-table-requests"
@@ -473,192 +541,134 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
         @changed="onTableRequestsChanged"
       />
 
-      <!-- No active session: only real action is opening one, and only for a user who holds manage_tables -->
-      <div v-if="!table.session && canOpenTable" class="mt-4 flex flex-col gap-3">
-        <p class="text-body-md text-on-surface-variant">{{ t('tableDrawer.freeHint') }}</p>
-        <ATextField v-model="openGuestCount" :label="t('tableDrawer.guestCount')" inputmode="numeric" type="number" />
-        <AButton v-if="!serviceMode" :loading="submittingAction === 'open'" @click="openTable">{{ t('tableDrawer.actions.open') }}</AButton>
-      </div>
-      <p v-else-if="!table.session" class="mt-4 text-body-md text-on-surface-variant">{{ t('tableDrawer.freeHint') }}</p>
-
-      <template v-else>
-        <div class="mt-4 grid grid-cols-2 gap-2">
-          <div class="rounded-lg bg-surface-container p-3">
-            <span class="block text-label-md text-on-surface-variant">{{ t('tableDrawer.elapsed') }}</span>
-            <OperationTimeLabel
-              v-if="sessionTiming"
-              :timing="sessionTiming"
-              :timezone="restaurantStore.currentSettings?.timezone ?? 'Europe/Madrid'"
-              class="mt-1 text-title-md font-semibold text-on-surface"
+        <!-- 3 · Orders: open by default, "New order" right where the orders are. -->
+        <section v-if="canViewOrders || canCreateOrders" class="mt-4" aria-labelledby="table-orders-title" data-section="orders">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <button
+              v-if="canViewOrders"
+              type="button"
+              class="-ml-2 inline-flex min-h-11 items-center gap-2 rounded-md px-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              :aria-expanded="showOrders"
+              aria-controls="service-table-orders"
+              @click="showOrders = !showOrders"
+            >
+              <PhCaretDown :size="16" :class="showOrders ? '' : '-rotate-90'" class="text-fg-muted transition-transform duration-fast ease-out motion-reduce:transition-none" aria-hidden="true" />
+              <h3 id="table-orders-title" class="text-title-md font-semibold text-fg">{{ t('tableDrawer.sections.orders') }}</h3>
+              <span class="rounded-full bg-surface-subtle px-2 text-label-md tabular-nums text-fg-muted">{{ table.orders.open_count }}</span>
+            </button>
+            <h3 v-else id="table-orders-title" class="text-title-md font-semibold text-fg">{{ t('tableDrawer.sections.orders') }}</h3>
+            <AButton v-if="canCreateOrders && (!serviceMode || servicePrimaryAction !== 'new-order')" variant="tonal" @click="showOrderComposer = true">
+              <template #leading><PhPlus /></template>{{ t('tableDrawer.actions.newOrder') }}
+            </AButton>
+          </div>
+          <div v-if="showOrders && canViewOrders" id="service-table-orders" class="mt-2">
+            <TableOrdersList
+              :key="table.session.id"
+              :table-session-id="table.session.id"
+              :currency="currency"
+              :timezone="restaurantTimezone"
+              :refresh-key="table"
+              :service-mode="serviceMode"
+              @served="emit('refresh')"
+              @approved="emit('refresh')"
             />
-            <span v-else class="mt-1 block text-title-md font-semibold text-on-surface">{{ formatDuration(table.session.elapsed_seconds) }}</span>
           </div>
-          <div class="rounded-lg bg-surface-container p-3">
-            <span class="block text-label-md text-on-surface-variant">{{ t('tableDrawer.guests') }}</span>
-            <span class="mt-1 block text-title-md font-semibold text-on-surface">{{ authoritativeGuestCount }}</span>
-          </div>
-          <div class="rounded-lg bg-surface-container p-3">
-            <span class="block text-label-md text-on-surface-variant">{{ t('tableDrawer.waiter') }}</span>
-            <span class="mt-1 block truncate text-title-md font-semibold text-on-surface">
-              {{ table.session.assigned_waiter?.name ?? t('tableDrawer.pendingAssignment') }}
-            </span>
-          </div>
-          <div class="rounded-lg bg-surface-container p-3">
-            <span class="block text-label-md text-on-surface-variant">{{ t('tableDrawer.total') }}</span>
-            <span class="mt-1 block text-title-md font-semibold text-on-surface">
-              {{ table.billing ? formatMoney(table.billing.total, locale, currency) : '—' }}
-            </span>
-          </div>
-        </div>
-        <div v-if="canUpdateGuestCount" class="mt-3">
-          <AButton
-            v-if="!showGuestCountEditor"
-            variant="secondary"
-            :disabled="guestCountSaving"
-            @click="beginGuestCountEdit"
-          >
-            {{ t('tableDrawer.editGuests') }}
-          </AButton>
-          <div v-else class="rounded-lg border border-outline-variant bg-surface-container p-3">
-            <p class="text-label-lg font-medium text-on-surface">{{ t('tableDrawer.guestCount') }}</p>
-            <div class="mt-2 flex items-center justify-center gap-4">
-              <AIconButton
-                :label="t('tableDrawer.decreaseGuests')"
-                :disabled="guestCountDraft <= 1 || guestCountSaving || waitingForGuestCountRefresh"
-                @click="changeGuestCount(-1)"
-              ><PhMinus :size="18" /></AIconButton>
-              <output class="min-w-10 text-center text-title-lg font-semibold tabular-nums text-on-surface" aria-live="polite">{{ guestCountDraft }}</output>
-              <AIconButton
-                :label="t('tableDrawer.increaseGuests')"
-                :disabled="guestCountDraft >= guestCountLimit || guestCountSaving || waitingForGuestCountRefresh"
-                @click="changeGuestCount(1)"
-              ><PhPlus :size="18" /></AIconButton>
+        </section>
+
+        <!-- 4 · Table actions, below the orders: frequent ones as icon + short label, the rest under "More actions". -->
+        <section class="mt-5 border-t border-outline-variant pt-4" aria-labelledby="table-actions-title" data-section="actions">
+          <h3 id="table-actions-title" class="text-title-md font-semibold text-fg">{{ t('tableDrawer.sections.actions') }}</h3>
+          <div class="mt-2" @focusout="onWaiterMenuFocusOut" @keydown="onWaiterMenuKeydown">
+            <div class="grid grid-cols-2 gap-2 min-[25rem]:grid-cols-4">
+              <button v-if="canViewBilling && (!serviceMode || servicePrimaryAction !== 'bill')" type="button" :class="tileClass" :aria-expanded="showBill" aria-controls="service-table-bill" @click="showBill = !showBill">
+                <PhCreditCard :size="20" aria-hidden="true" />{{ t('tableDrawer.short.bill') }}
+              </button>
+              <button v-if="canAssignWaiters" type="button" :class="tileClass" :aria-expanded="showWaiterMenu" aria-haspopup="true" @click="showWaiterMenu = !showWaiterMenu">
+                <PhUserPlus :size="20" aria-hidden="true" />{{ t('tableDrawer.short.assign') }}
+              </button>
+              <button v-if="canAssignWaiters" type="button" :class="tileClass" :disabled="submittingAction === 'call'" :aria-busy="submittingAction === 'call' || undefined" @click="callWaiter">
+                <PhBellRinging :size="20" aria-hidden="true" />{{ t('tableDrawer.short.call') }}
+              </button>
+              <button v-if="hasMoreActions" type="button" :class="tileClass" :aria-expanded="showMoreActions" aria-controls="table-more-actions" @click="showMoreActions = !showMoreActions">
+                <PhDotsThree :size="20" weight="bold" aria-hidden="true" />{{ t('tableDrawer.actions.more') }}
+              </button>
             </div>
-            <p class="mt-2 text-center text-body-sm text-on-surface-variant">{{ t('tableDrawer.guestCountCapacity', { capacity: guestCountLimit }) }}</p>
-            <div class="mt-3 flex gap-2">
-              <AButton variant="secondary" :disabled="guestCountSaving" @click="cancelGuestCountEdit">{{ t('common.cancel') }}</AButton>
-              <AButton :disabled="!guestCountCanSave" @click="requestGuestCountConfirmation">{{ t('tableDrawer.saveGuestCount') }}</AButton>
+
+            <ASurface v-if="showWaiterMenu && canAssignWaiters" tone="highest" radius="md" class="mt-2 max-h-48 overflow-y-auto py-1" role="group" :aria-label="t('tableDrawer.actions.reassignWaiter')">
+              <button
+                v-if="table.session?.assigned_waiter"
+                type="button"
+                :disabled="submittingAction === 'assign'"
+                class="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-body-md text-on-surface hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50"
+                @click="unassignWaiter"
+              >
+                <PhUserCircleMinus :size="16" />
+                {{ t('tableDrawer.actions.unassign') }}
+              </button>
+              <button
+                v-for="member in staff"
+                :key="member.user.id"
+                type="button"
+                :disabled="submittingAction === 'assign'"
+                class="flex min-h-11 w-full items-center justify-between px-3 py-2 text-left text-body-md text-on-surface hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50"
+                @click="assignWaiter(member.user.id)"
+              >
+                {{ member.user.name ?? t('operations.staff.unnamed') }}
+                <PhCheck v-if="table.session?.assigned_waiter?.id === member.user.id" :size="14" />
+              </button>
+              <p v-if="staff.length === 0" class="px-3 py-2 text-label-md text-on-surface-variant">{{ t('tableDrawer.noStaffToAssign') }}</p>
+            </ASurface>
+
+            <div v-if="showMoreActions && hasMoreActions" id="table-more-actions" class="mt-2 flex flex-col gap-2">
+              <div v-if="canTransferTables">
+                <button type="button" :class="[tileClass, 'w-full flex-row justify-start gap-3 px-3']" :disabled="transferBlocked" :aria-describedby="transferBlocked ? 'table-transfer-hint' : undefined" @click="showTransfer = true">
+                  <PhArrowsLeftRight :size="20" aria-hidden="true" />{{ t('tableDrawer.actions.transfer') }}
+                </button>
+                <p v-if="transferBlocked" id="table-transfer-hint" class="mt-1 text-label-md text-on-surface-variant">{{ t('tableDrawer.transferNoFreeTables') }}</p>
+              </div>
+              <button v-if="canViewReceipt" type="button" :class="[tileClass, 'w-full flex-row justify-start gap-3 px-3']" @click="showReceipt = true">
+                <PhReceipt :size="20" aria-hidden="true" />{{ t('tableDrawer.actions.viewReceipt') }}
+              </button>
             </div>
           </div>
-        </div>
 
-        <!-- Waiter assignment — assign_waiters only -->
-        <div v-if="canAssignWaiters" class="relative mt-4" @focusout="onWaiterMenuFocusOut" @keydown="onWaiterMenuKeydown">
-          <button
-            type="button"
-            class="flex w-full items-center justify-between rounded-lg border border-outline-variant px-3 py-2.5 text-body-md text-on-surface hover:bg-surface-container-highest focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            @click="showWaiterMenu = !showWaiterMenu"
+          <div v-show="table.session && canViewBilling && showBill" id="service-table-bill" class="mt-4 border-t border-outline-variant pt-4">
+            <TableBillPanel
+              v-if="table.session && canViewBilling"
+              :key="table.session.id"
+              :table-session-id="table.session.id"
+              :currency="currency"
+              :refresh-key="table"
+              :can-record-payments="canRecordPayments"
+              @bill-loaded="onBillLoaded"
+              @changed="onBillingChanged"
+            />
+          </div>
+
+          <!-- bill === null: not loaded yet, or this user cannot view it — the snapshot's own balance is the advisory then. -->
+          <p
+            v-if="!bill && table.billing && Number(table.billing.outstanding) > 0"
+            class="mt-3 rounded-md bg-warning-container px-3 py-2 text-label-lg text-on-warning-container"
           >
-            {{ t('tableDrawer.actions.reassignWaiter') }}
-            <PhCaretDown :size="14" />
-          </button>
-          <ASurface v-if="showWaiterMenu" tone="highest" radius="md" class="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto py-1 shadow-elevated">
-            <button
-              v-if="table.session?.assigned_waiter"
-              type="button"
-              :disabled="submittingAction === 'assign'"
-              class="flex w-full items-center gap-2 px-3 py-2 text-left text-body-md text-on-surface hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50"
-              @click="unassignWaiter"
-            >
-              <PhUserCircleMinus :size="16" />
-              {{ t('tableDrawer.actions.unassign') }}
-            </button>
-            <button
-              v-for="member in staff"
-              :key="member.user.id"
-              type="button"
-              :disabled="submittingAction === 'assign'"
-              class="flex w-full items-center justify-between px-3 py-2 text-left text-body-md text-on-surface hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50"
-              @click="assignWaiter(member.user.id)"
-            >
-              {{ member.user.name ?? t('operations.staff.unnamed') }}
-              <PhCheck v-if="table.session?.assigned_waiter?.id === member.user.id" :size="14" />
-            </button>
-            <p v-if="staff.length === 0" class="px-3 py-2 text-label-md text-on-surface-variant">
-              {{ t('tableDrawer.noStaffToAssign') }}
-            </p>
-          </ASurface>
-        </div>
+            {{ t('tableDrawer.outstandingBalance', { amount: formatMoney(table.billing.outstanding, locale, currency) }) }}
+          </p>
 
-        <div class="mt-4 grid gap-2" :class="inlineMode ? 'grid-cols-1' : 'grid-cols-1 min-[25rem]:grid-cols-2'">
-          <AButton v-if="canViewOrders && (!serviceMode || servicePrimaryAction !== 'orders')" variant="tonal" @click="showOrders = !showOrders">
-            {{ showOrders ? t('tableDrawer.actions.hideOrders') : t('tableDrawer.actions.viewOrders') }}
-          </AButton>
           <AButton
-            v-if="canCreateOrders && (!serviceMode || servicePrimaryAction !== 'new-order')"
-            variant="outlined"
-            :disabled="!table.session"
-            @click="showOrderComposer = true"
+            v-if="canCloseTable"
+            variant="filled"
+            full-width
+            class="mt-3"
+            :disabled="closeDisabled"
+            :aria-describedby="closeDisabled ? 'table-close-hint' : undefined"
+            :loading="submittingAction === 'close'"
+            @click="requestClose"
           >
-            {{ t('tableDrawer.actions.newOrder') }}
+            {{ t('tableDrawer.actions.close') }}
           </AButton>
-          <AButton v-if="canAssignWaiters" variant="outlined" :loading="submittingAction === 'call'" @click="callWaiter">
-            {{ t('tableDrawer.actions.callWaiter') }}
-          </AButton>
-          <AButton v-if="canTransferTables" variant="outlined" @click="showTransfer = true">{{ t('tableDrawer.actions.transfer') }}</AButton>
-          <AButton v-if="canViewBilling && (!serviceMode || servicePrimaryAction !== 'bill')" variant="tonal" @click="showBill = !showBill">{{ t('tableDrawer.actions.viewBill') }}</AButton>
-          <AButton v-if="canViewReceipt" variant="outlined" @click="showReceipt = true">{{ t('tableDrawer.actions.viewReceipt') }}</AButton>
-        </div>
-
-        <div v-show="table.session && canViewBilling && showBill" id="service-table-bill" class="mt-4 border-t border-outline-variant pt-4">
-          <TableBillPanel
-            v-if="table.session && canViewBilling"
-            :key="table.session.id"
-            :table-session-id="table.session.id"
-            :currency="currency"
-            :refresh-key="table"
-            :can-record-payments="canRecordPayments"
-            @bill-loaded="onBillLoaded"
-            @changed="onBillingChanged"
-          />
-        </div>
-        <!-- Visible, not just a hover title — a disabled native <button> never receives focus, so a
-             title-only explanation would be unreachable by keyboard/screen-reader users (§27). Only
-             shown while the button is actually disabled (Passo 3.2 §14 — POST /tables/{table}/orders
-             409s without an active session, so this is real domain behaviour, never invented). -->
-        <p v-if="canCreateOrders && !table.session" class="mt-1.5 text-label-md text-on-surface-variant">
-          {{ t('tableDrawer.actions.newOrderDisabledHint') }}
-        </p>
-
-        <!-- bill === null means either it hasn't loaded yet or this user
-             lacks canViewBilling — table.billing (always present in the
-             Operations snapshot) is the fallback advisory in that case,
-             same as before Passo 3.4. Once the real bill loads, it alone
-             drives both this hint and the Close button below. -->
-        <p
-          v-if="!bill && table.billing && Number(table.billing.outstanding) > 0"
-          class="mt-3 rounded-md bg-warning-container px-3 py-2 text-label-lg text-on-warning-container"
-        >
-          {{ t('tableDrawer.outstandingBalance', { amount: formatMoney(table.billing.outstanding, locale, currency) }) }}
-        </p>
-
-        <AButton
-          v-if="canCloseTable"
-          variant="filled"
-          full-width
-          class="mt-3"
-          :disabled="closeDisabled"
-          :loading="submittingAction === 'close'"
-          @click="requestClose"
-        >
-          {{ t('tableDrawer.actions.close') }}
-        </AButton>
-        <p v-if="canCloseTable && closeDisabled" class="mt-1.5 text-label-md text-on-surface-variant">
-          {{ t('tableDrawer.closeDisabledHint') }}
-        </p>
-
-        <div v-if="showOrders && canViewOrders" id="service-table-orders" class="mt-4 border-t border-outline-variant pt-4">
-          <TableOrdersList
-            :key="table.session.id"
-            :table-session-id="table.session.id"
-            :currency="currency"
-            :timezone="restaurantStore.currentSettings?.timezone ?? 'Europe/Madrid'"
-            :refresh-key="table"
-            :service-mode="serviceMode"
-            @served="emit('refresh')"
-            @approved="emit('refresh')"
-          />
-        </div>
+          <p v-if="canCloseTable && closeDisabled" id="table-close-hint" class="mt-1.5 text-label-md text-on-surface-variant">
+            {{ t('tableDrawer.closeDisabledHint') }}
+          </p>
+        </section>
       </template>
 
       <!--
@@ -679,6 +689,10 @@ async function confirmTransfer(targetTableId: number): Promise<void> {
           {{ showAccess ? t('tableDrawer.access.hide') : t('tableDrawer.access.show') }}
         </button>
         <div v-if="showAccess" class="mt-2">
+          <dl class="mb-3 grid grid-cols-2 gap-2 text-body-sm" data-table-extra>
+            <div class="min-w-0"><dt class="text-label-md text-on-surface-variant">{{ t('tableDrawer.more.capacity') }}</dt><dd class="font-medium text-on-surface">{{ table.capacity ?? '—' }}</dd></div>
+            <div v-if="startedAt()" class="min-w-0"><dt class="text-label-md text-on-surface-variant">{{ t('tableDrawer.more.started') }}</dt><dd class="font-medium text-on-surface">{{ startedAt() }}</dd></div>
+          </dl>
           <TableAccessPanel :key="table.id" :table-id="table.id" />
         </div>
       </div>

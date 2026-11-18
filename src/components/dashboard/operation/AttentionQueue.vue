@@ -21,7 +21,7 @@ import AStatusBadge, { type StatusBadgeState } from '@/components/ui/AStatusBadg
 import type { OperationsDailyOperation } from '@/types/daily-operation'
 import type { OperationsAlert, OperationsAlertSeverity, OperationsStaffMember, OperationsTable } from '@/types/operations'
 import { classifyOperationAge, type OperationTiming } from '@/utils/operation-timing'
-import { operationsAlertTypeLabelKey } from '@/utils/operations-alerts'
+import { operationsAlertActionKey, operationsAlertTypeLabelKey } from '@/utils/operations-alerts'
 import OperationTimeLabel from './OperationTimeLabel.vue'
 
 /**
@@ -70,16 +70,6 @@ const TYPE_ICON: Record<string, Component> = {
   assigned_waiter_suspended: PhProhibit,
 }
 
-const TYPE_ACTION: Record<string, string> = {
-  order_waiting_approval: 'review',
-  order_ready: 'serve',
-  customer_waiter_request_pending: 'attend',
-  bill_request_pending: 'bill',
-  active_table_unassigned: 'assign',
-  assigned_waiter_off_shift: 'assign',
-  assigned_waiter_suspended: 'assign',
-}
-
 interface QueueItem {
   alert: OperationsAlert
   table: OperationsTable | null
@@ -115,7 +105,7 @@ const items = computed<QueueItem[]>(() =>
     .map((alert) => {
       const table = alert.table_id !== null ? tablesById.value.get(alert.table_id) ?? null : null
       const labelKey = operationsAlertTypeLabelKey(alert.type)
-      const actionKey = table ? TYPE_ACTION[alert.type] ?? 'view' : props.canViewService ? 'service' : null
+      const actionKey = table ? operationsAlertActionKey(alert.type) : props.canViewService ? 'service' : null
       return {
         alert,
         table,

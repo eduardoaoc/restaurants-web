@@ -10,6 +10,12 @@ import { CHAIR_SEAT_SIZE, CHAIR_SETBACK, getTableDimensions } from './table-geom
  */
 export const CHAIR_CLEARANCE = CHAIR_SETBACK + CHAIR_SEAT_SIZE / 2
 export const CIRCULATION_MARGIN = 0.5
+/**
+ * Clear floor (m) between the chairs of two tables that a NEW placement or a move must leave: wide enough for a waiter with
+ * a tray to pass and for a pulled-out chair. `CIRCULATION_MARGIN` stays the hard minimum used for framing and overlay
+ * metrics; layouts saved under the older, tighter rule keep their positions and are only flagged (`findTightPairs`).
+ */
+export const COMFORT_MARGIN = 0.9
 
 type Placed = Pick<RestaurantTableConfig, 'shape' | 'seats' | 'rotation' | 'position'>
 
@@ -23,9 +29,9 @@ interface Footprint {
   axisZ: [number, number]
 }
 
-export function tableFootprint(table: Placed): Footprint {
+export function tableFootprint(table: Placed, margin: number = CIRCULATION_MARGIN): Footprint {
   const { width, depth } = getTableDimensions(table.shape, table.seats)
-  const grow = CHAIR_CLEARANCE + CIRCULATION_MARGIN / 2
+  const grow = CHAIR_CLEARANCE + margin / 2
   const theta = (table.rotation * Math.PI) / 180
   return {
     x: table.position.x,
@@ -51,7 +57,21 @@ export function footprintsOverlap(a: Footprint, b: Footprint): boolean {
 }
 
 /** The tables in `others` (never `table` itself, matched by id) that `table` collides with. */
-export function findCollisions<T extends Placed & { id: string }>(table: Placed & { id: string }, others: T[]): T[] {
-  const own = tableFootprint(table)
-  return others.filter((other) => other.id !== table.id && footprintsOverlap(own, tableFootprint(other)))
+export function findCollisions<T extends Placed & { id: string }>(table: Placed & { id: string }, others: T[], margin: number = COMFORT_MARGIN): T[] {
+  const own = tableFootprint(table, margin)
+  return others.filter((other) => other.id !== table.id && footprintsOverlap(own, tableFootprint(other, margin)))
+}
+
+/**
+ * Pairs of an existing layout that are closer than the comfortable spacing (but may still clear the hard minimum).
+ * Reporting only: nothing is moved, the person decides which one to nudge.
+ */
+export function findTightPairs<T extends Placed & { id: string }>(tables: readonly T[], margin: number = COMFORT_MARGIN): Array<[T, T]> {
+  const pairs: Array<[T, T]> = []
+  for (let i = 0; i < tables.length; i++) {
+    for (let j = i + 1; j < tables.length; j++) {
+      if (footprintsOverlap(tableFootprint(tables[i]!, margin), tableFootprint(tables[j]!, margin))) pairs.push([tables[i]!, tables[j]!])
+    }
+  }
+  return pairs
 }

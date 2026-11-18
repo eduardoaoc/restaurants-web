@@ -770,6 +770,7 @@ export default {
     },
   },
   operations: {
+    toast: { region: 'Avisos en vivo', more: '+{count} avisos en espera' },
     board: {
       title: 'Operación',
       analyticsTitle: 'Análisis',
@@ -779,6 +780,9 @@ export default {
       leftoverTables: 'ninguna mesa | 1 mesa | {count} mesas',
       leftoverOrders: 'ningún pedido | 1 pedido | {count} pedidos',
       kpi: {
+        tables: 'Mesas ocupadas',
+        tablesValue: '{occupied} / {total}',
+        tablesContext: '{free} libres · {attention} con atención',
         occupiedTables: 'Mesas ocupadas',
         activeOrdersContext: '{approval} por aprobar · {ready} listos',
         requests: 'Solicitudes de clientes',
@@ -827,6 +831,10 @@ export default {
       },
       floor: {
         viewLabel: 'Vista del salón',
+        cameraTools: 'Cámara del salón',
+        zoomIn: 'Acercar',
+        zoomOut: 'Alejar',
+        fitRoom: 'Ver salón entero',
         planView: 'Plano',
         sceneError: 'No se pudo cargar el salón 3D.',
         sceneRuntimeError: 'El salón 3D se ha detenido. Puedes seguir trabajando con el plano.',
@@ -843,12 +851,16 @@ export default {
       },
       kitchen: {
         waiting: 'Por aprobar',
-        preparing: 'En cocina',
+        queued: 'En cola de cocina',
+        preparing: 'Preparando',
         ready: 'Listos',
+        unit: 'pedido | pedidos',
+        note: 'Cifras en pedidos, no en platos.',
         oldest: 'Pedido activo más antiguo',
         none: 'Sin pedidos activos',
       },
       staff: {
+        summary: '{staff} en turno · {tables} mesas · {guests} clientes',
         load: '{tables} mesas · {guests} clientes',
         pending: '1 pendiente | {count} pendientes',
         previousShift: 'Turno abierto desde {date}',
@@ -856,10 +868,17 @@ export default {
       },
       activity: {
         title: 'Actividad reciente',
+        showMore: 'Ver más',
+        showAll: 'Mostrar todo',
         empty: 'Todavía no hay actividad hoy.',
         error: 'No se ha podido cargar la actividad.',
         retry: 'Reintentar',
         viewAll: 'Ver toda la actividad',
+      },
+      panels: {
+        title: 'Paneles', restore: 'Restaurar organización predeterminada', leftColumn: 'Columna izquierda', rightColumn: 'Columna derecha', dropHere: 'Suelta aquí para colocar el panel',
+        drag: 'Arrastrar {title} para reorganizar', positionMenu: 'Cambiar posición de {title}', moveUp: 'Mover hacia arriba', moveDown: 'Mover hacia abajo', moveLeft: 'Mover a la izquierda', moveRight: 'Mover a la derecha',
+        collapse: 'Contraer {title}', expand: 'Expandir {title}', close: 'Cerrar {title}',
       },
     },
     pageTitle: 'Centro de mando',
@@ -1019,6 +1038,10 @@ export default {
     },
   },
   tableDrawer: {
+    sections: { orders: 'Pedidos', actions: 'Acciones de la mesa' },
+    short: { bill: 'Cuenta', assign: 'Camarero', call: 'Llamar' },
+    transferNoFreeTables: 'No hay mesas libres a las que transferir esta mesa.',
+    more: { capacity: 'Capacidad', started: 'Abierta a las' },
     pendingAssignment: 'Pendiente de asignación',
     freeHint: 'Esta mesa está libre. Abre una sesión para empezar a tomar pedidos.',
     guestCount: 'Número de clientes',
@@ -1039,6 +1062,7 @@ export default {
     noStaffToAssign: 'No hay personal en turno para asignar.',
     outstandingBalance: 'Saldo pendiente: {amount}',
     actions: {
+      more: 'Más acciones',
       open: 'Abrir mesa',
       reassignWaiter: 'Asignar / reasignar camarero',
       unassign: 'Quitar asignación',
@@ -1113,8 +1137,8 @@ export default {
     },
     access: {
       title: 'Acceso a la mesa',
-      show: 'Mostrar acceso a la mesa',
-      hide: 'Ocultar acceso a la mesa',
+      show: 'Mostrar acceso y datos de la mesa',
+      hide: 'Ocultar acceso y datos de la mesa',
       loadError: 'No se ha podido cargar el acceso a la mesa.',
       retry: 'Reintentar',
       noPermission: 'No tienes permiso para ver el acceso de esta mesa.',
@@ -2057,6 +2081,7 @@ export default {
     },
   },
   floorLayout: {
+    spacing: { tight: 'Hay mesas muy juntas ({tables}). Sepáralas para dejar paso al servicio; las posiciones guardadas no se han movido.' },
     recenterView: 'Centrar vista',
     save: 'Guardar cambios',
     discard: 'Descartar',

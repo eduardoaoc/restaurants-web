@@ -770,6 +770,7 @@ export default {
     },
   },
   operations: {
+    toast: { region: 'Live alerts', more: '+{count} more waiting' },
     board: {
       title: 'Operations',
       analyticsTitle: 'Analytics',
@@ -779,6 +780,9 @@ export default {
       leftoverTables: 'no tables | 1 table | {count} tables',
       leftoverOrders: 'no orders | 1 order | {count} orders',
       kpi: {
+        tables: 'Occupied tables',
+        tablesValue: '{occupied} / {total}',
+        tablesContext: '{free} free · {attention} need attention',
         occupiedTables: 'Occupied tables',
         activeOrdersContext: '{approval} to approve · {ready} ready',
         requests: 'Customer requests',
@@ -827,6 +831,10 @@ export default {
       },
       floor: {
         viewLabel: 'Dining room view',
+        cameraTools: 'Dining room camera',
+        zoomIn: 'Zoom in',
+        zoomOut: 'Zoom out',
+        fitRoom: 'View whole room',
         planView: 'Floor plan',
         sceneError: 'The 3D dining room could not be loaded.',
         sceneRuntimeError: 'The 3D dining room stopped working. You can keep working from the floor plan.',
@@ -843,12 +851,16 @@ export default {
       },
       kitchen: {
         waiting: 'To approve',
-        preparing: 'In kitchen',
+        queued: 'Queued for kitchen',
+        preparing: 'Preparing',
         ready: 'Ready',
+        unit: 'order | orders',
+        note: 'Figures are orders, not dishes.',
         oldest: 'Oldest active order',
         none: 'No active orders',
       },
       staff: {
+        summary: '{staff} on shift · {tables} tables · {guests} guests',
         load: '{tables} tables · {guests} guests',
         pending: '1 pending | {count} pending',
         previousShift: 'Shift open since {date}',
@@ -856,10 +868,17 @@ export default {
       },
       activity: {
         title: 'Recent activity',
+        showMore: 'Show more',
+        showAll: 'Show all',
         empty: 'No activity yet today.',
         error: 'Activity could not be loaded.',
         retry: 'Try again',
         viewAll: 'View all activity',
+      },
+      panels: {
+        title: 'Panels', restore: 'Restore default layout', leftColumn: 'Left column', rightColumn: 'Right column', dropHere: 'Drop here to place the panel',
+        drag: 'Drag {title} to rearrange', positionMenu: 'Change position of {title}', moveUp: 'Move up', moveDown: 'Move down', moveLeft: 'Move to left column', moveRight: 'Move to right column',
+        collapse: 'Collapse {title}', expand: 'Expand {title}', close: 'Close {title}',
       },
     },
     pageTitle: 'Command centre',
@@ -1019,6 +1038,10 @@ export default {
     },
   },
   tableDrawer: {
+    sections: { orders: 'Orders', actions: 'Table actions' },
+    short: { bill: 'Bill', assign: 'Waiter', call: 'Call' },
+    transferNoFreeTables: 'There are no free tables to transfer this table to.',
+    more: { capacity: 'Capacity', started: 'Opened at' },
     pendingAssignment: 'Pending assignment',
     freeHint: 'This table is free. Open a session to start taking orders.',
     guestCount: 'Number of guests',
@@ -1039,6 +1062,7 @@ export default {
     noStaffToAssign: 'No staff on shift to assign.',
     outstandingBalance: 'Outstanding balance: {amount}',
     actions: {
+      more: 'More actions',
       open: 'Open table',
       reassignWaiter: 'Assign / reassign waiter',
       unassign: 'Remove assignment',
@@ -1113,8 +1137,8 @@ export default {
     },
     access: {
       title: 'Table access',
-      show: 'Show table access',
-      hide: 'Hide table access',
+      show: 'Show table access and details',
+      hide: 'Hide table access and details',
       loadError: "Couldn't load this table's access.",
       retry: 'Try again',
       noPermission: "You don't have permission to view this table's access.",
@@ -2050,6 +2074,7 @@ export default {
     },
   },
   floorLayout: {
+    spacing: { tight: 'Some tables are too close together ({tables}). Move them apart so staff can pass; saved positions have not been changed.' },
     recenterView: 'Centre view',
     save: 'Save changes',
     discard: 'Discard',

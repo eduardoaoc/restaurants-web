@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PhCalendarX, PhCaretRight, PhCrosshairSimple, PhPencilSimple, PhTable } from '@phosphor-icons/vue'
+import { PhCalendarX, PhCaretRight, PhPencilSimple, PhTable } from '@phosphor-icons/vue'
 
 import EmptyState from '@/components/dashboard/EmptyState.vue'
 import AStatStrip from '@/components/dashboard/AStatStrip.vue'
@@ -10,36 +10,38 @@ import AttentionQueue from '@/components/dashboard/operation/AttentionQueue.vue'
 import CapacityPanel from '@/components/dashboard/operation/CapacityPanel.vue'
 import DashboardTableOverview from '@/components/dashboard/operation/DashboardTableOverview.vue'
 import FloorMapEditor from '@/components/dashboard/operation/FloorMapEditor.vue'
+import FloorViewSwitch from '@/components/dashboard/operation/FloorViewSwitch.vue'
 import KitchenLivePanel from '@/components/dashboard/operation/KitchenLivePanel.vue'
+import DashboardPanelCard from '@/components/dashboard/operation/DashboardPanelCard.vue'
+import OperationalToastHost from '@/components/dashboard/operation/OperationalToastHost.vue'
+import QuickActions from '@/components/dashboard/operation/QuickActions.vue'
+import SceneCameraTools from '@/components/dashboard/operation/SceneCameraTools.vue'
+import StageLegend from '@/components/dashboard/operation/stage/StageLegend.vue'
 import RecentActivityPanel from '@/components/dashboard/operation/RecentActivityPanel.vue'
 import RestaurantFloorMap from '@/components/dashboard/operation/RestaurantFloorMap.vue'
 import StaffLivePanel from '@/components/dashboard/operation/StaffLivePanel.vue'
-import StageLegend from '@/components/dashboard/operation/stage/StageLegend.vue'
-import StageStatCards from '@/components/dashboard/operation/stage/StageStatCards.vue'
-import StageTableCard from '@/components/dashboard/operation/stage/StageTableCard.vue'
-import StageTopbar from '@/components/dashboard/operation/stage/StageTopbar.vue'
 import TableDetailsDrawer from '@/components/dashboard/table/TableDetailsDrawer.vue'
 import AButton from '@/components/ui/AButton.vue'
-import AIconButton from '@/components/ui/AIconButton.vue'
-import { sceneCommands } from '@/components/restaurant-3d/scene-commands'
 import ASurface from '@/components/ui/ASurface.vue'
 import { useActivityPanelToggle } from '@/composables/useActivityPanelToggle'
 import { usePermissions } from '@/composables/usePermissions'
+import { useShellStage } from '@/composables/useShellStage'
+import { useOperationalToasts } from '@/composables/useOperationalToasts'
 import { useRestaurantFloorLayout } from '@/composables/useRestaurantFloorLayout'
 import { useRecentActivity } from '@/composables/useRecentActivity'
-import '@/components/dashboard/operation/stage/stage.css'
-import { useShellStage } from '@/composables/useShellStage'
+import { useAuthStore } from '@/stores/auth'
 import { appConfig } from '@/config/runtime'
 import type { Dashboard3DMode } from '@/config/env'
 import SceneRuntimeGuard from '@/components/restaurant-3d/SceneRuntimeGuard.vue'
 import { supportsWebGL, type SceneFailureReason } from '@/components/restaurant-3d/scene-runtime-guard'
 import type { RealtimeConnectionState } from '@/types/realtime'
-import { formatDateOnly } from '@/utils/format'
 import { SERVICE_ACCESS_PERMISSIONS } from '@/types/auth-context'
 import type { OperationsAlert, OperationsLiveSnapshot, OperationsTable } from '@/types/operations'
 import type { ReceivedRealtimeEvent } from '@/composables/useRestaurantRealtime'
 import { formatNumber } from '@/utils/format'
 import { classifyOperationAge } from '@/utils/operation-timing'
+import { operationsAlertActionKey, operationsAlertTypeLabelKey } from '@/utils/operations-alerts'
+import type { OperationalToast } from '@/utils/operational-toast-queue'
 
 const props = defineProps<{
   restaurantId: number | null
@@ -61,6 +63,7 @@ const emit = defineEmits<{ refresh: []; 'pending-table-consumed': [] }>()
 
 const { t, locale } = useI18n()
 const { can, canAny } = usePermissions()
+const authStore = useAuthStore()
 
 const canManageFloorPlan = computed(() => can('manage_floor_plan'))
 const canViewService = computed(() => canAny(SERVICE_ACCESS_PERMISSIONS))
@@ -68,10 +71,10 @@ const canViewKitchen = computed(() => canAny(['update_kitchen_status', 'serve_or
 const canViewStaff = computed(() => can('manage_users'))
 const canViewActivity = computed(() => can('view_activity'))
 const canManageDailyOperation = computed(() => can('open_daily_operation') || can('close_daily_operation'))
-const hasSidePanels = computed(() => canViewKitchen.value || canViewStaff.value || canViewActivity.value)
 
 const selectedTableId = ref<number | null>(null)
 const selectedAlertId = ref<string | null>(null)
+const detailsOpen = ref(false)
 const showEditor = ref(false)
 // The 3D room is the default whenever the restaurant has a saved layout; Plan stays one click away. Until the person
 // chooses, an empty (never saved) layout falls back to Plan on its own.
@@ -152,7 +155,6 @@ const board = ref<HTMLElement | null>(null)
 const boardWidth = ref(0)
 let resizeObserver: ResizeObserver | null = null
 const showFloorMap = computed(() => boardWidth.value >= 672)
-const compactQueue = computed(() => boardWidth.value < 896)
 
 function observeBoard(element: HTMLElement | null): void {
   resizeObserver?.disconnect()
@@ -204,6 +206,10 @@ const freeTables = computed(() => allTables.value.filter((table) => table.primar
 // restaurant) — every operational panel would just be a wall of empty
 // states in that case, so the onboarding card replaces them instead.
 const hasAnyTables = computed(() => allTables.value.length > 0)
+const shellStage = useShellStage()
+const stageMode = computed(() => showScene.value && hasAnyTables.value && !!props.snapshot)
+watch(stageMode, active => shellStage.set(active), { immediate: true })
+onBeforeUnmount(() => shellStage.set(false))
 const timezone = computed(() => props.snapshot?.restaurant.timezone ?? 'Europe/Madrid')
 
 /** Tables whose session began before the current operational day — labelled, never hidden (utils/operation-timing.ts). */
@@ -245,6 +251,19 @@ const leftover = computed(() => {
 // Four live indicators only. Revenue, trends and comparisons live in
 // Analytics. There is no backend rule for "late orders" on the live read
 // model, so that indicator is not computed here (see the delivery notes).
+// Distinct tables with a current (not previous-session) alert: the ones that need someone now.
+const tablesNeedingAttention = computed(() => {
+  const snapshot = props.snapshot
+  if (!snapshot) return 0
+  return new Set(snapshot.alerts
+    .filter(alert => alert.table_id !== null && classifyOperationAge(alert.age_seconds, snapshot.generated_at, snapshot.daily_operation).kind !== 'previous')
+    .map(alert => alert.table_id)).size
+})
+const attentionCount = computed(() => props.snapshot?.alerts.filter(alert =>
+  classifyOperationAge(alert.age_seconds, props.snapshot!.generated_at, props.snapshot!.daily_operation).kind !== 'previous',
+).length ?? 0)
+
+// Orders are counted as ORDERS (the live contract has no per-dish quantities), and the labels say so.
 const statItems = computed(() => {
   if (!props.snapshot) return []
   const { summary } = props.snapshot
@@ -252,9 +271,9 @@ const statItems = computed(() => {
   return [
     {
       id: 'occupied-tables',
-      label: t('operations.board.kpi.occupiedTables'),
-      value: `${n(summary.tables.occupied)} / ${n(summary.tables.total)}`,
-      context: t('operations.quick.occupancyContext', { percent: Math.round(summary.tables.occupancy_rate * 100) }),
+      label: t('operations.board.kpi.tables'),
+      value: t('operations.board.kpi.tablesValue', { occupied: n(summary.tables.occupied), total: n(summary.tables.total) }),
+      context: t('operations.board.kpi.tablesContext', { free: n(summary.tables.free), attention: n(tablesNeedingAttention.value) }),
     },
     { id: 'active-guests', label: t('operations.quick.activeGuests'), value: n(summary.active_guests) },
     {
@@ -288,10 +307,6 @@ const recentActivity = useRecentActivity(
   () => props.snapshot?.generated_at ?? null,
   20,
 )
-const sidePanelEvents = computed(() => recentActivity.events.value.slice(0, 6))
-const selectedTableEvents = computed(() => selectedTableId.value === null
-  ? []
-  : recentActivity.events.value.filter(event => event.table?.id === selectedTableId.value).slice(0, 4))
 const activityPanel = useActivityPanelToggle()
 
 // Where focus was when a selection began (a list row, an alert's "see table"): closing the selection returns there, so a
@@ -306,6 +321,7 @@ function selectTable(table: OperationsTable): void {
   rememberSelectionOrigin()
   selectedTableId.value = table.id
   selectedAlertId.value = null
+  detailsOpen.value = false
 }
 
 function selectAlert(alert: OperationsAlert): void {
@@ -318,50 +334,200 @@ function clearSelection(): void {
   const hadSelection = selectedTableId.value !== null
   selectedTableId.value = null
   selectedAlertId.value = null
+  detailsOpen.value = false
   const origin = selectionOrigin
   selectionOrigin = null
   if (hadSelection && origin) void nextTick(() => { if (origin.isConnected) origin.focus({ preventScroll: true }) })
 }
-function recenterScene(): void { sceneCommands.recenter++ }
 
-// --- Dashboard stage (3D room as the page background) -----------------------------------------------------------
-// Presentation only: same snapshot, same selection, same details sheet and actions as the Plan view.
-const shellStage = useShellStage()
-const stageMode = computed(() => showScene.value && hasAnyTables.value && !!props.snapshot)
-watch(stageMode, active => shellStage.set(active), { immediate: true })
-onBeforeUnmount(() => shellStage.set(false))
-
-// Wide arrangement (floating card + both docks) needs room in both directions: a phone in landscape is not wide.
-const wideMedia = window.matchMedia('(min-width: 768px) and (min-height: 521px)')
-const wide = ref(wideMedia.matches)
-const onWideChange = (): void => { wide.value = wideMedia.matches }
-wideMedia.addEventListener('change', onWideChange)
-onBeforeUnmount(() => wideMedia.removeEventListener('change', onWideChange))
-
-// Wide: the selection opens a card over the room (non-modal) and the full details sheet only on "Manage table".
-// Narrow: the selection opens the existing responsive sheet directly.
-const detailsOpen = ref(false)
-const stageCardVisible = computed(() => stageMode.value && wide.value && !!selectedTable.value)
-const drawerTable = computed(() => stageCardVisible.value && !detailsOpen.value ? null : selectedTable.value)
-function onDrawerClose(): void {
-  if (stageCardVisible.value) detailsOpen.value = false
-  else clearSelection()
-}
-watch(selectedTableId, () => { detailsOpen.value = false })
-function onStageEscape(): void {
-  if (selectedTableId.value !== null && !detailsOpen.value) clearSelection()
-}
-const mobilePanel = ref<'attention' | 'tables' | null>(null)
-const stageStats = computed(() => statItems.value.map(item => ({ ...item, context: item.id === 'occupied-tables' ? item.context : undefined })))
-const dayState = computed(() => {
-  const daily = props.snapshot?.daily_operation
-  if (!daily) return null
-  return daily.status === 'open'
-    ? { open: true, label: t('operations.board.dayOpen', { date: formatDateOnly(daily.business_date, locale.value) }) }
-    : { open: false, label: t('operations.board.dayNotOpen') }
-})
-const attentionCount = computed(() => props.snapshot?.alerts.length ?? 0)
+// --- Selection → details modal ------------------------------------------------------------------------------------
+// The room is a block of the page, not a stage: selecting a table (in 3D, Plan, the list, an alert) opens the one shared
+// details modal at every width. The modal owns the table's data and actions; this view only owns which table is open.
+const drawerTable = computed(() => detailsOpen.value ? selectedTable.value : null)
+function onDrawerClose(): void { detailsOpen.value = false }
 const outsideSceneCount = computed(() => tablesOutsideScene.value.length)
+
+// Staff: three people first, the rest on demand — the shift summary above stays visible either way.
+const STAFF_PREVIEW = 3
+const staffExpanded = ref(false)
+const staffTotals = computed(() => (props.snapshot?.staff ?? []).reduce(
+  (sum, member) => ({
+    tables: sum.tables + member.load.assigned_tables,
+    guests: sum.guests + member.load.assigned_guests,
+    pending: sum.pending + member.load.pending_attention,
+  }),
+  { tables: 0, guests: 0, pending: 0 },
+))
+const activityExpanded = ref(false)
+const visibleActivity = computed(() => recentActivity.events.value.slice(0, activityExpanded.value ? 20 : 5))
+const attentionOpen = ref(false)
+
+type DashboardPanelId = 'kitchen' | 'activity' | 'staff'
+type DashboardPanelColumn = 'left' | 'right'
+interface DashboardPanelLayout {
+  left: DashboardPanelId[]
+  right: DashboardPanelId[]
+  hidden: DashboardPanelId[]
+  collapsed: DashboardPanelId[]
+}
+const PANEL_IDS: DashboardPanelId[] = ['kitchen', 'activity', 'staff']
+const DEFAULT_PANEL_LAYOUT: DashboardPanelLayout = {
+  left: ['staff'], right: ['kitchen', 'activity'], hidden: [], collapsed: [],
+}
+const panelLayout = ref<DashboardPanelLayout>(structuredClone(DEFAULT_PANEL_LAYOUT))
+const panelsMenuOpen = ref(false)
+const draggedPanelId = ref<DashboardPanelId | null>(null)
+const panelDropTarget = ref<DashboardPanelColumn | null>(null)
+const panelStorageKey = computed(() => {
+  const userId = authStore.user?.id ?? authStore.authContext?.user.id
+  return userId && props.restaurantId !== null
+    ? `saloa:dashboard-panels:v1:user-${userId}:restaurant-${props.restaurantId}`
+    : null
+})
+
+function normalizePanelLayout(value: unknown): DashboardPanelLayout {
+  if (!value || typeof value !== 'object') return structuredClone(DEFAULT_PANEL_LAYOUT)
+  const candidate = value as Partial<DashboardPanelLayout>
+  const validUnique = (items: unknown): DashboardPanelId[] => Array.isArray(items)
+    ? items.filter((item, index): item is DashboardPanelId => PANEL_IDS.includes(item as DashboardPanelId) && items.indexOf(item) === index)
+    : []
+  const left = validUnique(candidate.left)
+  const right = validUnique(candidate.right).filter(id => !left.includes(id))
+  for (const id of PANEL_IDS) if (!left.includes(id) && !right.includes(id)) {
+    (id === 'staff' ? left : right).push(id)
+  }
+  return {
+    left,
+    right,
+    hidden: validUnique(candidate.hidden),
+    collapsed: validUnique(candidate.collapsed),
+  }
+}
+
+watch(panelStorageKey, (key) => {
+  if (!key || typeof window === 'undefined') {
+    panelLayout.value = structuredClone(DEFAULT_PANEL_LAYOUT)
+    return
+  }
+  try {
+    const saved = window.localStorage.getItem(key)
+    panelLayout.value = saved ? normalizePanelLayout(JSON.parse(saved)) : structuredClone(DEFAULT_PANEL_LAYOUT)
+  } catch {
+    panelLayout.value = structuredClone(DEFAULT_PANEL_LAYOUT)
+  }
+}, { immediate: true })
+watch([panelStorageKey, panelLayout], ([key, layout]) => {
+  if (!key || typeof window === 'undefined') return
+  try { window.localStorage.setItem(key, JSON.stringify(layout)) } catch { /* Local storage may be disabled; layout still works for this visit. */ }
+}, { deep: true })
+
+const availablePanels = computed<DashboardPanelId[]>(() => [
+  ...(canViewKitchen.value ? ['kitchen' as const] : []),
+  ...(canViewActivity.value ? ['activity' as const] : []),
+  ...(canViewStaff.value ? ['staff' as const] : []),
+])
+const desktopColumnPanels = (column: DashboardPanelColumn) => panelLayout.value[column]
+function panelVisible(id: DashboardPanelId): boolean {
+  return availablePanels.value.includes(id) && !panelLayout.value.hidden.includes(id)
+}
+function panelTitle(id: DashboardPanelId): string {
+  return id === 'kitchen' ? t('operations.kitchen.title') : id === 'activity' ? t('operations.board.activity.title') : t('operations.staff.title')
+}
+function panelColumn(id: DashboardPanelId): DashboardPanelColumn {
+  return panelLayout.value.left.includes(id) ? 'left' : 'right'
+}
+function togglePanelCollapsed(id: DashboardPanelId): void {
+  panelLayout.value.collapsed = panelLayout.value.collapsed.includes(id)
+    ? panelLayout.value.collapsed.filter(item => item !== id)
+    : [...panelLayout.value.collapsed, id]
+}
+function togglePanelVisibility(id: DashboardPanelId): void {
+  panelLayout.value.hidden = panelLayout.value.hidden.includes(id)
+    ? panelLayout.value.hidden.filter(item => item !== id)
+    : [...panelLayout.value.hidden, id]
+}
+function movePanel(id: DashboardPanelId, direction: 'up' | 'down' | 'left' | 'right'): void {
+  const currentColumn = panelColumn(id)
+  const destination = direction === 'left' || direction === 'right' ? direction : currentColumn
+  const current = [...panelLayout.value[currentColumn]]
+  const index = current.indexOf(id)
+  if (index >= 0) current.splice(index, 1)
+  if (destination !== currentColumn) {
+    panelLayout.value[currentColumn] = current
+    panelLayout.value[destination] = [...panelLayout.value[destination].filter(item => item !== id), id]
+    return
+  }
+  const nextIndex = Math.max(0, Math.min(current.length, index + (direction === 'up' ? -1 : 1)))
+  current.splice(nextIndex, 0, id)
+  panelLayout.value[currentColumn] = current
+}
+function startPanelDrag(event: DragEvent, panelId: string): void {
+  if (!PANEL_IDS.includes(panelId as DashboardPanelId)) return
+  draggedPanelId.value = panelId as DashboardPanelId
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', panelId)
+  }
+}
+function dropPanel(column: DashboardPanelColumn): void {
+  const panelId = draggedPanelId.value
+  if (!panelId) return
+  const previous = panelColumn(panelId)
+  const source = panelLayout.value[previous].filter(id => id !== panelId)
+  if (previous !== column) panelLayout.value[previous] = source
+  panelLayout.value[column] = [...panelLayout.value[column].filter(id => id !== panelId), panelId]
+  draggedPanelId.value = null
+  panelDropTarget.value = null
+}
+function endPanelDrag(): void {
+  draggedPanelId.value = null
+  panelDropTarget.value = null
+}
+function restorePanelLayout(): void {
+  panelLayout.value = structuredClone(DEFAULT_PANEL_LAYOUT)
+  panelsMenuOpen.value = false
+}
+
+// --- Live notifications ----------------------------------------------------------------------------------------------
+// New entries of the snapshot's own `alerts` (refetched on every realtime event): same ids, tables and ages as the attention
+// queue, so a notification can never disagree with the list it points to. See utils/operational-toast-queue.ts.
+function formatAlertClock(alert: OperationsAlert): string | undefined {
+  const snapshot = props.snapshot
+  if (!snapshot) return undefined
+  const occurredAt = Date.parse(snapshot.generated_at) - alert.age_seconds * 1000
+  if (!Number.isFinite(occurredAt)) return undefined
+  try {
+    return new Intl.DateTimeFormat(locale.value, { hour: '2-digit', minute: '2-digit', timeZone: timezone.value }).format(occurredAt)
+  } catch {
+    return new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' }).format(occurredAt)
+  }
+}
+function toastFor(alert: OperationsAlert): OperationalToast | null {
+  const labelKey = operationsAlertTypeLabelKey(alert.type)
+  const table = alert.table_id !== null ? allTables.value.find(candidate => candidate.id === alert.table_id) ?? null : null
+  let detail: string | undefined
+  if (table && alert.type === 'order_waiting_approval' && table.orders.waiting_approval > 0) detail = t('operations.board.queue.ordersWaiting', table.orders.waiting_approval)
+  else if (table && alert.type === 'order_ready' && table.orders.ready > 0) detail = t('operations.board.queue.ordersReady', table.orders.ready)
+  return {
+    id: alert.id,
+    tone: alert.severity,
+    title: labelKey ? t(labelKey) : t('operations.now.genericAttention'),
+    table: table?.name,
+    time: formatAlertClock(alert),
+    detail,
+    action: table ? { label: t(`operations.board.queue.actions.${operationsAlertActionKey(alert.type)}`), run: () => selectAlert(alert) } : undefined,
+  }
+}
+const toasts = useOperationalToasts({
+  restaurantId: () => props.restaurantId,
+  alerts: () => props.snapshot?.alerts ?? null,
+  isCurrent: alert => !props.snapshot || classifyOperationAge(alert.age_seconds, props.snapshot.generated_at, props.snapshot.daily_operation).kind !== 'previous',
+  toToast: toastFor,
+})
+function onToastAction(toast: OperationalToast): void {
+  toast.action?.run()
+  toasts.dismiss(toast.id)
+}
 
 // A resolved alert disappears from the next snapshot; drop its highlight
 // (the table itself stays open in context).
@@ -401,7 +567,6 @@ function onEditorClose(): void {
   emit('refresh')
 }
 
-const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairline bg-surface'
 </script>
 
 <template>
@@ -440,23 +605,7 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
     </ASurface>
 
     <template v-else-if="snapshot">
-      <!-- Compact controls for the shell's top bar (view selector always; status, clock and refresh on the stage). -->
-      <StageTopbar
-        v-if="hasAnyTables"
-        :floor-view="floorView"
-        :three-d-enabled="threeDEnabled"
-        :stage="stageMode"
-        :day-state="dayState"
-        :connection-state="connectionState"
-        :refreshing="refreshing"
-        :can-refresh="true"
-        :can-view-reports="can('view_reports')"
-        :timezone="timezone"
-        @update:floor-view="setFloorView"
-        @refresh="emit('refresh')"
-      />
-
-      <div v-if="!stageMode" class="dashboard-enter flex flex-col gap-4">
+      <div class="dashboard-enter flex flex-col gap-3">
         <!-- Closed day: one compact strip, the page's only primary action. -->
         <div
           v-if="dayNotOpen"
@@ -478,10 +627,6 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
           </AButton>
         </div>
 
-        <section :aria-label="t('operations.quick.title')">
-          <AStatStrip :items="statItems" />
-        </section>
-
         <RestaurantOnboarding
           v-if="!hasAnyTables"
           :total-tables="allTables.length"
@@ -490,10 +635,175 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
         />
 
         <div v-else ref="board" class="@container min-w-0">
-          <div class="operation-board grid min-w-0 grid-cols-1 gap-4" :class="{ 'operation-board--side': hasSidePanels }">
-            <!-- Left: attention queue. From @4xl its height follows the row and the list scrolls inside. -->
-            <div class="operation-board-queue relative min-w-0">
-              <div :class="[panelClass, '@4xl:absolute @4xl:inset-0']">
+          <!-- The room remains the backdrop. Operational cards occupy the side columns on wide screens and return to normal page flow on phones. -->
+          <div class="operation-board relative min-w-0" :class="{ 'has-selection': selectedTableId !== null, 'is-panel-dragging': draggedPanelId !== null }">
+            <section class="operation-board-floor min-w-0" aria-labelledby="dashboard-tables-title">
+              <h2 id="dashboard-tables-title" class="sr-only">{{ t('operations.board.floor.title') }} · {{ floorSummary }}</h2>
+              <div class="floor-controls" role="group" :aria-label="t('operations.board.floor.title')">
+                <FloorViewSwitch :model-value="floorView" :three-d-enabled="threeDEnabled" @update:model-value="setFloorView" />
+                <SceneCameraTools v-if="showScene && sceneReady" />
+                <AButton v-if="canManageFloorPlan" class="floor-edit-button" variant="secondary" size="sm" @click="openFloorEditor">
+                  <template #leading><PhPencilSimple /></template>{{ t('operations.floorMap.edit') }}
+                </AButton>
+                <div class="relative">
+                  <AButton variant="secondary" size="sm" :aria-expanded="panelsMenuOpen" @click="panelsMenuOpen = !panelsMenuOpen">
+                    {{ t('operations.board.panels.title') }}
+                  </AButton>
+                  <div v-if="panelsMenuOpen" class="panels-menu absolute right-0 top-full z-20 mt-2 flex min-w-56 flex-col rounded-saloa-md border border-hairline bg-surface p-2 shadow-raised" :aria-label="t('operations.board.panels.title')">
+                    <label v-for="id in availablePanels" :key="id" class="flex min-h-11 cursor-pointer items-center gap-3 rounded-saloa-sm px-2 text-body-sm text-fg hover:bg-surface-subtle">
+                      <input type="checkbox" class="size-4 accent-primary" :checked="panelVisible(id)" @change="togglePanelVisibility(id)" />
+                      <span>{{ panelTitle(id) }}</span>
+                    </label>
+                    <div class="my-1 border-t border-hairline" />
+                    <button type="button" class="min-h-11 rounded-saloa-sm px-2 text-left text-body-sm font-medium text-fg hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus" @click="restorePanelLayout">{{ t('operations.board.panels.restore') }}</button>
+                  </div>
+                </div>
+              </div>
+
+              <template v-if="showScene">
+                <div class="floor-stage" data-floor-stage>
+                  <div class="absolute inset-0">
+                    <SceneRuntimeGuard v-if="sceneReady" :key="`${layoutRevision}-${sceneAttempt}`" @failed="onSceneFailed">
+                      <RestaurantScene
+                        :layout="sceneLayout!"
+                        :entrance="sceneLayout!.entrance"
+                        :restaurant-id="restaurantId"
+                        :operations-snapshot="snapshot"
+                        :selected-layout-table-id="selectedSceneTableId"
+                        :environment="sceneMode === 'ultimate' ? 'ultimate' : 'kaykit'"
+                        :diagnostics="false"
+                        stage
+                        @table-selected="selectSceneTable"
+                      />
+                    </SceneRuntimeGuard>
+                    <div v-else class="grid h-full place-items-center p-4">
+                      <div class="flex max-w-sm flex-col items-start gap-3 rounded-saloa-lg border border-hairline bg-surface p-4" :role="sceneUnavailable ? 'alert' : 'status'">
+                        <p class="text-body-sm text-fg">
+                          {{ sceneUnavailable ? sceneFailureMessage : layoutState === 'ready' ? t('operations.board.floor.sceneEmpty') : t('operations.board.floor.sceneLoading') }}
+                        </p>
+                        <div v-if="sceneUnavailable" class="flex flex-wrap gap-2">
+                          <AButton v-if="sceneRetryAction" variant="secondary" size="sm" @click="sceneRetryAction">{{ t('operations.board.activity.retry') }}</AButton>
+                          <AButton variant="secondary" size="sm" @click="showPlan">{{ t('operations.board.floor.showPlan') }}</AButton>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <details class="group border-t border-hairline px-4">
+                  <summary class="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 text-body-sm font-medium text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
+                    <PhCaretRight :size="16" class="text-fg-muted transition-transform duration-base ease-out group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
+                    {{ t('operations.board.stage.tables', { count: formatNumber(allTables.length, locale) }) }}
+                  </summary>
+                  <p v-if="outsideSceneCount" class="mb-2 text-label-md text-fg-muted">{{ t('operations.board.stage.outsideCount', { count: formatNumber(outsideSceneCount, locale) }) }}</p>
+                  <div class="pb-3">
+                    <DashboardTableOverview :tables="allTables" :selected-table-id="selectedTableId" :previous-session-table-ids="previousSessionTableIds" @select="selectTable" />
+                  </div>
+                </details>
+              </template>
+
+              <div v-else class="min-w-0 flex-1 p-4">
+                <RestaurantFloorMap
+                  v-if="showFloorMap"
+                  :floors="snapshot.floors"
+                  :unassigned-tables="snapshot.unassigned_tables"
+                  :selected-table-id="selectedTableId"
+                  :previous-session-table-ids="previousSessionTableIds"
+                  @select-table="selectTable"
+                />
+                <DashboardTableOverview v-else :tables="allTables" :selected-table-id="selectedTableId" :previous-session-table-ids="previousSessionTableIds" @select="selectTable" />
+
+                <details class="group mt-3">
+                  <summary class="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 text-body-sm font-medium text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
+                    <PhCaretRight :size="16" class="text-fg-muted transition-transform duration-base ease-out group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
+                    {{ t('operations.capacity.title') }}
+                  </summary>
+                  <div class="pb-1 pl-6">
+                    <CapacityPanel :tables="allTables" :active-guests="snapshot.summary.active_guests" />
+                  </div>
+                </details>
+              </div>
+              <div class="dashboard-bottom-bar" data-dashboard-bottom-tools>
+                <div class="dashboard-bottom-legend"><StageLegend /></div>
+                <div class="dashboard-bottom-actions">
+                <QuickActions :refreshing="refreshing" :can-manage-floor-plan="canManageFloorPlan" @edit-floor-plan="openFloorEditor" @refresh="emit('refresh')" />
+                  <div class="attention-control" data-panel="attention">
+                  <AButton variant="secondary" size="sm" :aria-expanded="attentionOpen" @click="attentionOpen = !attentionOpen">
+                    {{ t('operations.board.queue.title') }} <span class="ml-1 rounded-full bg-warning-subtle px-2 py-0.5 text-label-md text-warning">{{ attentionCount }}</span>
+                  </AButton>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="operation-metrics" :aria-label="t('operations.quick.title')">
+              <AStatStrip :items="statItems" compact />
+            </section>
+
+            <div class="operation-board-column operation-board-left" role="region" :aria-label="t('operations.board.panels.leftColumn')" :class="{ 'is-drop-target': panelDropTarget === 'left' }" @dragover.prevent="panelDropTarget = 'left'" @dragleave="panelDropTarget = null" @drop.prevent="dropPanel('left')">
+              <p v-if="panelDropTarget === 'left'" class="drop-indicator" aria-live="polite">{{ t('operations.board.panels.dropHere') }}</p>
+              <template v-for="(id, index) in desktopColumnPanels('left')" :key="id">
+                <DashboardPanelCard v-if="panelVisible(id)" :panel-id="id" :title="panelTitle(id)" :collapsed="panelLayout.collapsed.includes(id)" column="left" :show-move-up="index > 0" :show-move-down="index < desktopColumnPanels('left').length - 1" :drag-active="draggedPanelId === id" @collapse="togglePanelCollapsed(id)" @close="togglePanelVisibility(id)" @move="movePanel(id, $event)" @dragstart="startPanelDrag" @dragend="endPanelDrag">
+                  <template v-if="id === 'staff'">
+                    <p v-if="snapshot.staff.length" class="mb-3 text-body-sm tabular-nums text-fg-muted" data-staff-summary>
+                      {{ t('operations.board.staff.summary', { staff: formatNumber(snapshot.staff.length, locale), tables: formatNumber(staffTotals.tables, locale), guests: formatNumber(staffTotals.guests, locale) }) }}<template v-if="staffTotals.pending > 0"> · <strong class="font-semibold text-warning">{{ t('operations.board.staff.pending', staffTotals.pending) }}</strong></template>
+                    </p>
+                    <StaffLivePanel :staff="snapshot.staff" :generated-at="snapshot.generated_at" :daily-operation="snapshot.daily_operation" :timezone="timezone" :limit="staffExpanded ? snapshot.staff.length : STAFF_PREVIEW">
+                      <template #more="{ hiddenCount }">
+                        <AButton v-if="hiddenCount > 0 || staffExpanded" variant="ghost" size="sm" full-width class="mt-1" :aria-expanded="staffExpanded" @click="staffExpanded = !staffExpanded">
+                          {{ staffExpanded ? t('operations.board.queue.showLess') : t('operations.board.staff.more', { count: hiddenCount }) }}
+                        </AButton>
+                      </template>
+                    </StaffLivePanel>
+                    <AButton as="RouterLink" :to="{ name: 'app-staff' }" variant="ghost" size="sm" class="mt-2 min-h-11 self-start">{{ t('operations.now.viewStaff') }}</AButton>
+                  </template>
+                  <section v-else-if="id === 'activity'" class="panel-content">
+                    <RecentActivityPanel :events="visibleActivity" :loading="recentActivity.loading.value" :error="recentActivity.error.value" :timezone="timezone" @retry="recentActivity.retry" />
+                    <div class="mt-2 flex flex-wrap gap-2">
+                      <AButton v-if="recentActivity.events.value.length > 5" variant="ghost" size="sm" :aria-expanded="activityExpanded" @click="activityExpanded = !activityExpanded">
+                        {{ activityExpanded ? t('operations.board.queue.showLess') : t('operations.board.activity.showMore') }}
+                      </AButton>
+                      <AButton variant="ghost" size="sm" @click="activityPanel.open()">{{ t('operations.board.activity.showAll') }}</AButton>
+                    </div>
+                  </section>
+                  <template v-else>
+                    <AButton as="RouterLink" :to="{ name: 'app-kitchen' }" variant="ghost" size="sm" class="-mt-2 mb-2 self-start whitespace-nowrap">
+                      {{ t('operations.now.viewKitchen') }}<template #trailing><PhCaretRight /></template>
+                    </AButton>
+                    <KitchenLivePanel :orders="snapshot.summary.orders" :counts="snapshot.kitchen.counts_by_status" :oldest="kitchenOldest" :timezone="timezone" />
+                  </template>
+                </DashboardPanelCard>
+              </template>
+            </div>
+
+            <div class="operation-board-column operation-board-right" role="region" :aria-label="t('operations.board.panels.rightColumn')" :class="{ 'is-drop-target': panelDropTarget === 'right' }" @dragover.prevent="panelDropTarget = 'right'" @dragleave="panelDropTarget = null" @drop.prevent="dropPanel('right')">
+              <p v-if="panelDropTarget === 'right'" class="drop-indicator" aria-live="polite">{{ t('operations.board.panels.dropHere') }}</p>
+              <template v-for="(id, index) in desktopColumnPanels('right')" :key="id">
+                <DashboardPanelCard v-if="panelVisible(id)" :panel-id="id" :title="panelTitle(id)" :collapsed="panelLayout.collapsed.includes(id)" column="right" :show-move-up="index > 0" :show-move-down="index < desktopColumnPanels('right').length - 1" :drag-active="draggedPanelId === id" @collapse="togglePanelCollapsed(id)" @close="togglePanelVisibility(id)" @move="movePanel(id, $event)" @dragstart="startPanelDrag" @dragend="endPanelDrag">
+                  <template v-if="id === 'staff'">
+                    <p v-if="snapshot.staff.length" class="mb-3 text-body-sm tabular-nums text-fg-muted" data-staff-summary>
+                      {{ t('operations.board.staff.summary', { staff: formatNumber(snapshot.staff.length, locale), tables: formatNumber(staffTotals.tables, locale), guests: formatNumber(staffTotals.guests, locale) }) }}<template v-if="staffTotals.pending > 0"> · <strong class="font-semibold text-warning">{{ t('operations.board.staff.pending', staffTotals.pending) }}</strong></template>
+                    </p>
+                    <StaffLivePanel :staff="snapshot.staff" :generated-at="snapshot.generated_at" :daily-operation="snapshot.daily_operation" :timezone="timezone" :limit="staffExpanded ? snapshot.staff.length : STAFF_PREVIEW">
+                      <template #more="{ hiddenCount }"><AButton v-if="hiddenCount > 0 || staffExpanded" variant="ghost" size="sm" full-width class="mt-1" :aria-expanded="staffExpanded" @click="staffExpanded = !staffExpanded">{{ staffExpanded ? t('operations.board.queue.showLess') : t('operations.board.staff.more', { count: hiddenCount }) }}</AButton></template>
+                    </StaffLivePanel>
+                    <AButton as="RouterLink" :to="{ name: 'app-staff' }" variant="ghost" size="sm" class="mt-2 min-h-11 self-start">{{ t('operations.now.viewStaff') }}</AButton>
+                  </template>
+                  <section v-else-if="id === 'activity'" class="panel-content">
+                    <RecentActivityPanel :events="visibleActivity" :loading="recentActivity.loading.value" :error="recentActivity.error.value" :timezone="timezone" @retry="recentActivity.retry" />
+                    <div class="mt-2 flex flex-wrap gap-2">
+                      <AButton v-if="recentActivity.events.value.length > 5" variant="ghost" size="sm" :aria-expanded="activityExpanded" @click="activityExpanded = !activityExpanded">{{ activityExpanded ? t('operations.board.queue.showLess') : t('operations.board.activity.showMore') }}</AButton>
+                      <AButton variant="ghost" size="sm" @click="activityPanel.open()">{{ t('operations.board.activity.showAll') }}</AButton>
+                    </div>
+                  </section>
+                  <template v-else>
+                    <AButton as="RouterLink" :to="{ name: 'app-kitchen' }" variant="ghost" size="sm" class="-mt-2 mb-2 self-start whitespace-nowrap">{{ t('operations.now.viewKitchen') }}<template #trailing><PhCaretRight /></template></AButton>
+                    <KitchenLivePanel :orders="snapshot.summary.orders" :counts="snapshot.kitchen.counts_by_status" :oldest="kitchenOldest" :timezone="timezone" />
+                  </template>
+                </DashboardPanelCard>
+              </template>
+            </div>
+
+            <div v-if="attentionOpen" class="attention-panel" data-panel="attention">
                 <AttentionQueue
                   class="min-h-0 flex-1"
                   :alerts="snapshot.alerts"
@@ -504,218 +814,45 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
                   :timezone="timezone"
                   :selected-alert-id="selectedAlertId"
                   :can-view-service="canViewService"
-                  :compact="compactQueue"
+                  compact dense
                   @select="selectAlert"
                 />
-              </div>
             </div>
 
-            <!-- Centre: the room, the board's primary object. -->
-            <section class="operation-board-floor min-w-0" :class="panelClass" aria-labelledby="dashboard-tables-title">
-              <header class="flex flex-wrap items-start justify-between gap-3 border-b border-hairline px-4 py-3">
-                <div class="min-w-0">
-                  <h2 id="dashboard-tables-title" class="text-component-title font-semibold text-fg">{{ t('operations.board.floor.title') }}</h2>
-                  <p class="mt-0.5 text-body-sm tabular-nums text-fg-muted">{{ floorSummary }}</p>
-                </div>
-                <div class="flex flex-wrap items-center gap-2">
-                  <AButton v-if="canManageFloorPlan" variant="secondary" size="sm" @click="openFloorEditor">
-                    <template #leading><PhPencilSimple /></template>{{ t('operations.floorMap.edit') }}
-                  </AButton>
-                </div>
-              </header>
-
-              <div class="min-w-0 flex-1 p-4">
-                    <RestaurantFloorMap
-                      v-if="showFloorMap"
-                      :floors="snapshot.floors"
-                      :unassigned-tables="snapshot.unassigned_tables"
-                      :selected-table-id="selectedTableId"
-                      :previous-session-table-ids="previousSessionTableIds"
-                      @select-table="selectTable"
-                    />
-                    <DashboardTableOverview v-else :tables="allTables" :selected-table-id="selectedTableId" :previous-session-table-ids="previousSessionTableIds" @select="selectTable" />
-
-                  <details class="group mt-3">
-                    <summary class="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 text-body-sm font-medium text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
-                      <PhCaretRight :size="16" class="text-fg-muted transition-transform duration-base ease-out group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
-                      {{ t('operations.capacity.title') }}
-                    </summary>
-                    <div class="pb-1 pl-6">
-                      <CapacityPanel :tables="allTables" :active-guests="snapshot.summary.active_guests" />
-                    </div>
-                  </details>
-              </div>
+            <section v-if="selectedTable" class="selected-table-context rounded-saloa-lg border border-hairline bg-surface p-4 shadow-raised" aria-labelledby="selected-table-context-title" data-panel="selected-table">
+                <header class="mb-2 flex items-start justify-between gap-2">
+                  <div class="min-w-0">
+                    <h2 id="selected-table-context-title" class="text-component-title font-semibold text-fg">{{ selectedTable.name }}</h2>
+                    <p class="text-label-md text-fg-muted">{{ t(`operations.tableStatus.${selectedTable.primary_status}`) }}</p>
+                  </div>
+                  <AButton variant="ghost" size="sm" :aria-label="t('operations.board.stage.table.close')" @click="clearSelection">{{ t('common.close') }}</AButton>
+                </header>
+                <p v-if="selectedTable.session" class="text-body-sm text-fg-muted">
+                  {{ t('tableDrawer.guests') }}: <strong class="font-semibold text-fg">{{ selectedTable.session.guest_count }}</strong>
+                  <span v-if="selectedTable.session.assigned_waiter"> · {{ selectedTable.session.assigned_waiter.name }}</span>
+                </p>
+                <p class="mt-1 text-body-sm text-fg-muted">
+                  {{ t('operations.board.queue.ordersWaiting', selectedTable.orders.waiting_approval) }} · {{ t('operations.board.queue.ordersReady', selectedTable.orders.ready) }}
+                </p>
+                <AButton variant="secondary" size="sm" full-width class="mt-3" @click="detailsOpen = true">{{ t('operations.board.stage.table.manage') }}</AButton>
             </section>
-
-            <!-- Right: follow-up blocks, each under its existing route gate. -->
-            <div v-if="hasSidePanels" class="operation-board-side grid min-w-0 grid-cols-1 content-start items-start gap-4">
-              <section v-if="canViewKitchen" :class="panelClass" class="p-4" aria-labelledby="dashboard-kitchen-title">
-                <div class="mb-3 flex items-center justify-between gap-2">
-                  <h2 id="dashboard-kitchen-title" class="min-w-0 text-component-title font-semibold text-fg">{{ t('operations.kitchen.title') }}</h2>
-                  <AButton as="RouterLink" :to="{ name: 'app-kitchen' }" variant="ghost" size="sm" class="-mr-2 shrink-0 whitespace-nowrap">
-                    {{ t('operations.now.viewKitchen') }}
-                    <template #trailing><PhCaretRight /></template>
-                  </AButton>
-                </div>
-                <KitchenLivePanel :orders="snapshot.summary.orders" :oldest="kitchenOldest" :timezone="timezone" />
-              </section>
-
-              <section v-if="canViewStaff" :class="panelClass" class="p-4" aria-labelledby="dashboard-staff-title">
-                <div class="mb-3 flex items-center justify-between gap-2">
-                  <h2 id="dashboard-staff-title" class="min-w-0 text-component-title font-semibold text-fg">{{ t('operations.staff.title') }}</h2>
-                  <AButton as="RouterLink" :to="{ name: 'app-staff' }" variant="ghost" size="sm" class="-mr-2 shrink-0 whitespace-nowrap">
-                    {{ t('operations.now.viewStaff') }}
-                    <template #trailing><PhCaretRight /></template>
-                  </AButton>
-                </div>
-                <StaffLivePanel
-                  :staff="snapshot.staff"
-                  :generated-at="snapshot.generated_at"
-                  :daily-operation="snapshot.daily_operation"
-                  :timezone="timezone"
-                >
-                  <template #more="{ hiddenCount }">
-                    <AButton v-if="hiddenCount > 0" as="RouterLink" :to="{ name: 'app-staff' }" variant="ghost" size="sm" full-width class="mt-1">
-                      {{ t('operations.board.staff.more', { count: hiddenCount }) }}
-                    </AButton>
-                  </template>
-                </StaffLivePanel>
-              </section>
-
-              <section v-if="canViewActivity" :class="panelClass" class="p-4" aria-labelledby="dashboard-activity-title">
-                <h2 id="dashboard-activity-title" class="mb-3 text-component-title font-semibold text-fg">{{ t('operations.board.activity.title') }}</h2>
-                <RecentActivityPanel
-                  :events="sidePanelEvents"
-                  :loading="recentActivity.loading.value"
-                  :error="recentActivity.error.value"
-                  :timezone="timezone"
-                  @retry="recentActivity.retry"
-                />
-                <AButton variant="ghost" size="sm" full-width class="mt-2" @click="activityPanel.open()">
-                  {{ t('operations.board.activity.viewAll') }}
-                </AButton>
-              </section>
-            </div>
           </div>
         </div>
       </div>
 
-      <!-- The room is the page: the 3D scene fills the whole area under the top bar and the panels float over its edges. -->
-      <div v-else class="stage" @keydown.esc="onStageEscape">
-        <h1 class="sr-only">{{ t('operations.board.title') }}</h1>
-        <div class="stage-scene">
-          <SceneRuntimeGuard v-if="sceneReady" :key="`${layoutRevision}-${sceneAttempt}`" @failed="onSceneFailed">
-            <RestaurantScene
-              :layout="sceneLayout!"
-              :entrance="sceneLayout!.entrance"
-              :restaurant-id="restaurantId"
-              :operations-snapshot="snapshot"
-              :selected-layout-table-id="selectedSceneTableId"
-              :environment="sceneMode === 'ultimate' ? 'ultimate' : 'kaykit'"
-              :diagnostics="false"
-              stage
-              @table-selected="selectSceneTable"
-            />
-          </SceneRuntimeGuard>
-          <div v-else class="stage-scene-state">
-            <div class="stage-panel flex max-w-sm flex-col items-start gap-3 rounded-saloa-lg p-4" :role="sceneUnavailable ? 'alert' : 'status'">
-              <p class="text-body-sm text-fg">
-                {{ sceneUnavailable ? sceneFailureMessage : t('operations.board.floor.sceneLoading') }}
-              </p>
-              <div v-if="sceneUnavailable" class="flex flex-wrap gap-2">
-                <AButton v-if="sceneRetryAction" variant="secondary" size="sm" @click="sceneRetryAction">{{ t('operations.board.activity.retry') }}</AButton>
-                <AButton variant="secondary" size="sm" @click="showPlan">{{ t('operations.board.floor.showPlan') }}</AButton>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="stage-ui">
-          <div class="stage-row">
-            <div class="stage-col stage-col--start">
-              <StageStatCards :items="stageStats" />
-              <div v-if="dayNotOpen" role="status" class="stage-panel flex items-center gap-2 rounded-saloa-lg px-3 py-2">
-                <PhCalendarX :size="18" class="shrink-0 text-warning" aria-hidden="true" />
-                <p class="min-w-0 flex-1 text-body-sm text-fg">{{ t('dailyOperation.notOpen') }}<strong v-if="leftover" class="block text-label-md font-semibold text-fg-muted">{{ leftover }}</strong></p>
-                <AButton v-if="canManageDailyOperation" as="RouterLink" :to="{ name: 'app-day-close' }" size="sm" class="shrink-0">{{ t('dailyOperation.goToOpen') }}</AButton>
-              </div>
-            </div>
-            <div class="stage-col stage-col--end stage-card-slot">
-              <AButton class="stage-recenter self-end" variant="secondary" size="sm" @click="recenterScene">
-                <template #leading><PhCrosshairSimple /></template>{{ t('floorLayout.recenterView') }}
-              </AButton>
-              <StageTableCard
-                v-if="stageCardVisible && selectedTable"
-                :table="selectedTable"
-                :timing-previous="selectedSessionTiming?.kind === 'previous'"
-                @close="clearSelection"
-                @manage="detailsOpen = true"
-              />
-            </div>
-          </div>
-
-          <div class="stage-row stage-row--bottom">
-            <!-- Bottom-left: legend, the selected table's activity and a keyboard/touch list of every table. -->
-            <section class="stage-panel stage-dock stage-dock--start flex-col gap-0.5 rounded-saloa-lg px-3 py-1" :class="mobilePanel === 'tables' ? 'is-open' : ''" :aria-label="t('operations.board.stage.tablesPanel')">
-              <StageLegend />
-              <details v-if="selectedTable && canViewActivity" :key="selectedTable.id" class="group min-w-0">
-                <summary class="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 text-label-lg font-medium text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
-                  <PhCaretRight :size="16" class="text-fg-muted transition-transform duration-base ease-out group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
-                  {{ t('operations.board.stage.table.history', { table: selectedTable.name }) }}
-                </summary>
-                <p v-if="selectedTableEvents.length === 0" class="mb-2 text-label-md text-fg-muted">{{ t('operations.board.stage.table.historyEmpty') }}</p>
-                <div v-else class="mb-2 max-h-56 overflow-y-auto">
-                  <RecentActivityPanel :events="selectedTableEvents" :loading="false" :error="null" :timezone="timezone" @retry="recentActivity.retry" />
-                </div>
-              </details>
-              <details class="group min-w-0">
-                <summary class="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 text-label-lg font-medium text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
-                  <PhCaretRight :size="16" class="text-fg-muted transition-transform duration-base ease-out group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
-                  {{ t('operations.board.stage.tables', { count: formatNumber(allTables.length, locale) }) }}
-                </summary>
-                <p v-if="outsideSceneCount" class="mb-2 text-label-md text-fg-muted">{{ t('operations.board.stage.outsideCount', { count: formatNumber(outsideSceneCount, locale) }) }}</p>
-                <div class="max-h-56 overflow-y-auto p-1">
-                  <DashboardTableOverview :tables="allTables" :selected-table-id="selectedTableId" :previous-session-table-ids="previousSessionTableIds" @select="selectTable" />
-                </div>
-              </details>
-            </section>
-
-            <!-- Bottom-right: the attention queue. -->
-            <section class="stage-panel stage-dock stage-dock--end rounded-saloa-lg" :class="mobilePanel === 'attention' ? 'is-open' : ''" :aria-label="t('operations.board.queue.title')">
-              <AttentionQueue
-                class="min-h-0 flex-1"
-                :alerts="snapshot.alerts"
-                :tables="allTables"
-                :staff="snapshot.staff"
-                :generated-at="snapshot.generated_at"
-                :daily-operation="snapshot.daily_operation"
-                :timezone="timezone"
-                :selected-alert-id="selectedAlertId"
-                :can-view-service="canViewService"
-                compact
-                dense
-                @select="selectAlert"
-              />
-            </section>
-          </div>
-
-          <!-- Phones: the two bottom panels collapse into one dock of toggles so the room keeps the screen. -->
-          <div class="stage-toggles" role="group" :aria-label="t('operations.board.stage.panels')">
-            <AButton variant="secondary" size="sm" :aria-pressed="mobilePanel === 'attention'" @click="mobilePanel = mobilePanel === 'attention' ? null : 'attention'">
-              {{ t('operations.board.queue.title') }} · {{ formatNumber(attentionCount, locale) }}
-            </AButton>
-            <AButton variant="secondary" size="sm" :aria-pressed="mobilePanel === 'tables'" @click="mobilePanel = mobilePanel === 'tables' ? null : 'tables'">
-              {{ t('operations.board.stage.tablesShort') }}
-            </AButton>
-            <AIconButton variant="secondary" size="sm" :label="t('floorLayout.recenterView')" @click="recenterScene"><PhCrosshairSimple /></AIconButton>
-          </div>
-        </div>
-      </div>
+      <OperationalToastHost
+        :toasts="toasts.visible.value"
+        :waiting="toasts.waiting.value"
+        @dismiss="toasts.dismiss"
+        @pause="toasts.pause"
+        @resume="toasts.resume"
+        @action="onToastAction"
+      />
     </template>
 
     <EmptyState v-else :icon="PhTable" :message="t('operations.noData')" />
 
-    <!-- Table details open in the shared centred modal at every width. -->
+    <!-- Full table actions stay in the reorganised shared modal; the compact context remains visible beneath it. -->
     <TableDetailsDrawer
       :table="drawerTable"
       :staff="snapshot?.staff ?? []"
@@ -737,61 +874,99 @@ const panelClass = 'flex min-w-0 flex-col rounded-saloa-lg border border-hairlin
 </template>
 
 <style scoped>
-/*
- * Board composition (docs/design/dashboard-map.webp): queue | room | follow-up
- * at ~23/54/23 once the board is ≥1024px wide; queue | room with follow-up
- * below from 896px; a single stacked column under that. Container-based so
- * the shell's rail vs. expanded sidebar is accounted for.
- */
-@container (min-width: 42rem) {
-  .operation-board-side { grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
-}
-@container (min-width: 56rem) {
-  .operation-board { grid-template-columns: minmax(16rem, 18rem) minmax(0, 1fr); }
-  .operation-board-queue { grid-column: 1; grid-row: 1; }
-  .operation-board-floor { grid-column: 2; grid-row: 1; }
-  .operation-board-side { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-@container (min-width: 64rem) {
-  .operation-board--side { grid-template-columns: minmax(15rem, 23fr) minmax(0, 54fr) minmax(15rem, 23fr); }
-  .operation-board--side .operation-board-side { grid-column: 3; grid-row: 1; grid-template-columns: minmax(0, 1fr); }
-}
+/* Mobile uses the restaurant as the backdrop and puts the cards into natural page flow. */
+.floor-stage { position: relative; height: clamp(28rem, 58dvh, 36rem); min-height: 28rem; background: var(--color-surface-subtle); overflow: hidden; touch-action: pan-y; }
+.operation-board-floor { position: relative; min-width: 0; order: 0; }
+.operation-board { display: flex; flex-direction: column; gap: 0.75rem; padding-bottom: 5.75rem; }
+.floor-controls { position: absolute; z-index: 5; top: 5.5rem; left: 0.75rem; right: 0.75rem; display: flex; align-items: center; justify-content: flex-start; gap: 0.375rem; overflow-x: auto; scrollbar-width: none; }
+.floor-controls::-webkit-scrollbar { display: none; }
+.floor-controls > * { flex: 0 0 auto; }
+.floor-controls > .relative > button { white-space: nowrap; }
+.floor-edit-button { display: none; }
+.floor-controls :deep([role='radiogroup']) { min-height: 2.75rem; padding: 0.125rem; }
+.floor-controls :deep([role='radiogroup'] button) { min-height: 2.5rem; min-width: 2.75rem; }
+.dashboard-bottom-bar { position: absolute; z-index: 5; right: 0.75rem; bottom: 0.75rem; left: 0.75rem; display: flex; align-items: end; justify-content: space-between; gap: 0.5rem; }
+.dashboard-bottom-legend { display: none; }
+.dashboard-bottom-actions { display: contents; }
+.dashboard-bottom-actions .attention-control { margin-left: auto; }
+.dashboard-bottom-actions .attention-control :deep(button) { white-space: nowrap; }
+.dashboard-bottom-actions .attention-control :deep(.a-control-label) { white-space: nowrap; }
+.operation-metrics { position: absolute; z-index: 4; top: 0.5rem; left: 0.5rem; right: 0.5rem; }
+.operation-metrics :deep(.a-stat-strip) { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.375rem; padding: 0; border: 0; background: transparent; }
+.operation-metrics :deep(.a-stat-strip > div) { min-width: 0; padding: 0.375rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-surface) 92%, transparent); box-shadow: var(--elevation-raised); }
+.operation-metrics :deep(.a-stat-strip > div > dt) { font-size: 0.62rem; line-height: 1.15; }
+.operation-metrics :deep(.a-stat-strip > div > dd:first-of-type) { font-size: var(--text-title-md); line-height: 1.2; }
+.operation-metrics :deep(.a-stat-strip > div > dd:nth-of-type(2)) { display: none; }
+.operation-board-column { display: flex; min-width: 0; flex-direction: column; gap: 0.75rem; }
+.operation-board-left, .operation-board-right { display: contents; }
+.operation-board-side { display: contents; }
+.dashboard-panel-card[data-panel='kitchen'] { order: 1; }
+.selected-table-context { order: 2; }
+.dashboard-panel-card[data-panel='staff'] { order: 3; }
+.dashboard-panel-card[data-panel='activity'] { order: 4; }
+.attention-panel { order: 5; max-height: 24rem; overflow: auto; }
+.operation-board-floor > .border-t { display: none; }
+.operation-board-floor > details { margin: 0.5rem 0; }
+.panels-menu { max-height: min(70dvh, 24rem); overflow: auto; }
 
-/*
- * Dashboard stage: the 3D room fills the whole area under the shell's top bar (the shell goes full-bleed) and the
- * panels float over its corners — stats and selected table on top, legend/history and the attention queue below.
- * The containers never catch pointer events, so the room stays interactive everywhere between the panels.
- */
-.stage { position: relative; isolation: isolate; height: calc(100dvh - var(--bar-top, 0px) - var(--bar-bottom, 0px)); min-height: 26rem; overflow: hidden; background: var(--color-background); }
-.stage-scene { position: absolute; inset: 0; }
-.stage-scene-state { display: grid; height: 100%; place-items: center; padding: 1rem; }
-.stage-ui { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 0.75rem; padding: 0.75rem; pointer-events: none; }
-.stage-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; min-height: 0; }
-.stage-row--bottom { align-items: flex-end; }
-.stage-col { display: flex; min-width: 0; flex-direction: column; gap: 0.5rem; pointer-events: none; }
-.stage-col > * { pointer-events: auto; }
-.stage-col--start { width: 100%; }
-.stage-card-slot { display: none; }
-.stage-dock { display: none; min-width: 0; pointer-events: auto; }
-.stage-dock.is-open { display: flex; width: 100%; max-height: 50dvh; overflow-y: auto; }
-.stage-toggles { display: flex; justify-content: center; gap: 0.5rem; pointer-events: auto; }
-.stage-toggles button[aria-pressed='true'] { box-shadow: inset 0 0 0 1px currentColor; }
-
-@media (min-width: 768px) and (min-height: 521px) {
-  .stage-ui { padding: 1rem; }
-  .stage-col--start { width: min(45rem, 100%); }
-  .stage-card-slot { display: flex; width: 19rem; max-height: min(24rem, 100%); }
-  .stage-dock, .stage-dock.is-open { display: flex; width: auto; }
-  .stage-dock--start { width: min(28rem, calc(100% - 23.5rem)); max-height: min(24rem, 46dvh); overflow-y: auto; }
-  .stage-dock--end { width: 22rem; max-height: min(22rem, 42dvh); flex-direction: column; }
-  .stage-toggles { display: none; }
+/* On desktop the full-bleed room occupies the middle; movable cards dock in the lower perimeter. */
+@media (min-width: 1024px) {
+  .dashboard-enter { position: relative; min-height: calc(100dvh - var(--bar-top, 0px)); }
+  .operation-board { position: relative; display: block; height: calc(100dvh - var(--bar-top, 0px)); min-height: 42rem; padding: 0; }
+  .operation-board-floor { position: absolute; inset: 0; }
+  .floor-stage { position: absolute; inset: 0; height: auto; min-height: 0; background: var(--color-surface-subtle); }
+  .floor-controls { top: 1.25rem; left: 50%; right: auto; width: max-content; max-width: 38vw; transform: translateX(-50%); justify-content: center; }
+  .floor-edit-button { display: none; }
+  .dashboard-bottom-bar { position: absolute; z-index: 5; right: auto; bottom: 1rem; left: 50%; display: flex; width: max-content; max-width: calc(100% - 44rem); transform: translateX(-50%); flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-surface) 94%, transparent); padding: 0.5rem 0.75rem; box-shadow: var(--elevation-raised); }
+  .dashboard-bottom-legend { display: block; min-width: 0; flex: 1 1 34rem; }
+  .dashboard-bottom-legend :deep(ul) { padding-top: 0; }
+  .dashboard-bottom-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem; }
+  .dashboard-bottom-actions :deep([role='group']) { flex-wrap: nowrap; }
+  .dashboard-bottom-actions :deep(button) { white-space: nowrap; }
+  .dashboard-bottom-actions .attention-control { margin-left: 0; }
+  .operation-metrics { top: 1.25rem; right: auto; left: 1.25rem; width: 28rem; }
+  .operation-metrics :deep(.a-stat-strip) { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; }
+  .operation-metrics :deep(.a-stat-strip > div) { min-height: 4.5rem; padding: 0.625rem; background: var(--color-surface); }
+  .operation-metrics :deep(.a-stat-strip > div > dt) { font-size: 0.68rem; }
+  .operation-metrics :deep(.a-stat-strip > div > dd:first-of-type) { font-size: var(--text-title-lg); }
+  .operation-board-column { position: absolute; z-index: 3; top: 7.25rem; bottom: 8.5rem; display: flex; width: 19rem; flex-direction: column; justify-content: flex-end; overflow: auto; gap: 0.75rem; pointer-events: auto; }
+  .operation-board-left, .operation-board-right { display: flex; }
+  .operation-board-left { left: 1.25rem; }
+  .operation-board-right { right: 1.25rem; width: 20rem; }
+  .operation-board-column > * { pointer-events: auto; }
+  .operation-board.is-panel-dragging .operation-board-column { pointer-events: auto; }
+  .operation-board-column.is-drop-target { outline: 2px dashed var(--color-focus); outline-offset: 4px; border-radius: var(--radius-lg); }
+  .operation-board-column .dashboard-panel-card { width: 100%; max-height: 100%; flex: 0 0 auto; }
+  .operation-board-right .dashboard-panel-card { max-height: calc((100% - 0.75rem) / 2); }
+  .operation-board-column .dashboard-panel-body { overscroll-behavior: contain; }
+  .operation-board-left .dashboard-panel-card[data-panel='staff'] { order: initial; }
+  .operation-board-right .dashboard-panel-card[data-panel='kitchen'], .operation-board-right .dashboard-panel-card[data-panel='activity'] { order: initial; }
+  .drop-indicator { position: sticky; top: 0; z-index: 6; display: block; margin-bottom: -3.25rem; min-height: 3rem; border: 2px dashed var(--color-focus); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-surface) 90%, transparent); padding: 0.75rem; color: var(--color-fg); text-align: center; }
+  .selected-table-context { position: absolute; z-index: 3; left: 50%; bottom: 8.5rem; width: 20rem; max-height: 26%; overflow: auto; transform: translateX(-50%); }
+  .attention-panel { position: absolute; z-index: 6; left: 50%; right: auto; bottom: 8.5rem; width: 20rem; max-height: 40%; overflow: auto; transform: translateX(-50%); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--elevation-raised); }
+  .operation-board-floor > .border-t { display: none; }
+  .operation-board-floor > details { display: none; }
+  .operation-board-side { display: contents; }
 }
-
-/* Short screens (a phone in landscape): the panels leave the room's view and the open dock may use most of the height. */
-@media (max-height: 520px) {
-  .stage { min-height: 0; }
-  .stage-ui { gap: 0.5rem; padding: 0.5rem; }
-  .stage-dock.is-open { max-height: 72dvh; }
+@media (min-width: 1280px) {
+  .operation-metrics { left: 1.5rem; top: 1.25rem; width: 28rem; }
+  .operation-board-left { left: 1.5rem; width: 20rem; }
+  .operation-board-right { right: 1.5rem; width: 21rem; }
+}
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .floor-controls { top: 1.25rem; left: auto; right: 1.5rem; width: max-content; max-width: calc(100% - 31rem); flex-wrap: wrap; transform: none; justify-content: center; }
+  .floor-edit-button { display: none; }
+}
+@media (min-width: 1800px) {
+  .operation-metrics { width: 28rem; }
+  .operation-board-left { width: 21rem; }
+  .operation-board-right { width: 23rem; }
+}
+@media (max-width: 380px) {
+  .operation-metrics :deep(.a-stat-strip > div) { padding: 0.25rem; }
+  .operation-metrics :deep(.a-stat-strip > div > dt) { font-size: 0.56rem; }
+  .operation-metrics :deep(.a-stat-strip > div > dd:first-of-type) { font-size: 1.05rem; }
+  .dashboard-bottom-actions :deep(button) { font-size: 0.72rem; }
 }
 
 /* SALOA §10.2 generic entrance: first paint only, opacity + 4px rise; nothing moves when motion is reduced. */

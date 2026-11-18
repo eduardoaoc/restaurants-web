@@ -124,7 +124,7 @@ assert.equal(selectedTable.id, table.id, 'the compact room overview selects the 
 assert.match(overview.host.querySelector('button').getAttribute('aria-label'), /Terrace 8 — Occupied/)
 overview.unmount()
 
-const [view, dashboard, pageHead, statsSource, floorMap, marker, kitchen, staff, analytics, revenueChart, peakChart, localeEs, localeEn, localeCa] = await Promise.all([
+const [view, dashboard, pageHead, statsSource, floorMap, marker, kitchen, staff, panelCard, analytics, revenueChart, peakChart, localeEs, localeEn, localeCa] = await Promise.all([
   readFile('src/views/operation/OperationView.vue', 'utf8'),
   readFile('src/views/DashboardView.vue', 'utf8'),
   readFile('src/components/dashboard/DashboardPageHead.vue', 'utf8'),
@@ -133,6 +133,7 @@ const [view, dashboard, pageHead, statsSource, floorMap, marker, kitchen, staff,
   readFile('src/components/dashboard/operation/FloorTableMarker.vue', 'utf8'),
   readFile('src/components/dashboard/operation/KitchenLivePanel.vue', 'utf8'),
   readFile('src/components/dashboard/operation/StaffLivePanel.vue', 'utf8'),
+  readFile('src/components/dashboard/operation/DashboardPanelCard.vue', 'utf8'),
   readFile('src/views/analytics/AnalyticsView.vue', 'utf8'),
   readFile('src/components/dashboard/analytics/RevenueChart.vue', 'utf8'),
   readFile('src/components/dashboard/analytics/PeakHoursChart.vue', 'utf8'),
@@ -141,10 +142,27 @@ const [view, dashboard, pageHead, statsSource, floorMap, marker, kitchen, staff,
   readFile('src/i18n/locales/ca-ES-valencia.ts', 'utf8'),
 ])
 
-const order = [view.indexOf('<AStatStrip'), view.indexOf('<AttentionQueue'), view.indexOf('dashboard-tables-title'), view.indexOf('dashboard-kitchen-title'), view.indexOf('dashboard-staff-title'), view.indexOf('dashboard-activity-title')]
-assert.ok(order.every(index => index >= 0) && order.every((index, position) => position === 0 || index > order[position - 1]), 'stats, queue, room, kitchen, staff and activity follow the board order')
 assert.doesNotMatch(view, /received_today|formatMoney/, 'revenue stays in Analytics, not on the Operation board')
-assert.match(view, /minmax\(15rem, 23fr\) minmax\(0, 54fr\) minmax\(15rem, 23fr\)/, 'wide boards use the 23/54/23 reference composition')
+assert.match(view, /\.operation-board \{ position: relative; display: block; height: calc\(100dvh - var\(--bar-top, 0px\)\)/, 'wide boards keep a full-height desktop room backdrop')
+assert.match(view, /\.operation-board-right \{ right: 1\.25rem; width: 20rem; \}/, 'desktop right panels share a fixed aligned column')
+assert.match(view, /\.operation-board-left \{ left: 1\.25rem; \}/, 'the team panel docks in the lower left column')
+assert.match(view, /\.operation-board-column \{ position: absolute; z-index: 3; top: 7\.25rem; bottom: 8\.5rem; display: flex; width: 19rem; flex-direction: column; justify-content: flex-end;/, 'desktop panel columns anchor to the bottom above the centered toolbar')
+assert.match(view, /\.operation-board-right \.dashboard-panel-card \{ max-height: calc\(\(100% - 0\.75rem\) \/ 2\); \}/, 'expanded right cards fit the available column and keep a uniform gap')
+assert.match(view, /\.dashboard-bottom-bar \{ position: absolute; z-index: 5; right: auto; bottom: 1rem; left: 50%; display: flex;/, 'legend and quick controls share a centered bottom toolbar')
+assert.match(view, /\.operation-metrics \{ top: 1\.25rem; right: auto; left: 1\.25rem; width: 28rem; \}/, 'desktop indicators stay compact in the upper left')
+assert.match(view, /\.floor-controls \{ top: 1\.25rem; left: 50%; right: auto;/, 'desktop camera controls share the upper row at center')
+assert.match(view, /DEFAULT_PANEL_LAYOUT:[\s\S]*left: \['staff'\], right: \['kitchen', 'activity'\]/, 'default layout puts staff left and kitchen/activity right')
+assert.match(view, /saloa:dashboard-panels:v1:user-\$\{userId\}:restaurant-\$\{props\.restaurantId\}/, 'panel preferences are scoped by user and restaurant')
+assert.match(view, /window\.localStorage\.setItem/, 'panel preferences persist across reloads')
+assert.match(view, /restorePanelLayout/, 'the default arrangement can be restored')
+assert.match(view, /activityPanel\.open\(\)/, 'Show all opens the same activity center as the notification bell')
+assert.match(view, /touch-action: pan-y/, 'vertical page scrolling remains available over the 3D canvas')
+assert.match(view, /\.operation-metrics :deep\(\.a-stat-strip > div > dd:nth-of-type\(2\)\) \{ display: none; \}/, 'mobile indicators remain compact over the scene')
+assert.match(view, /attentionOpen = !attentionOpen/, 'the attention queue stays reachable from a compact count control')
+assert.match(view, /\.floor-stage \{ position: relative; height: clamp\(28rem, 58dvh, 36rem\)/, 'the phone scene stays prominent before the flowing cards')
+assert.match(view, /\.operation-board-left, \.operation-board-right \{ display: contents; \}/, 'mobile removes desktop columns from the scrolling card flow')
+assert.match(view, /\.dashboard-panel-card\[data-panel='kitchen'\] \{ order: 1; \}[\s\S]*\.dashboard-panel-card\[data-panel='staff'\] \{ order: 3; \}[\s\S]*\.dashboard-panel-card\[data-panel='activity'\] \{ order: 4; \}/, 'mobile orders kitchen, selected table, staff, activity')
+assert.match(view, /class="operation-board-floor min-w-0"/, 'the dining room has no external card border or header')
 assert.match(view, /can\('view_activity'\)/, 'recent activity follows the existing activity permission')
 assert.match(view, /canAny\(\['update_kitchen_status', 'serve_orders'\]\)/, 'kitchen summary follows the existing route gate')
 assert.match(view, /can\('manage_users'\)/, 'team summary follows the existing staff route gate')
@@ -160,8 +178,13 @@ assert.match(statsSource, /tabular-nums/, 'stat values use tabular numerals')
 assert.doesNotMatch(floorMap, /radial-gradient|linear-gradient|shadow:/, 'room map no longer adds decorative gradient or inset shadow')
 assert.match(marker, /Math\.max\(props\.table\.layout\.width \?\? 84, 64\)/, 'map targets have a minimum width for table labels')
 assert.match(marker, /text-label-md tabular-nums/, 'map metadata meets the 12px text floor')
-assert.match(kitchen, /orders\.waiting_approval[\s\S]*orders\.preparing[\s\S]*orders\.ready/, 'kitchen summary consumes live snapshot fields')
+assert.match(kitchen, /waiting_approval[\s\S]*preparing[\s\S]*ready/, 'kitchen summary consumes live snapshot fields')
+assert.match(kitchen, /ORDERS, never dishes/, 'kitchen summary counts orders and never invents a dish quantity')
 assert.match(staff, /staff\.slice\(0, props\.limit\)/, 'dashboard team summary remains deliberately small')
+assert.match(panelCard, /draggable="true"/, 'each dashboard panel exposes a drag handle')
+assert.match(panelCard, /emit\('collapse'\)/, 'each dashboard panel can collapse')
+assert.match(panelCard, /emit\('close'\)/, 'each dashboard panel can close')
+assert.match(panelCard, /emit\('move', 'up'\)[\s\S]*emit\('move', 'down'\)[\s\S]*emit\('move', 'left'\)[\s\S]*emit\('move', 'right'\)/, 'keyboard reachable menu supports panel reordering and columns')
 assert.match(analytics, /v-if="loading && !data"/, 'analytics refresh retains the prior result')
 assert.match(dashboard, /else-if="!canViewReports"[\s\S]*analytics\.errors\.forbidden/, 'analytics remains permission gated at the dashboard boundary')
 assert.match(revenueChart, /dataDetails[\s\S]*v-for="point in points"/, 'revenue chart provides a text data alternative')

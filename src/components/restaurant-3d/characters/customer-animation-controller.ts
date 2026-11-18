@@ -18,6 +18,13 @@ import {
  * event; loops (idle, walk, seated) never reset when re-entered by a blend.
  * Everything here is plain objects: no Vue reactivity, nothing allocates per frame.
  */
+/**
+ * Customers walk about 30% faster than the Walk clip's authored pace. It scales the path speed AND the clip's playback
+ * together (see `walkSpeed` / `setLocomotionScale`), so the feet keep planting where the body is going. Only walking is
+ * affected: sit/stand clips, settle times, arrival delays and the simulation clock keep their own durations.
+ */
+export const WALK_SPEED_MULTIPLIER = 1.3
+
 export type CustomerState = 'idle' | 'walking' | 'sitting_down' | 'seated' | 'standing_up'
 
 export type CustomerClipNames = Record<CustomerState, string>
@@ -109,6 +116,11 @@ export class CustomerAnimationController {
    * Measured, not estimated from stride length (that overshoots by ~4%). Cached.
    */
   get walkSpeed(): number {
+    return this.naturalWalkSpeed * WALK_SPEED_MULTIPLIER
+  }
+
+  /** Ground speed (m/s) of the Walk clip at its authored rate, before the product-wide walking boost. */
+  get naturalWalkSpeed(): number {
     if (this.cachedWalkSpeed !== null) return this.cachedWalkSpeed
     const action = this.actions.get('walking')
     const track = action?.getClip().tracks.find((t) => /^Foot[._]?L\.position$/.test(t.name))
@@ -176,7 +188,8 @@ export class CustomerAnimationController {
 
   /** Slows/speeds the looping locomotion clip so feet match a ramping path speed. */
   setLocomotionScale(scale: number) {
-    this.actions.get('walking')?.setEffectiveTimeScale(scale)
+    // The clip plays WALK_SPEED_MULTIPLIER faster too: walkSpeed (path distance per second) and the steps stay locked.
+    this.actions.get('walking')?.setEffectiveTimeScale(scale * WALK_SPEED_MULTIPLIER)
   }
 
   pause() {

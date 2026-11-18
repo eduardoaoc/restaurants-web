@@ -90,7 +90,7 @@ export async function runGuestCountChecks() {
   }
   const click = async (label: string) => { const target = button(label); if (!target) throw new Error(`Missing button: ${label}`); target.click(); await settle() }
   const count = () => {
-    const label = [...document.querySelectorAll('span')].find(el => el.textContent?.trim() === 'Clientes')
+    const label = [...document.querySelectorAll('span, dt')].find(el => el.textContent?.trim() === 'Clientes')
     return label?.parentElement?.querySelector('.text-title-md')?.textContent?.trim()
   }
   try {

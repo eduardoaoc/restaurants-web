@@ -1,6 +1,8 @@
 <script setup lang="ts">
 defineProps<{
   items: Array<{ id: string; label: string; value: string; context?: string }>
+  /** Tighter cells on phones (the operation board must leave room for the room below it). */
+  compact?: boolean
 }>()
 </script>
 
@@ -9,12 +11,12 @@ defineProps<{
     <div
       v-for="(item, index) in items"
       :key="item.id"
-      class="min-w-0 px-3 py-3 first:pl-0 last:pr-0 md:py-4"
-      :class="index < 2 ? 'a-stat-strip-mobile-first-row' : ''"
+      class="min-w-0 px-3 first:pl-0 last:pr-0 md:py-4"
+      :class="[compact ? 'py-2' : 'py-3', index < 2 ? 'a-stat-strip-mobile-first-row' : '']"
     >
       <dt class="break-words text-label-md text-fg-muted">{{ item.label }}</dt>
-      <dd class="mt-1 break-words text-metric tabular-nums text-fg">{{ item.value }}</dd>
-      <dd v-if="item.context" class="mt-1 break-words text-label-md text-fg-muted">{{ item.context }}</dd>
+      <dd class="break-words tabular-nums text-fg" :class="compact ? 'text-title-lg font-semibold md:text-metric md:font-normal md:mt-1' : 'mt-1 text-metric'">{{ item.value }}</dd>
+      <dd v-if="item.context" class="break-words text-label-md text-fg-muted md:mt-1" :class="compact ? '' : 'mt-1'">{{ item.context }}</dd>
     </div>
   </dl>
 </template>

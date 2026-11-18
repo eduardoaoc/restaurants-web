@@ -45,6 +45,8 @@ export interface FrameInput {
   direction?: Vec3
   /** Frame the top of the walls too (corner points at this height, m). */
   wallHeight?: number
+  /** Closest the camera may be fitted (m); a small cluster of tables can be framed nearer than the default. */
+  minDistance?: number
   /** Farthest the camera may be fitted (m); the demo room needs more than the table-only framing on a phone. */
   maxDistance?: number
   /** Ground points (y = 0) around the room that must stay in view too (street, sidewalk, terrace); only with `includeFloor`. */
@@ -83,7 +85,7 @@ export function frameRestaurant(input: FrameInput): Frame {
   const direction = input.direction ?? viewDirection(input.viewportWidth)
   const distance = fitDistance({
     points, target, direction, fov: CAMERA_FOV, width: input.width, height: input.height, insets: input.insets,
-    minDistance: MIN_DISTANCE, maxDistance: input.maxDistance ?? MAX_DISTANCE,
+    minDistance: input.minDistance ?? MIN_DISTANCE, maxDistance: input.maxDistance ?? MAX_DISTANCE,
   })
   return { target, direction, distance, position: [target[0] + direction[0] * distance, target[1] + direction[1] * distance, target[2] + direction[2] * distance] }
 }

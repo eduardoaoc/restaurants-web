@@ -182,3 +182,17 @@ Nenhum componente, contrato, rota, dado ou lógica de domínio foi alterado até
 - Validar em browser/screenshot os viewports 375, 414, 768, 1024 landscape, 1280 e 1440, orientação, 200% zoom, tema claro/escuro, leitura de gráficos, detalhe modal no Dashboard e impacto do componente compartilhado no Serviço.
 - Contrato permanece pendente para thresholds de urgência/atraso: nenhum foi inferido nesta fase. O resumo atual usa exclusivamente severidade/idade que já vêm do snapshot.
 - Dívida futura: validar visualmente o comportamento parcial de falha de Analytics (o composable zera dados ao falhar) e melhorar isolamento de falhas se uma mudança compatível de estado/composable for aprovada em fase própria; avaliar ergonomia da tabela do mapa em tela compacta com dados reais extensos; executar browser realtime quando o runtime estiver disponível.
+
+## Rodada "visão operacional de relance" (2026-11-18)
+
+O Dashboard deixou de ter um "palco" em tela cheia: o salão é um bloco da página, e a página rola normalmente.
+
+- **Ordem (mobile)**: resumo (mesas ocupadas/livres/com atenção, clientes, pedidos ativos, solicitações) → salão (seletor 3D | Plano, altura limitada) → Atenção agora → Cozinha agora → Equipe agora → Atividade recente. Desktop: salão fixo (sticky) como área principal e a mesma sequência de cartões na coluna lateral. Igual em 3D e em Plano.
+- **Pedidos ≠ pratos**: o contrato `operations/live` só traz contagens de pedidos; nenhuma quantidade de pratos é mostrada ("Cifras en pedidos, no en platos").
+- **Cores**: amarelo = atenção moderada (aguardando aprovação), vermelho = ação imediata (severidade `critical`), verde = conclusão (pedidos prontos); sempre com ícone e rótulo.
+- **Notificações em tempo real** (`OperationalToastHost`): topo central da janela, acima de modais (o host é isento da inércia do modal, `data-overlay-exempt`). Fonte = novos itens de `snapshot.alerts` após cada refetch disparado pelo realtime (mesmos ids/mesa/idade da fila de atenção). 4 s, pausa em hover/foco, fechar não resolve a pendência, deduplicação por id, máx. 3 (2 no celular) + "+N en espera", crítico tem prioridade; `role="alert"`/assertive só para críticos, `status`/polite para o resto; nunca move o foco.
+- **Modal de mesa**: cabeçalho (mesa + estado + fechar) → resumo compacto → pedidos (abertos, com "Nuevo pedido") → ações (ícone + rótulo curto, "Más acciones") → acesso/dados por expansão. Ações bloqueadas explicam o motivo junto ao controle.
+- **Câmera**: enquadramento inicial nas mesas (+ entrada), "Ver salón entero", zoom ±; a roda só dá zoom com Ctrl/⌘ e o gesto vertical de um dedo rola a página (`touch-action: pan-y`).
+- **Rótulos 3D**: prioridade à mesa selecionada e aos alertas mais urgentes; sem espaço livre, o rótulo vira sua forma compacta; várias ocorrências da mesma mesa = um indicador com "+N".
+- **Editor**: novas colocações/movimentos exigem `COMFORT_MARGIN` (0,9 m livres entre cadeiras); layouts salvos mais apertados mantêm as posições e recebem um aviso não bloqueante.
+- **Caminhada**: `WALK_SPEED_MULTIPLIER = 1.3` aplicado ao deslocamento e ao clipe Walk juntos (pés acompanham); sentar/levantar, atrasos e relógio da simulação não mudam.

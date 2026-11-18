@@ -39,6 +39,7 @@ import { LAB_CURRENCY, toOperationsTable } from './table-detail-adapter'
 import { FLOOR } from './floor'
 import { type EditResult } from './use-editable-layout'
 import { type TableDraft, validateLayout } from './editor-validation'
+import { findTightPairs } from './table-footprint'
 import { minSeatsForState, resolveTableState } from './table-operational-state'
 import { installLabApiGuard } from './lab-api-guard'
 import { selectTopEventPerTarget } from './operational-events'
@@ -226,9 +227,10 @@ function recenterView(): void {
     if (hostOwnsSelection.value) emit('tableSelected', null)
     else clearSelection()
   }
-// The Dashboard stage draws its own Centrar vista button (the scene's one is hidden there) and asks through this.
-watch(() => sceneCommands.recenter, () => { if (props.stage) recenterView() })
 }
+// The Dashboard draws its own camera buttons (the scene's one is hidden there) and asks through these commands. The view
+// moves; the table that is open (if any) stays selected.
+watch(() => sceneCommands.recenter, () => { if (props.stage) cameraRig.value?.recenter() })
 
 function clearSelection(): void {
   selectedTableId.value = null
@@ -243,6 +245,10 @@ const saveError = ref<string | null>(null)
 const mappingIssues = computed(() => props.restaurantId == null || props.mappingLoading || props.mappingLoadError
   ? []
   : validateTableMappings(tables.value, backendTables.value, props.restaurantId))
+// Layouts saved under the earlier, tighter spacing keep every position; the editor only points out the pairs that are
+// closer than the comfortable spacing so the person can correct them. Informative: it never blocks saving.
+const tightPairs = computed(() => behavior.value.layoutEditing ? findTightPairs(tables.value) : [])
+const tightPairsText = computed(() => tightPairs.value.slice(0, 3).map(([a, b]) => `${a.number}–${b.number}`).join(', '))
 const capacityIssues = computed(() => validateCapacityAgainstOccupancy(tables.value, activeGuestCounts.value))
 const canSave = computed(() => props.save !== undefined && isDirty.value && !saving.value && !props.saveBlocked && !entranceBlocking.value
   && !props.mappingLoading && mappingIssues.value.length === 0 && capacityIssues.value.length === 0)
@@ -521,32 +527,54 @@ const quality = chooseQuality(detectDeviceHints())
 const STAGE_SHORT_VIEWPORT_PX = 520
 const shortStage = props.stage && window.innerHeight <= STAGE_SHORT_VIEWPORT_PX
 const compactViewport = window.innerWidth <= 640 || shortStage
-/** Dashboard stage: raised, mostly frontal view (about 12 degrees off the front axis, 33 degrees up) so the room reads as a maquette. */
-const STAGE_DIRECTION: [number, number, number] = [0.17, 0.55, 0.82]
+/** Dashboard stage: elevated, mostly frontal view (about 12 degrees off the front axis, 46 degrees up) so tables stay legible behind the side panels. */
+const STAGE_DIRECTION: [number, number, number] = [0.15, 0.72, 0.68]
 /** Short, wide stage (a phone in landscape): steeper, so the room's depth uses the little height there is. */
 const STAGE_SHORT_DIRECTION: [number, number, number] = [0.14, 0.8, 0.58]
 const STAGE_WALL_HEIGHT = 2.4
 /** A phone-wide stage needs the camera farther back than the demo room's 70 m to fit the whole room. */
 const STAGE_MAX_DISTANCE = 110
-/** Px kept free around the room on the dashboard stage: the stat row on top, the legend/queue row below, a little at the sides. */
-const STAGE_INSETS = shortStage
-  ? { top: 60, right: 12, bottom: 64, left: 12 }
-  : window.innerWidth <= 640
-    ? { top: 108, right: 12, bottom: 64, left: 12 }
-    : { top: 76, right: 40, bottom: 72, left: 40 }
+/** Px kept free around the framed tables on the dashboard: just enough for the label/badge pills not to touch the canvas edge. */
+/** A few tables are framed from nearer than the 11 m default, so they and their states fill the block. */
+const STAGE_MIN_DISTANCE = 6.5
+function dashboardStageInsets(width: number): { top: number; right: number; bottom: number; left: number } {
+  if (width <= 640) return { top: 14, right: 14, bottom: 14, left: 14 }
+  const leftColumn = width >= 1800 ? 336 : width >= 1280 ? 320 : 304
+  const rightColumn = width >= 1800 ? 368 : width >= 1280 ? 336 : 320
+  return { top: 14, right: rightColumn + 24, bottom: 14, left: leftColumn + 24 }
+}
+const stageInsets = ref(dashboardStageInsets(window.innerWidth))
+const stageDirection = ref<[number, number, number]>(shortStage ? STAGE_SHORT_DIRECTION : STAGE_DIRECTION)
+const stageViewport = ref({ width: window.innerWidth, height: window.innerHeight })
+function updateStageViewport(): void {
+  stageViewport.value = { width: window.innerWidth, height: window.innerHeight }
+  stageInsets.value = dashboardStageInsets(stageViewport.value.width)
+  stageDirection.value = stageViewport.value.height <= STAGE_SHORT_VIEWPORT_PX ? STAGE_SHORT_DIRECTION : STAGE_DIRECTION
+}
+onMounted(() => window.addEventListener('resize', updateStageViewport))
+onBeforeUnmount(() => window.removeEventListener('resize', updateStageViewport))
+/**
+ * The dashboard room is a block inside a scrolling page, not the whole window. The camera is first fitted to the TABLES
+ * (and the entrance) so they and their states come out as large as the canvas allows; the whole room stays one tap away
+ * ("Ver salón entero"). CameraRig re-fits to the measured canvas on mount, so these sizes only need to be close.
+ */
+const stageEstimate = () => stageViewport.value.width <= 640
+  ? { width: stageViewport.value.width - 32, height: Math.min(460, Math.round(stageViewport.value.height * 0.52)) }
+  : { width: Math.max(320, stageViewport.value.width - stageInsets.value.left - stageInsets.value.right - 64), height: Math.max(420, Math.min(760, stageViewport.value.height - 220)) }
 const initialFrame = frameRestaurant({
   tables: tables.value,
   entrance: draftEntrance.value,
-  includeFloor: behavior.value.layoutEditing || props.stage || props.environment === 'ultimate',
+  includeFloor: behavior.value.layoutEditing || (!props.stage && props.environment === 'ultimate'),
   context: compactViewport ? urbanCompactContext.value : urbanContext.value,
   wallHeight: props.stage ? STAGE_WALL_HEIGHT : props.environment === 'ultimate' ? 3 : undefined,
+  minDistance: props.stage ? STAGE_MIN_DISTANCE : undefined,
   maxDistance: props.stage ? STAGE_MAX_DISTANCE : props.environment === 'ultimate' ? 70 : undefined,
   // Isometric-like view (corner of the room at the top centre): the Ultimate demo and the dashboard stage.
-  direction: props.stage ? (shortStage ? STAGE_SHORT_DIRECTION : STAGE_DIRECTION) : props.environment === 'ultimate' ? ultimateDirection(window.innerWidth) : undefined,
-  width: props.stage ? window.innerWidth : compactViewport ? window.innerWidth : Math.min(window.innerWidth - 48, 1100),
-  height: props.stage ? window.innerHeight - 56 : Math.max(360, Math.min(720, window.innerHeight - (compactViewport ? 190 : 220))),
+  direction: props.stage ? stageDirection.value : props.environment === 'ultimate' ? ultimateDirection(window.innerWidth) : undefined,
+  width: props.stage ? stageEstimate().width : compactViewport ? window.innerWidth : Math.min(window.innerWidth - 48, 1100),
+  height: props.stage ? stageEstimate().height : Math.max(360, Math.min(720, window.innerHeight - (compactViewport ? 190 : 220))),
   viewportWidth: window.innerWidth,
-  insets: props.stage ? STAGE_INSETS : undefined,
+  insets: props.stage ? stageInsets.value : undefined,
 })
 const cameraPosition = initialFrame.position
 const cameraTarget = initialFrame.target
@@ -704,9 +732,12 @@ const cameraTarget = initialFrame.target
         :entrance="draftEntrance"
         :context="urbanContext"
         :compact-context="urbanCompactContext"
-        :include-floor="behavior.layoutEditing || stage || environment === 'ultimate'"
-        :frame-insets="stage ? STAGE_INSETS : undefined"
+        :include-floor="behavior.layoutEditing || (!stage && environment === 'ultimate')"
+        :frame-insets="stage ? stageInsets : undefined"
+        :initial-direction="stage ? stageDirection : undefined"
+        :page-scroll="stage"
         :max-distance="stage ? STAGE_MAX_DISTANCE : undefined"
+        :frame-min-distance="stage ? STAGE_MIN_DISTANCE : undefined"
         :wall-height="stage ? STAGE_WALL_HEIGHT : environment === 'ultimate' ? 3 : 0"
         :reframe-key="overview ? 1 : 0"
         :bottom-inset="behavior.layoutEditing ? dockInset : 0"
@@ -813,6 +844,9 @@ const cameraTarget = initialFrame.target
           {{ t('floorLayout.entrance.saveBlocked') }}
         </p>
         <p v-else-if="saveError" class="editor-save-error" role="alert">{{ saveError }}</p>
+        <p v-if="tightPairs.length" class="editor-save-error editor-save-error--soft" role="status" data-tight-spacing>
+          {{ t('floorLayout.spacing.tight', { tables: tightPairsText }) }}
+        </p>
 
         <div v-show="!dockCollapsed" class="editor-dock__body">
           <div class="editor-tabs" role="tablist" :aria-label="t('floorLayout.editor.sections')">
@@ -1078,6 +1112,7 @@ const cameraTarget = initialFrame.target
 .editor-discard { cursor: pointer; font-size: 13px; }
 .editor-discard:disabled { opacity: 0.5; cursor: not-allowed; }
 .editor-save-error { max-width: min(100%, 32rem); margin: 0; color: #ffd8d3; font-size: 12px; }
+.editor-save-error--soft { color: #ffe9a0; }
 
 .editor-dirty {
   padding: 4px 10px;

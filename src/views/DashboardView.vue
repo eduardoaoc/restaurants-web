@@ -141,7 +141,7 @@ const dayState = computed(() => {
       >
         <!-- Day closed: the closed-day strip owns the only primary action ("Abrir el día"). -->
         <template v-if="tab === 'operation' && dayState?.open && canViewService" #cta>
-          <AButton as="RouterLink" :to="{ name: 'app-service' }" variant="secondary" size="sm">
+          <AButton as="RouterLink" :to="{ name: 'app-service' }" variant="secondary" size="sm" class="max-sm:hidden">
             {{ t('operations.now.viewService') }}
             <template #trailing><PhCaretRight /></template>
           </AButton>

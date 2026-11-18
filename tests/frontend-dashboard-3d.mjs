@@ -127,17 +127,21 @@ try {
     assert.ok(scene.includes("inject(SCENE_FAILURE_KEY, null)"), 'without a guard (fixture, editor) the scene reports to nobody')
     assert.ok(scene.includes("@error=\"reportSceneFailure?.('context-creation')\""))
   })
-  check('the Dashboard recentres through the command channel and the scene only obeys it on the stage', () => {
+  check('the Dashboard drives the camera through the command channel (fit room, zoom) and the scene only obeys it on the dashboard', () => {
     const scene = readFileSync('src/components/restaurant-3d/RestaurantScene.vue', 'utf8')
-    assert.ok(scene.includes('watch(() => sceneCommands.recenter, () => { if (props.stage) recenterView() })'))
-    assert.ok(scene.includes('v-if="!stage"'), "the scene's own dark Centrar vista button stays off the stage")
-    assert.ok(view.includes('sceneCommands.recenter++'))
+    assert.ok(scene.includes('watch(() => sceneCommands.recenter, () => { if (props.stage) cameraRig.value?.recenter() })'), 'the watch lives at setup level, not inside another function')
+    assert.ok(scene.includes('v-if="!stage"'), "the scene's own dark Centrar vista button stays off the dashboard")
+    const tools = readFileSync('src/components/dashboard/operation/SceneCameraTools.vue', 'utf8')
+    for (const needle of ['sceneCommands.recenter++', 'sceneCommands.zoomIn++', 'sceneCommands.zoomOut++']) assert.ok(tools.includes(needle), needle)
+    const rig = readFileSync('src/components/restaurant-3d/CameraRig.vue', 'utf8')
+    assert.ok(rig.includes('watch(() => sceneCommands.zoomIn') && rig.includes('watch(() => sceneCommands.zoomOut'))
   })
-  check('the JS "wide" media query and the CSS stage query are the same, so the card and the docks never disagree', () => {
-    const query = '(min-width: 768px) and (min-height: 521px)'
-    assert.ok(view.includes(`window.matchMedia('${query}')`))
-    assert.ok(view.includes(`@media ${query} {`))
-    assert.ok(readFileSync('src/components/dashboard/operation/stage/stage.css', 'utf8').includes('@media (max-height: 520px)'))
+  check('the room is a block of a scrolling page: bounded height, no window-sized stage, canvas lets the page scroll', () => {
+    assert.ok(view.includes('.floor-stage { position: relative; height: clamp('), 'bounded stage height')
+    assert.ok(!view.includes('.stage-ui') && !view.includes('100dvh - var(--bar-top, 0px) - var(--bar-bottom, 0px)'), 'no full-window stage left')
+    const rig = readFileSync('src/components/restaurant-3d/CameraRig.vue', 'utf8')
+    assert.ok(rig.includes("canvas.style.touchAction = 'pan-y'") && rig.includes('!event.ctrlKey && !event.metaKey'), 'vertical touch pans and the plain wheel scroll the page')
+    assert.ok(readFileSync('src/components/restaurant-3d/RestaurantScene.vue', 'utf8').includes(':page-scroll="stage"'))
   })
   check('a restaurant switch clears a run-time failure and undoes only the automatic Plan fallback', () => {
     assert.match(view, /watch\(\(\) => props\.restaurantId, \(\) => \{\s+sceneRuntimeFailure\.value = null\s+if \(!userChoseView\.value && threeDEnabled\.value\) floorView\.value = '3d'/)
@@ -146,7 +150,7 @@ try {
   check('off: the scene chunk, the layout request and the view selector are all skipped', () => {
     assert.ok(view.includes("const floorView = ref<'plan' | '3d'>(threeDEnabled.value ? '3d' : 'plan')"))
     assert.ok(view.includes('const layoutRestaurantId = computed(() => showScene.value && props.snapshot'))
-    assert.ok(readFileSync('src/components/dashboard/operation/stage/StageTopbar.vue', 'utf8').includes('v-if="views.length > 1"'))
+    assert.ok(readFileSync('src/components/dashboard/operation/FloorViewSwitch.vue', 'utf8').includes('v-if="views.length > 1"'))
   })
   console.log(`frontend-dashboard-3d: ${checks} checks passed`)
 } finally {

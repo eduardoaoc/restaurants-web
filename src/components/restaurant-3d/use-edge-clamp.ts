@@ -3,7 +3,7 @@ import { Vector3 } from 'three'
 import type { Camera, Object3D } from 'three'
 import { clampOverlay } from './overlay-metrics'
 import { overlayViewport } from './overlay-viewport'
-import { resolveOverlayCollisions, type OverlayKind, type OverlayPoint } from './overlay-collision'
+import { resolveOverlayLayout, type OverlayKind, type OverlayPoint } from './overlay-collision'
 
 /** Below this screen-space shift a label still reads as attached to its table, so no leader is drawn. */
 const LEADER_MIN_PX = 24
@@ -45,7 +45,9 @@ export function useEdgeClamp(kind: OverlayKind = 'badge', getRank: () => number 
   let observer: ResizeObserver | undefined
 
   const measure = () => {
-    if (!element) return
+    // A crowded overlay is drawn in its compact form; the layout keeps reserving its full size, otherwise shrinking would
+    // free a slot, expand it again and flicker.
+    if (!element || element.hasAttribute('data-crowded')) return
     size.width = element.offsetWidth
     size.height = element.offsetHeight
   }
@@ -71,10 +73,13 @@ export function useEdgeClamp(kind: OverlayKind = 'badge', getRank: () => number 
       element = null
       find()
     }
-    if (!size.width || !size.height) return [x, y, world.z]
+    if (!element || !size.width || !size.height) return [x, y, world.z]
     const clamped = clampOverlay({ x, y }, size, canvas, overlayViewport.insets, overlayViewport.edge)
     overlayPoints.set(id, { id, kind, rank: getRank(), position: clamped, size })
-    const resolved = resolveOverlayCollisions([...overlayPoints.values()], 5, 96, { width: canvas.width, height: canvas.height, edge: overlayViewport.edge }, overlayOffsets).get(id) ?? clamped
+    const layout = resolveOverlayLayout([...overlayPoints.values()], 5, 96, { width: canvas.width, height: canvas.height, edge: overlayViewport.edge }, overlayOffsets)
+    const resolved = layout.positions.get(id) ?? clamped
+    const crowded = layout.crowded.has(id)
+    if (element.hasAttribute('data-crowded') !== crowded) element.toggleAttribute('data-crowded', crowded)
     overlayOffsets.set(id, { x: resolved.x - clamped.x, y: resolved.y - clamped.y })
     if (kind === 'label') setLeader(element, clamped.x - resolved.x, clamped.y - resolved.y)
     return [resolved.x, resolved.y, world.z]

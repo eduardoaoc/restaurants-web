@@ -770,6 +770,7 @@ export default {
     },
   },
   operations: {
+    toast: { region: 'Avisos en directe', more: '+{count} avisos en espera' },
     board: {
       title: 'Operació',
       analyticsTitle: 'Anàlisi',
@@ -779,6 +780,9 @@ export default {
       leftoverTables: 'cap taula | 1 taula | {count} taules',
       leftoverOrders: 'cap comanda | 1 comanda | {count} comandes',
       kpi: {
+        tables: 'Taules ocupades',
+        tablesValue: '{occupied} / {total}',
+        tablesContext: '{free} lliures · {attention} amb atenció',
         occupiedTables: 'Taules ocupades',
         activeOrdersContext: '{approval} per aprovar · {ready} llestes',
         requests: 'Sol·licituds de clients',
@@ -827,6 +831,10 @@ export default {
       },
       floor: {
         viewLabel: 'Vista del saló',
+        cameraTools: 'Càmera del saló',
+        zoomIn: 'Acostar',
+        zoomOut: 'Allunyar',
+        fitRoom: 'Veure el saló sencer',
         planView: 'Plànol',
         sceneError: 'No s’ha pogut carregar el saló 3D.',
         sceneRuntimeError: 'El saló 3D s’ha aturat. Pots continuar treballant amb el plànol.',
@@ -843,12 +851,16 @@ export default {
       },
       kitchen: {
         waiting: 'Per aprovar',
-        preparing: 'En cuina',
-        ready: 'Llestes',
+        queued: 'En cua de cuina',
+        preparing: 'Preparant',
+        ready: 'Llestos',
+        unit: 'comanda | comandes',
+        note: 'Xifres en comandes, no en plats.',
         oldest: 'Comanda activa més antiga',
         none: 'Sense comandes actives',
       },
       staff: {
+        summary: '{staff} en torn · {tables} taules · {guests} clients',
         load: '{tables} taules · {guests} clients',
         pending: '1 pendent | {count} pendents',
         previousShift: 'Torn obert des de {date}',
@@ -856,10 +868,17 @@ export default {
       },
       activity: {
         title: 'Activitat recent',
+        showMore: 'Veure més',
+        showAll: 'Mostrar-ho tot',
         empty: 'Encara no hi ha activitat hui.',
         error: 'No s’ha pogut carregar l’activitat.',
         retry: 'Tornar a intentar',
         viewAll: 'Veure tota l’activitat',
+      },
+      panels: {
+        title: 'Panells', restore: 'Restaurar l’organització predeterminada', leftColumn: 'Columna esquerra', rightColumn: 'Columna dreta', dropHere: 'Deixa ací el panell',
+        drag: 'Arrossega {title} per a reorganitzar', positionMenu: 'Canviar la posició de {title}', moveUp: 'Moure cap amunt', moveDown: 'Moure cap avall', moveLeft: 'Moure a la columna esquerra', moveRight: 'Moure a la columna dreta',
+        collapse: 'Plegar {title}', expand: 'Expandir {title}', close: 'Tancar {title}',
       },
     },
     pageTitle: 'Centre de comandament',
@@ -1019,6 +1038,10 @@ export default {
     },
   },
   tableDrawer: {
+    sections: { orders: 'Comandes', actions: 'Accions de la taula' },
+    short: { bill: 'Compte', assign: 'Cambrer', call: 'Cridar' },
+    transferNoFreeTables: 'No hi ha taules lliures a què transferir aquesta taula.',
+    more: { capacity: 'Capacitat', started: 'Oberta a les' },
     pendingAssignment: 'Pendent d’assignació',
     freeHint: 'Esta taula està lliure. Obri una sessió per a començar a prendre comandes.',
     guestCount: 'Nombre de clients',
@@ -1039,6 +1062,7 @@ export default {
     noStaffToAssign: 'No hi ha personal en torn per a assignar.',
     outstandingBalance: 'Saldo pendent: {amount}',
     actions: {
+      more: 'Més accions',
       open: 'Obri la taula',
       reassignWaiter: 'Assigna / reassigna cambrer',
       unassign: "Llevar l'assignació",
@@ -1113,8 +1137,8 @@ export default {
     },
     access: {
       title: 'Accés a la taula',
-      show: 'Mostra l\'accés a la taula',
-      hide: 'Amaga l\'accés a la taula',
+      show: 'Mostrar accés i dades de la taula',
+      hide: 'Amagar accés i dades de la taula',
       loadError: 'No s\'ha pogut carregar l\'accés a la taula.',
       retry: 'Torna a intentar-ho',
       noPermission: 'No tens permís per a veure l\'accés d\'esta taula.',
@@ -2050,6 +2074,7 @@ export default {
     },
   },
   floorLayout: {
+    spacing: { tight: 'Hi ha taules massa juntes ({tables}). Separa-les per deixar pas al servei; les posicions guardades no s\'han mogut.' },
     recenterView: 'Centrar la vista',
     save: 'Guardar els canvis',
     discard: 'Descartar',

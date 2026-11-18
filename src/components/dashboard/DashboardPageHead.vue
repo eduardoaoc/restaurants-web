@@ -56,7 +56,7 @@ const title = computed(() => t(props.tab === 'operation' ? 'operations.board.tit
     <template #actions>
       <AButton v-if="canRefresh && tab === 'operation'" variant="ghost" size="sm" :loading="refreshing" @click="emit('refresh')">
         <template #leading><PhArrowsClockwise /></template>
-        {{ t('operations.quickActions.refresh') }}
+        <span class="max-sm:sr-only">{{ t('operations.quickActions.refresh') }}</span>
       </AButton>
       <DashboardTabs
         :model-value="tab"

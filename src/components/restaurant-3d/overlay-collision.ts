@@ -14,6 +14,15 @@ interface Rect { left: number; right: number; top: number; bottom: number }
 const intersects = (a: Rect, b: Rect, gap: number) =>
   a.left < b.right + gap && a.right + gap > b.left && a.top < b.bottom + gap && a.bottom + gap > b.top
 
+export interface OverlayLayout {
+  positions: Map<string, { x: number; y: number }>
+  /**
+   * Overlays that found no free slot within `maxShift`, so they still overlap something: they are drawn at their own
+   * anchor and should switch to their compact form (a lower-ranked one yields to the one that was placed first).
+   */
+  crowded: Set<string>
+}
+
 /** Places badges first and shifts nearby overlays by the smallest bounded screen-space offset. */
 export function resolveOverlayCollisions(
   points: readonly OverlayPoint[],
@@ -23,6 +32,21 @@ export function resolveOverlayCollisions(
   previous?: ReadonlyMap<string, { x: number; y: number }>,
   stickiness = 32,
 ): Map<string, { x: number; y: number }> {
+  return resolveOverlayLayout(points, gap, maxShift, bounds, previous, stickiness).positions
+}
+
+/**
+ * Same placement as `resolveOverlayCollisions`, plus the set of overlays that could not be separated. Order of
+ * precedence: kind (badges before labels), then `rank` (lower wins; the selected table uses 0), then id.
+ */
+export function resolveOverlayLayout(
+  points: readonly OverlayPoint[],
+  gap = 5,
+  maxShift = 96,
+  bounds?: OverlayBounds,
+  previous?: ReadonlyMap<string, { x: number; y: number }>,
+  stickiness = 32,
+): OverlayLayout {
   const offsets = [{ x: 0, y: 0 }]
   for (let distance = 16; distance <= maxShift; distance += 16) {
     offsets.push({ x: 0, y: -distance }, { x: 0, y: distance }, { x: -distance, y: 0 }, { x: distance, y: 0 })
@@ -30,6 +54,7 @@ export function resolveOverlayCollisions(
   }
   const placed: Rect[] = []
   const result = new Map<string, { x: number; y: number }>()
+  const crowded = new Set<string>()
   const ordered = [...points].sort((a, b) => (a.kind === b.kind ? a.rank - b.rank || a.id.localeCompare(b.id) : a.kind === 'badge' ? -1 : 1))
   for (const point of ordered) {
     const halfW = point.size.width / 2
@@ -43,7 +68,9 @@ export function resolveOverlayCollisions(
       const rect = { left: x - halfW, right: x + halfW, top: y - halfH, bottom: y + halfH }
       return !placed.some(other => intersects(rect, other, gap))
     }
-    const best = offsets.find(isFree) ?? offsets[0]
+    const freeSlot = offsets.find(isFree)
+    if (!freeSlot) crowded.add(point.id)
+    const best = freeSlot ?? offsets[0]
     // Hysteresis: a previously chosen slot that is still free is kept unless the best slot is much closer, so a
     // small camera movement does not make a label hop between slots frame after frame.
     const prior = previous?.get(point.id)
@@ -53,5 +80,5 @@ export function resolveOverlayCollisions(
     result.set(point.id, { x, y })
     placed.push({ left: x - halfW, right: x + halfW, top: y - halfH, bottom: y + halfH })
   }
-  return result
+  return { positions: result, crowded }
 }

@@ -239,6 +239,7 @@ const legPositions = computed<[number, number, number][]>(() => {
         :occupied-at="state?.occupiedAt ?? null"
         :now="now ?? Date.now()"
         :identity-only="!showOperational"
+        :selected="selected"
         :mapping-state="mappingState"
         :mapping-label="mappingLabel"
       />
@@ -251,7 +252,7 @@ const legPositions = computed<[number, number, number][]>(() => {
       :user-data="anchorData"
     >
       <TresGroup v-if="showOperational && operationalFlags.length" :position="[0, 0.25, 0]">
-        <OperationsFlagBadge :flags="operationalFlags" />
+        <OperationsFlagBadge :flags="operationalFlags" :selected="selected" />
       </TresGroup>
       <OperationalBadge
         v-if="tableBadge"

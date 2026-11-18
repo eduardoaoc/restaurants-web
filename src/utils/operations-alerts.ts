@@ -20,3 +20,22 @@ export const OPERATIONS_ALERT_TYPE_LABEL_KEYS: Record<string, string> = {
 export function operationsAlertTypeLabelKey(type: string): string | null {
   return OPERATIONS_ALERT_TYPE_LABEL_KEYS[type] ?? null
 }
+
+/**
+ * Short contextual action per alert type (`operations.board.queue.actions.*`): it opens the table in context, where the
+ * existing flows (approve, serve, requests, bill, assign) run. Shared by the attention queue and the live notifications
+ * so both offer the same verb for the same situation. A table-bound alert of an unknown type falls back to `view`.
+ */
+export const OPERATIONS_ALERT_ACTION_KEYS: Record<string, string> = {
+  order_waiting_approval: 'review',
+  order_ready: 'serve',
+  customer_waiter_request_pending: 'attend',
+  bill_request_pending: 'bill',
+  active_table_unassigned: 'assign',
+  assigned_waiter_off_shift: 'assign',
+  assigned_waiter_suspended: 'assign',
+}
+
+export function operationsAlertActionKey(type: string): string {
+  return OPERATIONS_ALERT_ACTION_KEYS[type] ?? 'view'
+}

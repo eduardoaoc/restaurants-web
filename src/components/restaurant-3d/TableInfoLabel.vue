@@ -24,11 +24,13 @@ const props = defineProps<{
   now: number
   /** Table name only (layout editing): no occupancy line. */
   identityOnly?: boolean
+  /** The open table: placed before every other overlay and never reduced to its compact form. */
+  selected?: boolean
   mappingState?: 'unmapped' | 'mapped' | 'missing' | 'conflict'
   mappingLabel?: string
 }>()
 
-const { calculatePosition, attrs: overlayAttrs } = useEdgeClamp('label')
+const { calculatePosition, attrs: overlayAttrs } = useEdgeClamp('label', () => (props.selected ? 0 : 5))
 /** Light stage: a floating numbered pin ("3") instead of the "Mesa 03" pill; the occupancy line stays a small caption. */
 const pin = computed(() => String(props.tableNumber))
 const title = computed(() => `Mesa ${String(props.tableNumber).padStart(2, '0')}`)
@@ -49,7 +51,7 @@ const detail = computed(() =>
     <div
       v-bind="overlayAttrs"
       class="table-info-label"
-      :class="{ 'table-info-label--available': occupiedAt === null || identityOnly, 'table-info-label--pin': sceneAppearance.light }"
+      :class="{ 'table-info-label--available': occupiedAt === null || identityOnly, 'table-info-label--pin': sceneAppearance.light, 'table-info-label--selected': selected }"
     >
       <span v-if="sceneAppearance.light" class="table-info-label__pin" :aria-label="title">{{ pin }}</span>
       <span v-else class="table-info-label__title">{{ title }}</span>
@@ -146,6 +148,10 @@ const detail = computed(() =>
 .table-info-label--available .table-info-label__title {
   color: rgb(242 234 227 / 0.92);
 }
+
+/* No free slot near the table: keep the number, drop the caption. The open table keeps both. */
+.table-info-label[data-crowded]:not(.table-info-label--selected) .table-info-label__detail { display: none; }
+.table-info-label--selected .table-info-label__pin { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #c2410c, 0 4px 10px rgb(40 30 20 / 0.28); }
 
 /* Light stage: white pin with a soft shadow, orange numeral; the caption is a small white capsule. */
 .table-info-label--pin { background: transparent; padding: 0; gap: 3px; }
